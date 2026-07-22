@@ -23,36 +23,71 @@ function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
-const SERVICE_TERMS = {
-  pressureWashing: {
-    label: 'Pressure Washing &amp; Exterior Surface Cleaning',
-    html: `<p>This service includes high-pressure water cleaning of exterior surfaces — concrete, dumpster pads, sidewalks, parking areas, building facades, and related hardscape — as specified in the line items above. Cleaning results depend on surface age, material, sealant condition, and severity of staining; some deep-set stains, prior surface damage, or unsealed/porous concrete may not be fully removable, and Renovo makes no guarantee of complete stain removal.</p><p>Client is responsible for relocating or covering vehicles, outdoor furniture, signage, and personal property in the work area before the scheduled service time. Renovo is not responsible for pre-existing cracks, loose or deteriorated surface material, unsealed concrete, or nearby landscaping affected by normal water runoff. Wastewater and runoff will be managed in accordance with applicable local stormwater and discharge regulations.</p>`
-  },
-  windowCleaning: {
-    label: 'Window Cleaning',
-    html: `<p>This service includes interior and/or exterior window and glass cleaning as specified in the line items above. Exterior work above ground level may require ladders, extension poles, or lift equipment; Client agrees to provide safe, unobstructed access to all areas to be cleaned.</p><p>Renovo is not responsible for pre-existing scratches, seal failures, tint defects, or cracked/broken glass identified before or during service. For crew safety, exterior window work may be rescheduled at Renovo's discretion due to wind, rain, ice, or extreme temperatures, without penalty to either party.</p>`
-  },
-  floorCare: {
-    label: 'Floor Care (Strip, Wax, Seal &amp; Restoration)',
-    html: `<p>This service includes floor stripping, waxing, sealing, or restoration as specified in the line items above. Freshly treated floors may remain wet, slick, or require a cure time of up to 24–48 hours. Client agrees to restrict foot and equipment traffic during this period and to post appropriate wet-floor signage if service occurs during business hours.</p><p>Renovo is not liable for slip-and-fall incidents occurring after handoff of a treated floor where Client has failed to maintain restricted access or posted signage during the cure period. Final results vary based on existing floor condition, substrate, and any prior coatings not disclosed to Renovo in advance.</p>`
-  },
-  disinfection: {
-    label: 'Disinfection &amp; Sanitizing',
-    html: `<p>This service includes application of EPA-registered disinfectant or sanitizing products to the surfaces specified in the line items above. Client must disclose any known chemical sensitivities, allergies, or occupied medical, childcare, or food-handling areas prior to service so appropriate products and scheduling can be used.</p><p>Treated areas may require a dwell time or re-entry interval as specified by the product manufacturer; Client agrees to restrict access to treated areas during this period. This service is a surface-level disinfection treatment and is not a substitute for professional medical, mold, or biohazard remediation services.</p>`
-  },
-  lotSweeping: {
-    label: 'Parking Lot Sweeping &amp; Debris Removal',
-    html: `<p>This service includes mechanical or manual sweeping and debris removal from parking lots, garages, or drive areas as specified in the line items above. Client agrees to provide reasonable advance notice to tenants, employees, or customers to relocate vehicles from the service area at the scheduled time.</p><p>Vehicles or obstructions remaining in the work area may result in incomplete service at no reduction in price, or may require rescheduling at Client's request, subject to the Cancellation policy below.</p>`
-  },
-  janitorial: {
-    label: 'Janitorial &amp; Interior Cleaning Services',
-    html: `<p>This service includes interior cleaning of common areas, offices, restrooms, break rooms, or other facility areas as specified in the line items above. Client agrees to provide safe, reasonable access to the premises during the scheduled service window and to secure or remove valuables and confidential materials from cleaning areas in advance.</p><p>Renovo is not responsible for pre-existing damage to flooring, fixtures, or furnishings, or for personal items left in cleaning areas. This service does not include deep carpet extraction, biohazard remediation, or specialty restoration work unless separately quoted and added as a line item.</p>`
-  },
-  general: {
-    label: 'General Scope of Service',
-    html: `<p>This work order covers the services and pricing detailed in the line items of the referenced estimate. Renovo Surface Solutions LLC will perform the described work in a professional manner consistent with industry standards for commercial surface care. Client agrees to provide safe and reasonable access to the property at the scheduled service time.</p>`
-  }
+const SERVICE_TERMS_CONTENT = {
+  pressureWashing: `<h4>PRESSURE WASHING TERMS &amp; CONDITIONS</h4>
+<p><strong>WATER USE:</strong> Renovo Surface Solutions will use water from your property's water supply. You are responsible for ensuring an accessible water spigot is available at the service location. All water usage charges are your responsibility. If no water access is available on the service date through no fault of Renovo, a $75 trip fee applies.</p>
+<p><strong>PRE-EXISTING CONDITIONS:</strong> Before work begins, Renovo will photograph all surfaces. By signing this work order, you confirm you have disclosed all known pre-existing damage including cracks, chips, deteriorated grout, failing paint, and fragile surfaces. Renovo is NOT responsible for damage to surfaces that were already compromised prior to arrival. Pressure washing can reveal or worsen pre-existing deterioration.</p>
+<p><strong>CHEMICAL DISCLOSURE:</strong> Commercial-grade petroleum degreasers and surface cleaners will be used. All products comply with EPA and OSHA standards. Safety Data Sheets available upon request.</p>
+<p><strong>SURFACE RUNOFF:</strong> Client is responsible for ensuring adequate drainage exists near the service area. Renovo is not responsible for water intrusion into buildings, vehicles, or neighboring properties if drainage is inadequate.</p>
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> Remove all vehicles, equipment, and obstacles from service areas before the technician arrives. Ensure all doors and windows near the service area are closed. Notify Renovo of any electrical boxes, outlets, or sensitive equipment nearby.</p>`,
+
+  janitorial: `<h4>JANITORIAL SERVICES TERMS &amp; CONDITIONS</h4>
+<p><strong>ACCESS &amp; KEYS:</strong> Any keys, access codes, or security badges provided to Renovo are used solely for service delivery and kept strictly confidential. Keys will be returned upon termination of this agreement. Notify Renovo immediately of any security code changes. Renovo technicians will only access areas necessary to perform the agreed services.</p>
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> Ensure the property is accessible on scheduled service days. Notify Renovo at least 24 hours in advance if a scheduled service must be skipped. Secure valuables, sensitive documents, and personal items before service visits.</p>
+<p><strong>SUPPLIES:</strong> Renovo provides all professional cleaning chemicals, microfiber cloths, mops, buckets, and vacuums. Client provides trash can liners, paper towels, toilet paper, and hand soap for restocking unless otherwise agreed in writing.</p>
+<p><strong>CHEMICAL DISCLOSURE:</strong> Renovo uses EPA-registered cleaning and disinfection products. Safety Data Sheets are available upon request. Please disclose any chemical sensitivities before service begins.</p>
+<p><strong>CONFIDENTIALITY:</strong> All business information, security codes, and sensitive data accessed during service will be kept strictly confidential.</p>
+<p><strong>DAMAGE:</strong> Report any property damage within 24 hours of the service date with photos. Client should remove fragile or high-value items from service areas before cleaning visits. Renovo's liability is limited to the cost of the service in which damage occurred.</p>`,
+
+  windowCleaning: `<h4>WINDOW CLEANING TERMS &amp; CONDITIONS</h4>
+<p>This service includes interior and/or exterior window and glass cleaning as specified in the line items above. Exterior work above ground level may require ladders, extension poles, or lift equipment; Client agrees to provide safe, unobstructed access to all areas to be cleaned.</p><p>Renovo is not responsible for pre-existing scratches, seal failures, tint defects, or cracked/broken glass identified before or during service. For crew safety, exterior window work may be rescheduled at Renovo's discretion due to wind, rain, ice, or extreme temperatures, without penalty to either party.</p>`,
+
+  floorCare: `<h4>FLOOR CARE TERMS &amp; CONDITIONS</h4>
+<p>This service includes floor stripping, waxing, sealing, or restoration as specified in the line items above. Freshly treated floors may remain wet, slick, or require a cure time of up to 24–48 hours. Client agrees to restrict foot and equipment traffic during this period and to post appropriate wet-floor signage if service occurs during business hours.</p><p>Renovo is not liable for slip-and-fall incidents occurring after handoff of a treated floor where Client has failed to maintain restricted access or posted signage during the cure period. Final results vary based on existing floor condition, substrate, and any prior coatings not disclosed to Renovo in advance.</p>`,
+
+  disinfection: `<h4>DISINFECTION &amp; SANITIZING TERMS &amp; CONDITIONS</h4>
+<p>This service includes application of EPA-registered disinfectant or sanitizing products to the surfaces specified in the line items above. Client must disclose any known chemical sensitivities, allergies, or occupied medical, childcare, or food-handling areas prior to service so appropriate products and scheduling can be used.</p><p>Treated areas may require a dwell time or re-entry interval as specified by the product manufacturer; Client agrees to restrict access to treated areas during this period. This service is a surface-level disinfection treatment and is not a substitute for professional medical, mold, or biohazard remediation services.</p>`,
+
+  lotSweeping: `<h4>PARKING LOT SWEEPING TERMS &amp; CONDITIONS</h4>
+<p>This service includes mechanical or manual sweeping and debris removal from parking lots, garages, or drive areas as specified in the line items above. Client agrees to provide reasonable advance notice to tenants, employees, or customers to relocate vehicles from the service area at the scheduled time.</p><p>Vehicles or obstructions remaining in the work area may result in incomplete service at no reduction in price, or may require rescheduling at Client's request, subject to the Cancellation policy below.</p>`,
+
+  general: `<h4>GENERAL SCOPE OF SERVICE</h4>
+<p>This work order covers the services and pricing detailed in the line items of the referenced estimate. Renovo Surface Solutions LLC will perform the described work in a professional manner consistent with industry standards for commercial surface care. Client agrees to provide safe and reasonable access to the property at the scheduled service time.</p>`
 };
+
+const SERVICE_TYPE_ALIASES = {
+  'pressure washing': 'pressureWashing',
+  'gas station cleaning': 'pressureWashing',
+  'gas station': 'pressureWashing',
+  'parking lot cleaning': 'pressureWashing',
+  'building exterior': 'pressureWashing',
+  'dumpster pad': 'pressureWashing',
+  'sidewalk': 'pressureWashing',
+  'drive-through': 'pressureWashing',
+  'drive through': 'pressureWashing',
+  'janitorial': 'janitorial',
+  'interior cleaning': 'janitorial',
+  'office cleaning': 'janitorial',
+  'restroom cleaning': 'janitorial',
+  'window cleaning': 'windowCleaning',
+  'floor care': 'floorCare',
+  'disinfection': 'disinfection',
+  'lot sweeping': 'lotSweeping',
+};
+
+const CANONICAL_SERVICE_LABEL = {
+  pressureWashing: 'Pressure Washing',
+  janitorial: 'Janitorial',
+  windowCleaning: 'Window Cleaning',
+  floorCare: 'Floor Care',
+  disinfection: 'Disinfection',
+  lotSweeping: 'Lot Sweeping',
+};
+
+function getServiceTerms(serviceType) {
+  const key = SERVICE_TYPE_ALIASES[(serviceType || '').trim().toLowerCase()];
+  return SERVICE_TERMS_CONTENT[key] || SERVICE_TERMS_CONTENT.general;
+}
 
 const STANDARD_TERMS_HTML = `
 <h4>Payment Terms</h4>
@@ -70,12 +105,12 @@ const STANDARD_TERMS_HTML = `
 `;
 
 const SERVICE_KEYWORDS = {
-  pressureWashing: ['pressure wash', 'power wash', 'dumpster pad', 'dumpster', 'gutter', 'facade', 'graffiti', 'concrete seal', 'concrete clean', 'concrete restoration', 'sidewalk', 'exterior wash', 'building wash', 'parking garage'],
+  pressureWashing: ['pressure wash', 'power wash', 'dumpster pad', 'dumpster', 'gutter', 'facade', 'graffiti', 'concrete seal', 'concrete clean', 'concrete restoration', 'sidewalk', 'exterior wash', 'building wash', 'building exterior', 'parking garage', 'parking lot clean', 'gas station', 'drive-through', 'drive through'],
   windowCleaning: ['window', 'glass'],
   floorCare: ['floor strip', 'floor wax', 'strip and wax', 'strip & wax', 'floor care', 'floor restoration', 'vct', 'tile floor'],
   disinfection: ['disinfect', 'electrostatic', 'fogging', 'pathogen', 'virus', 'bacteria'],
-  lotSweeping: ['lot sweep', 'sweeping', 'parking lot clean', 'parking sweep', 'debris removal'],
-  janitorial: ['janitorial', 'lobby', 'office cleaning', 'common area', 'break room', 'kitchen cleaning', 'restroom', 'sanitation'],
+  lotSweeping: ['lot sweep', 'sweeping', 'parking sweep', 'debris removal'],
+  janitorial: ['janitorial', 'lobby', 'office cleaning', 'interior cleaning', 'common area', 'break room', 'kitchen cleaning', 'restroom', 'sanitation'],
 };
 
 function detectServiceCategories(lineItems) {
@@ -86,7 +121,8 @@ function detectServiceCategories(lineItems) {
 
 function renderServiceTermsHtml(lineItems) {
   const categories = detectServiceCategories(lineItems);
-  return categories.map((key) => `<h4>${SERVICE_TERMS[key].label}</h4>${SERVICE_TERMS[key].html}`).join('');
+  if (categories[0] === 'general') return SERVICE_TERMS_CONTENT.general;
+  return categories.map((key) => getServiceTerms(CANONICAL_SERVICE_LABEL[key])).join('');
 }
 
 function toggleSigningEnabled() {
