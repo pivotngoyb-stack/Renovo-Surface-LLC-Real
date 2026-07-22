@@ -16,14 +16,25 @@
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <a href="/admin/invoice-new.html">+ New Invoice</a>
         <button onclick="logout()">Log Out</button>
       </div>
     </div>
   </nav>
 
   <div class="admin-wrap">
+    <div id="summary" class="dash-header" style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; width:100%;"></div>
+
     <div class="dash-header">
-      <h1 style="font-size:1.6rem;">Estimates &amp; Work Orders</h1>
+      <h1 style="font-size:1.4rem;">Invoices</h1>
+      <a href="/admin/invoice-new.html" class="btn btn-primary btn-sm">+ New Invoice</a>
+    </div>
+    <div id="invoiceContent">Loading…</div>
+
+    <div id="balancesSection" style="margin-top:40px;"></div>
+
+    <div class="dash-header" style="margin-top:40px;">
+      <h1 style="font-size:1.4rem;">Estimates &amp; Work Orders</h1>
       <a href="/admin/estimate-new.html" class="btn btn-primary btn-sm">+ New Estimate</a>
     </div>
     <div id="content">Loading…</div>
@@ -31,7 +42,7 @@
 
 <script src="../js/admin.js"></script>
 <script>
-async function load() {
+async function loadEstimates() {
   const res = await adminFetch('/api/admin/estimates');
   const data = await res.json();
   const content = document.getElementById('content');
@@ -58,7 +69,76 @@ async function load() {
     </table>
   `;
 }
-load();
+
+async function loadInvoices() {
+  const res = await adminFetch('/api/admin/invoices');
+  const data = await res.json();
+  const content = document.getElementById('invoiceContent');
+  const invoices = data.invoices || [];
+
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
+  const outstanding = invoices.filter(i => i.status === 'unpaid').reduce((s, i) => s + i.total, 0);
+  const unpaidCount = invoices.filter(i => i.status === 'unpaid').length;
+
+  document.getElementById('summary').innerHTML = `
+    <div class="doc-card" style="margin:0; padding:22px;">
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Total Revenue</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:#1B7A3C;">${money(totalRevenue)}</div>
+    </div>
+    <div class="doc-card" style="margin:0; padding:22px;">
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Outstanding Balance</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:#966A00;">${money(outstanding)}</div>
+    </div>
+    <div class="doc-card" style="margin:0; padding:22px;">
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Unpaid Invoices</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:var(--navy);">${unpaidCount}</div>
+    </div>
+  `;
+
+  if (!invoices.length) {
+    content.innerHTML = '<div class="empty-state">No invoices yet. Create one from a signed work order, or start a standalone invoice.</div>';
+  } else {
+    const rows = invoices.map(inv => `
+      <tr onclick="window.location.href='/admin/invoice-detail.html?id=${inv.id}'" style="cursor:pointer;">
+        <td>INV-${1000 + inv.id}</td>
+        <td>${inv.clientName || '—'}</td>
+        <td>${statusPill(inv.status)}</td>
+        <td>${money(inv.total)}</td>
+        <td>${new Date(inv.createdAt).toLocaleDateString()}</td>
+      </tr>
+    `).join('');
+    content.innerHTML = `
+      <table class="dash-table">
+        <thead><tr><th>Invoice</th><th>Client</th><th>Status</th><th>Total</th><th>Created</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  // Per-client outstanding balances
+  const byClient = {};
+  invoices.filter(i => i.status === 'unpaid').forEach(inv => {
+    const key = inv.clientId;
+    if (!byClient[key]) byClient[key] = { name: inv.clientName, total: 0 };
+    byClient[key].total += inv.total;
+  });
+  const balances = Object.values(byClient).sort((a, b) => b.total - a.total);
+  const balancesSection = document.getElementById('balancesSection');
+  if (balances.length) {
+    balancesSection.innerHTML = `
+      <h2 style="font-size:1.2rem; margin-bottom:14px;">Outstanding by Client</h2>
+      <table class="dash-table">
+        <thead><tr><th>Client</th><th>Outstanding Balance</th></tr></thead>
+        <tbody>${balances.map(b => `<tr><td>${b.name}</td><td>${money(b.total)}</td></tr>`).join('')}</tbody>
+      </table>
+    `;
+  } else {
+    balancesSection.innerHTML = '';
+  }
+}
+
+loadEstimates();
+loadInvoices();
 </script>
 </body>
 </html>

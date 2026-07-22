@@ -23,7 +23,13 @@ export default async (request: Request, context: Context) => {
 
     const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.estimateId, id)).limit(1)
 
-    return json({ estimate, client, lineItems, workOrder: workOrder || null })
+    let invoice = null
+    if (workOrder) {
+      const [inv] = await db.select().from(schema.invoices).where(eq(schema.invoices.workOrderId, workOrder.id)).limit(1)
+      invoice = inv || null
+    }
+
+    return json({ estimate, client, lineItems, workOrder: workOrder || null, invoice })
   }
 
   if (request.method === 'PUT') {

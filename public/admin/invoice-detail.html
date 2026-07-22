@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Detail | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:720px;">
+    <a href="/admin/dashboard.html" style="color:var(--blue); font-size:0.9rem;">&larr; Back to Dashboard</a>
+    <div id="content" style="margin-top:20px;">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const id = new URLSearchParams(window.location.search).get('id');
+
+async function load() {
+  const res = await adminFetch(`/api/admin/invoices/${id}`);
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Invoice not found.</div>'; return; }
+  const { invoice, client, lineItems, total } = await res.json();
+
+  const itemsHtml = lineItems.map(li => `
+    <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
+  `).join('');
+
+  const invoiceLink = `${window.location.origin}/invoice.html?t=${invoice.token}`;
+  const invNumber = `INV-${1000 + invoice.id}`;
+
+  let actions = '';
+  if (invoice.status === 'unpaid') {
+    actions = `
+      <button class="btn btn-primary" onclick="sendInvoice()">Send to Client</button>
+      <button class="btn btn-outline" style="color:var(--navy); border-color:var(--navy);" onclick="markPaid()">Mark as Paid</button>
+    `;
+  } else {
+    actions = `<p style="color:#1B7A3C; font-weight:700;">✅ Paid ${new Date(invoice.paidAt).toLocaleDateString()}</p>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+      <div>
+        <h1 style="font-size:1.6rem;">${invNumber}</h1>
+        <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
+      </div>
+      ${statusPill(invoice.status)}
+    </div>
+
+    <table class="dash-table">
+      <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div class="totals-row">Total: ${money(total)}</div>
+
+    ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
+    ${invoice.dueDate ? `<p style="color:#4A5A72;"><strong>Due:</strong> ${invoice.dueDate}</p>` : ''}
+
+    <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${invoiceLink}" target="_blank">${invoiceLink}</a></p>
+
+    <div style="margin-top:24px; display:flex; gap:12px;">${actions}</div>
+    <p id="actionError" class="error-text"></p>
+  `;
+}
+
+async function sendInvoice() {
+  const res = await adminFetch(`/api/admin/invoices/${id}/send`, { method: 'POST' });
+  if (res.ok) { load(); } else { showError('Failed to send invoice.'); }
+}
+
+async function markPaid() {
+  if (!confirm('Mark this invoice as paid? This will email a receipt to the client.')) return;
+  const res = await adminFetch(`/api/admin/invoices/${id}/mark-paid`, { method: 'POST' });
+  if (res.ok) { load(); } else { showError('Failed to mark invoice as paid.'); }
+}
+
+function showError(msg) {
+  const el = document.getElementById('actionError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Invoice | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading your invoice…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function load() {
+  if (!token) { showError('Missing invoice link.'); return; }
+  const res = await fetch(`/api/invoice/${token}`);
+  if (!res.ok) { showError('This invoice could not be found.'); return; }
+  const { invoice, client, lineItems, total, invoiceNumber } = await res.json();
+  render(invoice, client, lineItems, total, invoiceNumber);
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
+}
+
+function render(invoice, client, lineItems, total, invoiceNumber) {
+  const itemsHtml = lineItems.map(li => `
+    <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
+  `).join('');
+
+  let statusSection;
+  if (invoice.status === 'paid') {
+    statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div>`;
+  } else {
+    statusSection = `
+      <div style="background:var(--off-white); border-radius:12px; padding:24px; margin-top:24px;">
+        <h3 style="font-size:1rem; margin-bottom:10px;">How to Pay</h3>
+        <p style="color:#4A5A72; font-size:0.92rem; line-height:1.6;">
+          Please arrange payment by check, Venmo, or cash. Call us at
+          <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email
+          <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a>
+          with any questions. We'll mark this invoice paid and email you a receipt once payment is received.
+        </p>
+      </div>
+    `;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="doc-card">
+      <div class="doc-header">
+        <img src="images/logo.png" alt="Renovo Surface Solutions">
+        <div style="text-align:right;">
+          <h1 style="font-size:1.3rem;">${invoiceNumber}</h1>
+          <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+        </div>
+      </div>
+      <table class="doc-items-table">
+        <thead><tr><th>Description</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      <div class="doc-total">Total Due: ${money(total)}</div>
+      ${invoice.dueDate ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Due ${invoice.dueDate}</p>` : ''}
+      ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;">${invoice.notes}</p>` : ''}
+      ${statusSection}
+    </div>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>

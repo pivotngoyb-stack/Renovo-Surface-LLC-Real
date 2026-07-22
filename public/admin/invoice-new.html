@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Invoice | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:720px;">
+    <h1 style="font-size:1.6rem; margin-bottom:24px;">New Invoice</h1>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const workOrderId = new URLSearchParams(window.location.search).get('workOrderId');
+let lineItemCount = 0;
+
+function addLineItem(desc = '', qty = 1, price = '') {
+  lineItemCount++;
+  const id = lineItemCount;
+  const row = document.createElement('div');
+  row.className = 'line-item-row';
+  row.id = `li-${id}`;
+  row.innerHTML = `
+    <input type="text" placeholder="Description" class="li-desc" value="${desc}">
+    <input type="number" placeholder="Qty" class="li-qty" value="${qty}" min="0" step="0.1" oninput="updateTotal()">
+    <input type="number" placeholder="Unit Price" class="li-price" value="${price}" min="0" step="0.01" oninput="updateTotal()">
+    <span class="remove-line-btn" onclick="document.getElementById('li-${id}').remove(); updateTotal();">✕</span>
+  `;
+  document.getElementById('lineItems').appendChild(row);
+}
+
+function updateTotal() {
+  let total = 0;
+  document.querySelectorAll('.line-item-row').forEach(row => {
+    const qty = parseFloat(row.querySelector('.li-qty').value) || 0;
+    const price = parseFloat(row.querySelector('.li-price').value) || 0;
+    total += qty * price;
+  });
+  document.getElementById('totalDisplay').textContent = money(total);
+}
+
+function renderStandaloneForm() {
+  document.getElementById('content').innerHTML = `
+    <form id="invoiceForm">
+      <h3 style="margin-bottom:12px;">Client</h3>
+      <div class="field-group"><label>Name *</label><input type="text" id="clientName" required></div>
+      <div class="field-group"><label>Email *</label><input type="email" id="clientEmail" required></div>
+      <div class="field-group"><label>Phone</label><input type="tel" id="clientPhone"></div>
+      <div class="field-group"><label>Company</label><input type="text" id="clientCompany"></div>
+      <div class="field-group"><label>Property Address</label><input type="text" id="clientAddress"></div>
+
+      <h3 style="margin: 28px 0 12px;">Line Items</h3>
+      <div id="lineItems"></div>
+      <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="addLineItem()">+ Add Line Item</button>
+      <div class="totals-row">Total: <span id="totalDisplay">$0.00</span></div>
+
+      <h3 style="margin: 28px 0 12px;">Details</h3>
+      <div class="field-group"><label>Due Date</label><input type="date" id="dueDate"></div>
+      <div class="field-group"><label>Notes</label><textarea id="notes" rows="3"></textarea></div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Create Invoice</button>
+      <p class="error-text" id="errorText"></p>
+    </form>
+  `;
+  addLineItem();
+
+  document.getElementById('invoiceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => ({
+      description: row.querySelector('.li-desc').value,
+      quantity: row.querySelector('.li-qty').value || 1,
+      unitPrice: row.querySelector('.li-price').value || 0
+    })).filter(li => li.description.trim());
+
+    await createInvoice({
+      client: {
+        name: document.getElementById('clientName').value,
+        email: document.getElementById('clientEmail').value,
+        phone: document.getElementById('clientPhone').value,
+        company: document.getElementById('clientCompany').value,
+        propertyAddress: document.getElementById('clientAddress').value
+      },
+      dueDate: document.getElementById('dueDate').value || undefined,
+      notes: document.getElementById('notes').value,
+      lineItems
+    }, lineItems.length === 0 ? 'Add at least one line item.' : null);
+  });
+}
+
+function renderFromWorkOrderForm() {
+  document.getElementById('content').innerHTML = `
+    <form id="invoiceForm">
+      <p style="color:#4A5A72; margin-bottom:20px;">Creating an invoice from signed Work Order #${workOrderId}. Line items and client info will be pulled automatically from the linked estimate.</p>
+      <div class="field-group"><label>Due Date</label><input type="date" id="dueDate"></div>
+      <div class="field-group"><label>Notes</label><textarea id="notes" rows="3"></textarea></div>
+      <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Create Invoice</button>
+      <p class="error-text" id="errorText"></p>
+    </form>
+  `;
+
+  document.getElementById('invoiceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await createInvoice({
+      workOrderId: Number(workOrderId),
+      dueDate: document.getElementById('dueDate').value || undefined,
+      notes: document.getElementById('notes').value
+    });
+  });
+}
+
+async function createInvoice(payload, precheckError) {
+  const btn = document.getElementById('submitBtn');
+  const errorText = document.getElementById('errorText');
+  errorText.classList.remove('show');
+
+  if (precheckError) {
+    errorText.textContent = precheckError;
+    errorText.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  try {
+    const res = await adminFetch('/api/admin/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to create invoice');
+    }
+    const data = await res.json();
+    window.location.href = `/admin/invoice-detail.html?id=${data.invoice.id}`;
+  } catch (err) {
+    errorText.textContent = err.message;
+    errorText.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Create Invoice';
+  }
+}
+
+if (workOrderId) renderFromWorkOrderForm(); else renderStandaloneForm();
+</script>
+</body>
+</html>

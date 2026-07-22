@@ -3,6 +3,7 @@ import { pgTable, serial, text, integer, numeric, timestamp, boolean, pgEnum, da
 export const estimateStatusEnum = pgEnum('estimate_status', ['draft', 'sent', 'viewed', 'approved', 'declined'])
 export const workOrderStatusEnum = pgEnum('work_order_status', ['pending', 'signed'])
 export const signatureTypeEnum = pgEnum('signature_type', ['drawn', 'typed'])
+export const invoiceStatusEnum = pgEnum('invoice_status', ['unpaid', 'paid'])
 
 export const clients = pgTable('clients', {
   id: serial('id').primaryKey(),
@@ -55,4 +56,25 @@ export const signatures = pgTable('signatures', {
   consentConfirmed: boolean('consent_confirmed').notNull(),
   ipAddress: text('ip_address'),
   signedAt: timestamp('signed_at').defaultNow().notNull(),
+})
+
+export const invoices = pgTable('invoices', {
+  id: serial('id').primaryKey(),
+  clientId: integer('client_id').notNull().references(() => clients.id),
+  workOrderId: integer('work_order_id').references(() => workOrders.id),
+  token: text('token').notNull().unique(),
+  status: invoiceStatusEnum('status').notNull().default('unpaid'),
+  notes: text('notes'),
+  dueDate: date('due_date'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  paidAt: timestamp('paid_at'),
+})
+
+export const invoiceLineItems = pgTable('invoice_line_items', {
+  id: serial('id').primaryKey(),
+  invoiceId: integer('invoice_id').notNull().references(() => invoices.id),
+  description: text('description').notNull(),
+  quantity: numeric('quantity').notNull().default('1'),
+  unitPrice: numeric('unit_price').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
 })

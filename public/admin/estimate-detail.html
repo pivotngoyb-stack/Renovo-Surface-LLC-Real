@@ -33,7 +33,7 @@ const id = new URLSearchParams(window.location.search).get('id');
 async function load() {
   const res = await adminFetch(`/api/admin/estimates/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Estimate not found.</div>'; return; }
-  const { estimate, client, lineItems, workOrder } = await res.json();
+  const { estimate, client, lineItems, workOrder, invoice } = await res.json();
 
   const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
   const itemsHtml = lineItems.map(li => `
@@ -52,10 +52,23 @@ async function load() {
   let workOrderSection = '';
   if (workOrder) {
     const woLink = `${window.location.origin}/work-order.html?t=${workOrder.token}`;
+    let invoiceHtml = '';
+    if (invoice) {
+      const invLink = `${window.location.origin}/invoice.html?t=${invoice.token}`;
+      invoiceHtml = `
+        <h3 style="margin:28px 0 12px;">Invoice</h3>
+        <p>Status: ${statusPill(invoice.status)}</p>
+        <p style="margin-top:10px; font-size:0.85rem;"><a href="${invLink}" target="_blank">${invLink}</a></p>
+        <p style="margin-top:10px;"><a href="/admin/invoice-detail.html?id=${invoice.id}" class="btn btn-primary btn-sm">Manage Invoice</a></p>
+      `;
+    } else if (workOrder.status === 'signed') {
+      invoiceHtml = `<div style="margin-top:20px;"><a href="/admin/invoice-new.html?workOrderId=${workOrder.id}" class="btn btn-primary btn-sm">Create Invoice</a></div>`;
+    }
     workOrderSection = `
       <h3 style="margin:28px 0 12px;">Work Order</h3>
       <p>Status: ${statusPill(workOrder.status)}</p>
       <p style="margin-top:10px; font-size:0.85rem;"><a href="${woLink}" target="_blank">${woLink}</a></p>
+      ${invoiceHtml}
     `;
   }
 

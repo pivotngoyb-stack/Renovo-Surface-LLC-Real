@@ -105,6 +105,38 @@ export async function sendWorkOrderToClient(clientEmail: string, clientName: str
   })
 }
 
+export async function sendInvoiceToClient(clientEmail: string, clientName: string, token: string, invoiceNumber: string, total: string) {
+  const url = `${SITE_URL}/invoice.html?t=${token}`
+  await sendEmail({
+    to: clientEmail,
+    subject: `Invoice ${invoiceNumber} from Renovo Surface Solutions`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Hi ${clientName},</h2>
+      <p style="color:#4A5A72; line-height:1.6;">Invoice ${invoiceNumber} is ready — total due: <strong>${total}</strong>.</p>
+      ${button('View Invoice', url)}
+    `),
+  })
+}
+
+export async function sendReceiptToClient(clientEmail: string, clientName: string, invoiceNumber: string, total: string) {
+  await sendEmail({
+    to: clientEmail,
+    subject: `Receipt — Invoice ${invoiceNumber} Paid`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Thanks, ${clientName}!</h2>
+      <p style="color:#4A5A72; line-height:1.6;">We've recorded payment of <strong>${total}</strong> for invoice ${invoiceNumber}. This email is your receipt.</p>
+    `),
+  })
+}
+
+export async function notifyAdminInvoicePaid(clientName: string, invoiceNumber: string, total: string) {
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `💰 Invoice Paid — ${clientName} — ${total}`,
+    html: wrapper(`<p style="color:#4A5A72;"><strong>${clientName}</strong> — invoice ${invoiceNumber} marked paid (${total}).</p>`),
+  })
+}
+
 export async function sendSignedWorkOrderConfirmation(clientEmail: string, clientName: string, workOrderId: number) {
   const html = wrapper(`
     <h2 style="color:#0D1F38; margin-top:0;">Signed &amp; Confirmed</h2>
