@@ -20,6 +20,8 @@ export default async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   if (request.method === 'GET') {
+    const showArchived = new URL(request.url).searchParams.get('archived') === '1'
+
     const rows = await db
       .select({
         id: schema.recurringContracts.id,
@@ -32,12 +34,14 @@ export default async (request: Request) => {
         autoChargeEnabled: schema.recurringContracts.autoChargeEnabled,
         cardBrand: schema.recurringContracts.cardBrand,
         cardLast4: schema.recurringContracts.cardLast4,
+        archived: schema.recurringContracts.archived,
         clientId: schema.clients.id,
         clientName: schema.clients.name,
         clientEmail: schema.clients.email,
       })
       .from(schema.recurringContracts)
       .leftJoin(schema.clients, eq(schema.recurringContracts.clientId, schema.clients.id))
+      .where(eq(schema.recurringContracts.archived, showArchived))
       .orderBy(desc(schema.recurringContracts.createdAt))
 
     return json({ contracts: rows })

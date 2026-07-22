@@ -29,6 +29,8 @@ export default async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   if (request.method === 'GET') {
+    const showArchived = new URL(request.url).searchParams.get('archived') === '1'
+
     const invoiceRows = await db
       .select({
         id: schema.invoices.id,
@@ -37,12 +39,14 @@ export default async (request: Request) => {
         createdAt: schema.invoices.createdAt,
         paidAt: schema.invoices.paidAt,
         token: schema.invoices.token,
+        archived: schema.invoices.archived,
         clientId: schema.clients.id,
         clientName: schema.clients.name,
         clientEmail: schema.clients.email,
       })
       .from(schema.invoices)
       .leftJoin(schema.clients, eq(schema.invoices.clientId, schema.clients.id))
+      .where(eq(schema.invoices.archived, showArchived))
       .orderBy(desc(schema.invoices.createdAt))
 
     const allLineItems = await db.select().from(schema.invoiceLineItems)

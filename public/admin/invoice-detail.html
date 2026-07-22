@@ -59,7 +59,12 @@ async function load() {
         <h1 style="font-size:1.6rem;">${invNumber}</h1>
         <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
       </div>
-      ${statusPill(invoice.status)}
+      <div style="text-align:right;">
+        ${statusPill(invoice.status)}
+        <div style="margin-top:10px;">
+          <button class="btn btn-sm" style="color:${invoice.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveInvoice(${!invoice.archived})">${invoice.archived ? 'Unarchive' : 'Archive'}</button>
+        </div>
+      </div>
     </div>
 
     <table class="dash-table">
@@ -87,6 +92,13 @@ async function markPaid() {
   if (!confirm('Mark this invoice as paid? This will email a receipt to the client.')) return;
   const res = await adminFetch(`/api/admin/invoices/${id}/mark-paid`, { method: 'POST' });
   if (res.ok) { load(); } else { showError('Failed to mark invoice as paid.'); }
+}
+
+async function archiveInvoice(archived) {
+  const res = await adminFetch(`/api/admin/invoices/${id}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  if (res.ok) load(); else showError('Failed to update invoice.');
 }
 
 function showError(msg) {

@@ -27,6 +27,7 @@ export const estimates = pgTable('estimates', {
   validUntil: date('valid_until'),
   viewedAt: timestamp('viewed_at'),
   approvedAt: timestamp('approved_at'),
+  archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -72,6 +73,7 @@ export const recurringContracts = pgTable('recurring_contracts', {
   stripePaymentMethodId: text('stripe_payment_method_id'),
   cardBrand: text('card_brand'),
   cardLast4: text('card_last4'),
+  archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -86,6 +88,7 @@ export const invoices = pgTable('invoices', {
   dueDate: date('due_date'),
   reminderStage: integer('reminder_stage').notNull().default(0),
   lastReminderSentAt: timestamp('last_reminder_sent_at'),
+  archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   paidAt: timestamp('paid_at'),
 })

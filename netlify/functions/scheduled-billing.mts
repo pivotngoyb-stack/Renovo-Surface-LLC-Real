@@ -71,7 +71,7 @@ async function runRecurringBilling(today: Date): Promise<{ generated: number }> 
   const activeContracts = await db
     .select()
     .from(schema.recurringContracts)
-    .where(eq(schema.recurringContracts.status, 'active'))
+    .where(and(eq(schema.recurringContracts.status, 'active'), eq(schema.recurringContracts.archived, false)))
 
   const dueToday = activeContracts.filter((c) => {
     if (c.billingDay !== todayDay) return false
@@ -129,7 +129,7 @@ async function runOverdueReminders(today: Date): Promise<{ reminded: number }> {
   const unpaidPastDue = await db
     .select()
     .from(schema.invoices)
-    .where(and(eq(schema.invoices.status, 'unpaid'), lt(schema.invoices.dueDate, todayStr)))
+    .where(and(eq(schema.invoices.status, 'unpaid'), lt(schema.invoices.dueDate, todayStr), eq(schema.invoices.archived, false)))
 
   let reminded = 0
   for (const invoice of unpaidPastDue) {

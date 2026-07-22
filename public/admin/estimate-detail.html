@@ -79,7 +79,12 @@ async function load() {
         <h1 style="font-size:1.6rem;">Estimate #${estimate.id}</h1>
         <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
       </div>
-      ${statusPill(estimate.status)}
+      <div style="text-align:right;">
+        ${statusPill(estimate.status)}
+        <div style="margin-top:10px;">
+          <button class="btn btn-sm" style="color:${estimate.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveEstimate(${!estimate.archived})">${estimate.archived ? 'Unarchive' : 'Archive'}</button>
+        </div>
+      </div>
     </div>
 
     <table class="dash-table">
@@ -106,6 +111,13 @@ async function sendEstimate() {
 async function convertToWorkOrder() {
   const res = await adminFetch(`/api/admin/estimates/${id}/convert`, { method: 'POST' });
   if (res.ok) load(); else alert('Failed to convert to work order.');
+}
+
+async function archiveEstimate(archived) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  if (res.ok) load(); else alert('Failed to update estimate.');
 }
 
 load();

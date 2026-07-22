@@ -27,6 +27,8 @@ export default async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   if (request.method === 'GET') {
+    const showArchived = new URL(request.url).searchParams.get('archived') === '1'
+
     const rows = await db
       .select({
         id: schema.estimates.id,
@@ -36,11 +38,13 @@ export default async (request: Request) => {
         createdAt: schema.estimates.createdAt,
         updatedAt: schema.estimates.updatedAt,
         token: schema.estimates.token,
+        archived: schema.estimates.archived,
         clientName: schema.clients.name,
         clientEmail: schema.clients.email,
       })
       .from(schema.estimates)
       .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
+      .where(eq(schema.estimates.archived, showArchived))
       .orderBy(desc(schema.estimates.createdAt))
 
     return json({ estimates: rows })
