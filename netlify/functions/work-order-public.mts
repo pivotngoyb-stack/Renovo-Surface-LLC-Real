@@ -21,7 +21,10 @@ export default async (request: Request, context: Context) => {
 
   if (request.method === 'GET') {
     const [signature] = await db.select().from(schema.signatures).where(eq(schema.signatures.workOrderId, workOrder.id)).limit(1)
-    return json({ workOrder, client, signature: signature || null })
+    const lineItems = estimate
+      ? await db.select().from(schema.estimateLineItems).where(eq(schema.estimateLineItems.estimateId, estimate.id))
+      : []
+    return json({ workOrder, client, signature: signature || null, lineItems })
   }
 
   if (request.method === 'POST') {

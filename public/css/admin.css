@@ -77,6 +77,22 @@ body.admin-body {
 .sig-panel.active { display: block; }
 .consent-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 20px; font-size: 0.85rem; color: #4A5A72; }
 .consent-row input { margin-top: 3px; }
+.consent-row.disabled { opacity: 0.5; }
+
+.service-terms-scroll {
+  max-height: 320px; overflow-y: scroll; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 1.5rem; background: #f8fafc; font-size: 0.85rem; color: #4A5A72; line-height: 1.65; margin-block: 20px;
+}
+.service-terms-scroll h4 { font-family: var(--font-head); color: var(--navy); font-size: 0.92rem; margin: 18px 0 6px; }
+.service-terms-scroll h4:first-child { margin-top: 0; }
+.service-terms-scroll p { margin-bottom: 10px; white-space: pre-wrap; }
+
+.standard-terms-block { background: var(--off-white); border-radius: var(--radius-sm); padding: 20px; font-size: 0.88rem; color: #4A5A72; line-height: 1.7; margin-block: 20px; }
+.standard-terms-block h4 { font-family: var(--font-head); color: var(--navy); font-size: 0.92rem; margin: 16px 0 6px; }
+.standard-terms-block h4:first-child { margin-top: 0; }
+.standard-terms-block p { margin-bottom: 10px; }
+
+.field-disabled { opacity: 0.5; pointer-events: none; }
 
 .state-banner { text-align: center; padding: 60px 24px; }
 .state-banner .icon { font-size: 3rem; margin-bottom: 16px; }

@@ -23,15 +23,92 @@ function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
+const SERVICE_TERMS = {
+  pressureWashing: {
+    label: 'Pressure Washing &amp; Exterior Surface Cleaning',
+    html: `<p>This service includes high-pressure water cleaning of exterior surfaces — concrete, dumpster pads, sidewalks, parking areas, building facades, and related hardscape — as specified in the line items above. Cleaning results depend on surface age, material, sealant condition, and severity of staining; some deep-set stains, prior surface damage, or unsealed/porous concrete may not be fully removable, and Renovo makes no guarantee of complete stain removal.</p><p>Client is responsible for relocating or covering vehicles, outdoor furniture, signage, and personal property in the work area before the scheduled service time. Renovo is not responsible for pre-existing cracks, loose or deteriorated surface material, unsealed concrete, or nearby landscaping affected by normal water runoff. Wastewater and runoff will be managed in accordance with applicable local stormwater and discharge regulations.</p>`
+  },
+  windowCleaning: {
+    label: 'Window Cleaning',
+    html: `<p>This service includes interior and/or exterior window and glass cleaning as specified in the line items above. Exterior work above ground level may require ladders, extension poles, or lift equipment; Client agrees to provide safe, unobstructed access to all areas to be cleaned.</p><p>Renovo is not responsible for pre-existing scratches, seal failures, tint defects, or cracked/broken glass identified before or during service. For crew safety, exterior window work may be rescheduled at Renovo's discretion due to wind, rain, ice, or extreme temperatures, without penalty to either party.</p>`
+  },
+  floorCare: {
+    label: 'Floor Care (Strip, Wax, Seal &amp; Restoration)',
+    html: `<p>This service includes floor stripping, waxing, sealing, or restoration as specified in the line items above. Freshly treated floors may remain wet, slick, or require a cure time of up to 24–48 hours. Client agrees to restrict foot and equipment traffic during this period and to post appropriate wet-floor signage if service occurs during business hours.</p><p>Renovo is not liable for slip-and-fall incidents occurring after handoff of a treated floor where Client has failed to maintain restricted access or posted signage during the cure period. Final results vary based on existing floor condition, substrate, and any prior coatings not disclosed to Renovo in advance.</p>`
+  },
+  disinfection: {
+    label: 'Disinfection &amp; Sanitizing',
+    html: `<p>This service includes application of EPA-registered disinfectant or sanitizing products to the surfaces specified in the line items above. Client must disclose any known chemical sensitivities, allergies, or occupied medical, childcare, or food-handling areas prior to service so appropriate products and scheduling can be used.</p><p>Treated areas may require a dwell time or re-entry interval as specified by the product manufacturer; Client agrees to restrict access to treated areas during this period. This service is a surface-level disinfection treatment and is not a substitute for professional medical, mold, or biohazard remediation services.</p>`
+  },
+  lotSweeping: {
+    label: 'Parking Lot Sweeping &amp; Debris Removal',
+    html: `<p>This service includes mechanical or manual sweeping and debris removal from parking lots, garages, or drive areas as specified in the line items above. Client agrees to provide reasonable advance notice to tenants, employees, or customers to relocate vehicles from the service area at the scheduled time.</p><p>Vehicles or obstructions remaining in the work area may result in incomplete service at no reduction in price, or may require rescheduling at Client's request, subject to the Cancellation policy below.</p>`
+  },
+  janitorial: {
+    label: 'Janitorial &amp; Interior Cleaning Services',
+    html: `<p>This service includes interior cleaning of common areas, offices, restrooms, break rooms, or other facility areas as specified in the line items above. Client agrees to provide safe, reasonable access to the premises during the scheduled service window and to secure or remove valuables and confidential materials from cleaning areas in advance.</p><p>Renovo is not responsible for pre-existing damage to flooring, fixtures, or furnishings, or for personal items left in cleaning areas. This service does not include deep carpet extraction, biohazard remediation, or specialty restoration work unless separately quoted and added as a line item.</p>`
+  },
+  general: {
+    label: 'General Scope of Service',
+    html: `<p>This work order covers the services and pricing detailed in the line items of the referenced estimate. Renovo Surface Solutions LLC will perform the described work in a professional manner consistent with industry standards for commercial surface care. Client agrees to provide safe and reasonable access to the property at the scheduled service time.</p>`
+  }
+};
+
+const STANDARD_TERMS_HTML = `
+<h4>Payment Terms</h4>
+<p>Payment is due upon completion of service. For recurring contracts, invoices are issued on the 1st of each month and due within 15 days. Late payments are subject to a 1.5% monthly interest charge. Accepted: Cash, Check, Zelle (801-369-2330), Credit Card (3% processing fee). Returned checks: $35 fee.</p>
+<h4>Cancellation</h4>
+<p>Cancellations more than 48 hours before service: no charge. Within 24–48 hours: $50 fee. Within 24 hours or same-day: $75 fee. No-show (technician arrives, no access): $75 trip fee. Recurring contracts: 30 days written notice to cancel.</p>
+<h4>Satisfaction Guarantee</h4>
+<p>If unsatisfied with service quality, contact Renovo within 24 hours. We will return and re-clean at no charge. This guarantee does not apply to pre-existing conditions.</p>
+<h4>Photo Consent</h4>
+<p>Client consents to before/after photos for documentation. Renovo may use these photos for marketing unless client opts out by writing "NO PHOTOS" in the message field on the work order.</p>
+<h4>Liability</h4>
+<p>Renovo Surface Solutions LLC maintains general liability insurance. Maximum liability for any claim shall not exceed the total amount paid for the service in question. Damage claims must be reported within 24 hours of service completion with photographic evidence.</p>
+<h4>Governing Law</h4>
+<p>This agreement is governed by the laws of the State of Utah.</p>
+`;
+
+const SERVICE_KEYWORDS = {
+  pressureWashing: ['pressure wash', 'power wash', 'dumpster pad', 'dumpster', 'gutter', 'facade', 'graffiti', 'concrete seal', 'concrete clean', 'concrete restoration', 'sidewalk', 'exterior wash', 'building wash', 'parking garage'],
+  windowCleaning: ['window', 'glass'],
+  floorCare: ['floor strip', 'floor wax', 'strip and wax', 'strip & wax', 'floor care', 'floor restoration', 'vct', 'tile floor'],
+  disinfection: ['disinfect', 'electrostatic', 'fogging', 'pathogen', 'virus', 'bacteria'],
+  lotSweeping: ['lot sweep', 'sweeping', 'parking lot clean', 'parking sweep', 'debris removal'],
+  janitorial: ['janitorial', 'lobby', 'office cleaning', 'common area', 'break room', 'kitchen cleaning', 'restroom', 'sanitation'],
+};
+
+function detectServiceCategories(lineItems) {
+  const text = (lineItems || []).map((li) => (li.description || '').toLowerCase()).join(' | ');
+  const matched = Object.keys(SERVICE_KEYWORDS).filter((key) => SERVICE_KEYWORDS[key].some((kw) => text.includes(kw)));
+  return matched.length ? matched : ['general'];
+}
+
+function renderServiceTermsHtml(lineItems) {
+  const categories = detectServiceCategories(lineItems);
+  return categories.map((key) => `<h4>${SERVICE_TERMS[key].label}</h4>${SERVICE_TERMS[key].html}`).join('');
+}
+
+function toggleSigningEnabled() {
+  const checked = document.getElementById('termsCheck').checked;
+  document.getElementById('signingBlock').classList.toggle('field-disabled', !checked);
+  document.getElementById('signBtn').disabled = !checked;
+  document.getElementById('signerName').disabled = !checked;
+  document.getElementById('tabDrawn').disabled = !checked;
+  document.getElementById('tabTyped').disabled = !checked;
+  const typedEl = document.getElementById('typedSignature');
+  if (typedEl) typedEl.disabled = !checked;
+}
+
 async function load() {
   if (!token) { showError('Missing work order link.'); return; }
   const res = await fetch(`/api/work-order/${token}`);
   if (!res.ok) { showError('This work order could not be found.'); return; }
-  const { workOrder, client, signature } = await res.json();
-  render(workOrder, client, signature);
+  const { workOrder, client, signature, lineItems } = await res.json();
+  render(workOrder, client, signature, lineItems);
 }
 
-function render(workOrder, client, signature) {
+function render(workOrder, client, signature, lineItems) {
   if (workOrder.status === 'signed' && signature) {
     document.getElementById('content').innerHTML = `
       <div class="doc-card">
@@ -61,34 +138,46 @@ function render(workOrder, client, signature) {
       </div>
       <div class="doc-terms">${workOrder.termsText}</div>
 
-      <div class="field-group">
-        <label for="signerName">Your Full Name</label>
-        <input type="text" id="signerName" placeholder="Type your full legal name">
-      </div>
-
-      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Signature</label>
-      <div class="sig-tabs">
-        <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')">Draw Signature</button>
-        <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')">Type Signature</button>
-      </div>
-
-      <div class="sig-panel active" id="panelDrawn">
-        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
-        <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
-      </div>
-      <div class="sig-panel" id="panelTyped">
-        <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;">
-      </div>
+      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Terms &amp; Conditions</label>
+      <div class="service-terms-scroll" id="serviceTermsBox">${renderServiceTermsHtml(lineItems)}</div>
 
       <div class="consent-row">
-        <input type="checkbox" id="consentCheck">
-        <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
+        <input type="checkbox" id="termsCheck" onchange="toggleSigningEnabled()">
+        <label for="termsCheck">I have read and agree to all terms and conditions above</label>
       </div>
 
-      <div class="doc-actions">
-        <button class="btn btn-primary" id="signBtn" onclick="submitSignature()">Sign Work Order</button>
+      <div class="standard-terms-block">${STANDARD_TERMS_HTML}</div>
+
+      <div id="signingBlock" class="field-disabled">
+        <div class="field-group">
+          <label for="signerName">Your Full Name</label>
+          <input type="text" id="signerName" placeholder="Type your full legal name" disabled>
+        </div>
+
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Signature</label>
+        <div class="sig-tabs">
+          <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')" disabled>Draw Signature</button>
+          <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')" disabled>Type Signature</button>
+        </div>
+
+        <div class="sig-panel active" id="panelDrawn">
+          <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+          <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
+        </div>
+        <div class="sig-panel" id="panelTyped">
+          <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;" disabled>
+        </div>
+
+        <div class="consent-row">
+          <input type="checkbox" id="consentCheck">
+          <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
+        </div>
+
+        <div class="doc-actions">
+          <button class="btn btn-primary" id="signBtn" onclick="submitSignature()" disabled>Sign Work Order</button>
+        </div>
+        <p id="signError" class="error-text" style="text-align:center;"></p>
       </div>
-      <p id="signError" class="error-text" style="text-align:center;"></p>
     </div>
   `;
 
@@ -146,7 +235,9 @@ async function submitSignature() {
 
   const signerName = document.getElementById('signerName').value.trim();
   const consentConfirmed = document.getElementById('consentCheck').checked;
+  const termsAgreed = document.getElementById('termsCheck').checked;
 
+  if (!termsAgreed) return fail('Please confirm you have read and agree to the terms and conditions.');
   if (!signerName) return fail('Please enter your full name.');
   if (!consentConfirmed) return fail('Please confirm you consent to sign electronically.');
 

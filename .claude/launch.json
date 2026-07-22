@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": ["serve.js"],
       "port": 8080
+    },
+    {
+      "name": "renovo-dev",
+      "runtimeExecutable": "C:\\Users\\pivot\\AppData\\Roaming\\npm\\netlify.cmd",
+      "runtimeArgs": ["dev", "--port", "8888"],
+      "port": 8888
     }
   ]
 }

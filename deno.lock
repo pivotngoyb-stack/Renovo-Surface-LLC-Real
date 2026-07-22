@@ -16,6 +16,7 @@
         "npm:@types/node@^22.20.1",
         "npm:drizzle-kit@^1.0.0-beta.22",
         "npm:drizzle-orm@^1.0.0-beta.22",
+        "npm:stripe@^22.3.2",
         "npm:typescript@^4.9.5"
       ]
     }
