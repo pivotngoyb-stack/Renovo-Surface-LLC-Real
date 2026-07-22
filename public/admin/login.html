@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Login | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <div class="login-card">
+    <img src="../images/logo.png" alt="Renovo Surface Solutions">
+    <h1>Admin Login</h1>
+    <form id="loginForm">
+      <div class="field-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Log In</button>
+      <p class="error-text" id="errorText">Incorrect password.</p>
+    </form>
+  </div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const errorText = document.getElementById('errorText');
+  const password = document.getElementById('password').value;
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
+  errorText.classList.remove('show');
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    if (res.ok) {
+      window.location.href = '/admin/dashboard.html';
+    } else {
+      errorText.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Log In';
+    }
+  } catch (err) {
+    errorText.textContent = 'Something went wrong. Try again.';
+    errorText.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Log In';
+  }
+});
+</script>
+</body>
+</html>

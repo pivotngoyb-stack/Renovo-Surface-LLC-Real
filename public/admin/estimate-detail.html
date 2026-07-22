@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estimate Detail | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:720px;">
+    <a href="/admin/dashboard.html" style="color:var(--blue); font-size:0.9rem;">&larr; Back to Dashboard</a>
+    <div id="content" style="margin-top:20px;">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const id = new URLSearchParams(window.location.search).get('id');
+
+async function load() {
+  const res = await adminFetch(`/api/admin/estimates/${id}`);
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Estimate not found.</div>'; return; }
+  const { estimate, client, lineItems, workOrder } = await res.json();
+
+  const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+  const itemsHtml = lineItems.map(li => `
+    <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
+  `).join('');
+
+  const estimateLink = `${window.location.origin}/estimate.html?t=${estimate.token}`;
+
+  let actions = '';
+  if (estimate.status === 'draft') {
+    actions = `<button class="btn btn-primary" onclick="sendEstimate()">Send to Client</button>`;
+  } else if (estimate.status === 'approved' && !workOrder) {
+    actions = `<button class="btn btn-primary" onclick="convertToWorkOrder()">Convert to Work Order</button>`;
+  }
+
+  let workOrderSection = '';
+  if (workOrder) {
+    const woLink = `${window.location.origin}/work-order.html?t=${workOrder.token}`;
+    workOrderSection = `
+      <h3 style="margin:28px 0 12px;">Work Order</h3>
+      <p>Status: ${statusPill(workOrder.status)}</p>
+      <p style="margin-top:10px; font-size:0.85rem;"><a href="${woLink}" target="_blank">${woLink}</a></p>
+    `;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+      <div>
+        <h1 style="font-size:1.6rem;">Estimate #${estimate.id}</h1>
+        <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
+      </div>
+      ${statusPill(estimate.status)}
+    </div>
+
+    <table class="dash-table">
+      <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div class="totals-row">Total: ${money(total)}</div>
+
+    ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${estimate.notes}</p>` : ''}
+    ${estimate.validUntil ? `<p style="color:#4A5A72;"><strong>Valid Until:</strong> ${estimate.validUntil}</p>` : ''}
+
+    <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${estimateLink}" target="_blank">${estimateLink}</a></p>
+
+    <div style="margin-top:24px;">${actions}</div>
+    ${workOrderSection}
+  `;
+}
+
+async function sendEstimate() {
+  const res = await adminFetch(`/api/admin/estimates/${id}/send`, { method: 'POST' });
+  if (res.ok) load(); else alert('Failed to send estimate.');
+}
+
+async function convertToWorkOrder() {
+  const res = await adminFetch(`/api/admin/estimates/${id}/convert`, { method: 'POST' });
+  if (res.ok) load(); else alert('Failed to convert to work order.');
+}
+
+load();
+</script>
+</body>
+</html>

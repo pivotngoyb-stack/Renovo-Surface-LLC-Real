@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Work Order | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading your work order…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+let currentTab = 'drawn';
+let hasDrawn = false;
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
+}
+
+async function load() {
+  if (!token) { showError('Missing work order link.'); return; }
+  const res = await fetch(`/api/work-order/${token}`);
+  if (!res.ok) { showError('This work order could not be found.'); return; }
+  const { workOrder, client, signature } = await res.json();
+  render(workOrder, client, signature);
+}
+
+function render(workOrder, client, signature) {
+  if (workOrder.status === 'signed' && signature) {
+    document.getElementById('content').innerHTML = `
+      <div class="doc-card">
+        <div class="doc-header">
+          <img src="images/logo.png" alt="Renovo Surface Solutions">
+          <h1 style="font-size:1.3rem;">Work Order #${workOrder.id}</h1>
+        </div>
+        <div class="state-banner">
+          <div class="icon">✅</div>
+          <p><strong>Signed by ${signature.signerName}</strong></p>
+          <p style="color:#8A98AC; font-size:0.85rem;">${new Date(signature.signedAt).toLocaleString()}</p>
+        </div>
+        <div class="doc-terms">${workOrder.termsText}</div>
+      </div>
+    `;
+    return;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="doc-card">
+      <div class="doc-header">
+        <img src="images/logo.png" alt="Renovo Surface Solutions">
+        <div style="text-align:right;">
+          <h1 style="font-size:1.3rem;">Work Order #${workOrder.id}</h1>
+          <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+        </div>
+      </div>
+      <div class="doc-terms">${workOrder.termsText}</div>
+
+      <div class="field-group">
+        <label for="signerName">Your Full Name</label>
+        <input type="text" id="signerName" placeholder="Type your full legal name">
+      </div>
+
+      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Signature</label>
+      <div class="sig-tabs">
+        <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')">Draw Signature</button>
+        <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')">Type Signature</button>
+      </div>
+
+      <div class="sig-panel active" id="panelDrawn">
+        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+        <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
+      </div>
+      <div class="sig-panel" id="panelTyped">
+        <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;">
+      </div>
+
+      <div class="consent-row">
+        <input type="checkbox" id="consentCheck">
+        <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
+      </div>
+
+      <div class="doc-actions">
+        <button class="btn btn-primary" id="signBtn" onclick="submitSignature()">Sign Work Order</button>
+      </div>
+      <p id="signError" class="error-text" style="text-align:center;"></p>
+    </div>
+  `;
+
+  initCanvas();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabDrawn').classList.toggle('active', tab === 'drawn');
+  document.getElementById('tabTyped').classList.toggle('active', tab === 'typed');
+  document.getElementById('panelDrawn').classList.toggle('active', tab === 'drawn');
+  document.getElementById('panelTyped').classList.toggle('active', tab === 'typed');
+}
+
+let canvas, ctx, drawing = false;
+
+function initCanvas() {
+  canvas = document.getElementById('sigCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.strokeStyle = '#0D1F38';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return { x: point.clientX - r.left, y: point.clientY - r.top };
+  };
+
+  const start = (e) => { e.preventDefault(); drawing = true; hasDrawn = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+  const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const end = () => { drawing = false; };
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasDrawn = false;
+}
+
+async function submitSignature() {
+  const errEl = document.getElementById('signError');
+  errEl.classList.remove('show');
+
+  const signerName = document.getElementById('signerName').value.trim();
+  const consentConfirmed = document.getElementById('consentCheck').checked;
+
+  if (!signerName) return fail('Please enter your full name.');
+  if (!consentConfirmed) return fail('Please confirm you consent to sign electronically.');
+
+  let signatureData, signatureType;
+  if (currentTab === 'drawn') {
+    if (!hasDrawn) return fail('Please draw your signature, or switch to "Type Signature".');
+    signatureData = canvas.toDataURL('image/png');
+    signatureType = 'drawn';
+  } else {
+    const typed = document.getElementById('typedSignature').value.trim();
+    if (!typed) return fail('Please type your signature.');
+    signatureData = typed;
+    signatureType = 'typed';
+  }
+
+  const btn = document.getElementById('signBtn');
+  btn.disabled = true;
+  btn.textContent = 'Signing…';
+
+  try {
+    const res = await fetch(`/api/work-order/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signerName, signatureType, signatureData, consentConfirmed })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to sign');
+    }
+    load();
+  } catch (err) {
+    fail(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Sign Work Order';
+  }
+}
+
+function fail(msg) {
+  const errEl = document.getElementById('signError');
+  errEl.textContent = msg;
+  errEl.classList.add('show');
+}
+
+load();
+</script>
+</body>
+</html>

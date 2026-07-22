@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <div class="dash-header">
+      <h1 style="font-size:1.6rem;">Estimates &amp; Work Orders</h1>
+      <a href="/admin/estimate-new.html" class="btn btn-primary btn-sm">+ New Estimate</a>
+    </div>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+async function load() {
+  const res = await adminFetch('/api/admin/estimates');
+  const data = await res.json();
+  const content = document.getElementById('content');
+
+  if (!data.estimates.length) {
+    content.innerHTML = '<div class="empty-state">No estimates yet. <a href="/admin/estimate-new.html">Create your first one</a>.</div>';
+    return;
+  }
+
+  const rows = data.estimates.map(e => `
+    <tr onclick="window.location.href='/admin/estimate-detail.html?id=${e.id}'" style="cursor:pointer;">
+      <td>#${e.id}</td>
+      <td>${e.clientName || '—'}</td>
+      <td>${statusPill(e.status)}</td>
+      <td>${e.validUntil || '—'}</td>
+      <td>${new Date(e.createdAt).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+
+  content.innerHTML = `
+    <table class="dash-table">
+      <thead><tr><th>ID</th><th>Client</th><th>Status</th><th>Valid Until</th><th>Created</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+load();
+</script>
+</body>
+</html>

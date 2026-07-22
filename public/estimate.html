@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Estimate | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading your estimate…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function load() {
+  if (!token) { showError('Missing estimate link.'); return; }
+  const res = await fetch(`/api/estimate/${token}`);
+  if (!res.ok) { showError('This estimate could not be found.'); return; }
+  const { estimate, client, lineItems } = await res.json();
+  render(estimate, client, lineItems);
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
+}
+
+function render(estimate, client, lineItems) {
+  const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+  const itemsHtml = lineItems.map(li => `
+    <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
+  `).join('');
+
+  let actionsHtml = '';
+  if (estimate.status === 'approved') {
+    actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p>You approved this estimate. We'll be in touch with a work order shortly.</p></div>`;
+  } else if (estimate.status === 'declined') {
+    actionsHtml = `<div class="state-banner"><p>You requested changes on this estimate. We'll follow up with you directly.</p></div>`;
+  } else {
+    actionsHtml = `
+      <div class="doc-actions">
+        <button class="btn btn-primary" onclick="respond('approve')">Approve Estimate</button>
+        <button class="btn btn-outline" style="color:var(--navy); border-color:var(--navy);" onclick="respond('decline')">Request Changes</button>
+      </div>
+      <p id="respondError" class="error-text" style="text-align:center;"></p>
+    `;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="doc-card">
+      <div class="doc-header">
+        <img src="images/logo.png" alt="Renovo Surface Solutions">
+        <div style="text-align:right;">
+          <h1 style="font-size:1.3rem;">Estimate #${estimate.id}</h1>
+          <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+        </div>
+      </div>
+      <table class="doc-items-table">
+        <thead><tr><th>Description</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      <div class="doc-total">Total: ${money(total)}</div>
+      ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;">${estimate.notes}</p>` : ''}
+      ${estimate.validUntil ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Valid until ${estimate.validUntil}</p>` : ''}
+      ${actionsHtml}
+    </div>
+  `;
+}
+
+async function respond(action) {
+  const res = await fetch(`/api/estimate/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  });
+  if (res.ok) {
+    load();
+  } else {
+    document.getElementById('respondError').textContent = 'Something went wrong. Please call 801-369-2330.';
+    document.getElementById('respondError').classList.add('show');
+  }
+}
+
+load();
+</script>
+</body>
+</html>
