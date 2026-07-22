@@ -9,6 +9,8 @@ interface SignBody {
   signatureType: 'drawn' | 'typed'
   signatureData: string
   consentConfirmed: boolean
+  termsAgreed: boolean
+  serviceType: string
 }
 
 export default async (request: Request, context: Context) => {
@@ -43,6 +45,7 @@ export default async (request: Request, context: Context) => {
     if (!body.signatureData) return badRequest('Signature is required')
     if (body.signatureType !== 'drawn' && body.signatureType !== 'typed') return badRequest('Invalid signature type')
     if (!body.consentConfirmed) return badRequest('Consent to sign electronically is required')
+    if (!body.termsAgreed) return badRequest('Agreement to the terms and conditions is required')
 
     await db.insert(schema.signatures).values({
       workOrderId: workOrder.id,
@@ -50,6 +53,8 @@ export default async (request: Request, context: Context) => {
       signatureType: body.signatureType,
       signatureData: body.signatureData,
       consentConfirmed: true,
+      termsAgreed: true,
+      serviceTypeShown: body.serviceType?.trim() || 'General',
       ipAddress: getClientIp(request),
     })
 

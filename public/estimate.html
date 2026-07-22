@@ -70,6 +70,10 @@ function render(estimate, client, lineItems) {
       <div class="doc-total">Total: ${money(total)}</div>
       ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;">${estimate.notes}</p>` : ''}
       ${estimate.validUntil ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Valid until ${estimate.validUntil}</p>` : ''}
+      <div class="estimate-terms-box">
+        <h4>Estimate Terms</h4>
+        <p>This estimate is valid for 30 days from the date issued. Prices are based on information provided at time of estimate. Final pricing may vary if actual site conditions differ materially from what was described. A signed work order is required before any service begins. Approving this estimate does not constitute a signed work order.</p>
+      </div>
       ${actionsHtml}
     </div>
   `;

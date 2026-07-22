@@ -57,6 +57,8 @@ export const signatures = pgTable('signatures', {
   signatureType: signatureTypeEnum('signature_type').notNull(),
   signatureData: text('signature_data').notNull(),
   consentConfirmed: boolean('consent_confirmed').notNull(),
+  termsAgreed: boolean('terms_agreed').notNull().default(false),
+  serviceTypeShown: text('service_type_shown'),
   ipAddress: text('ip_address'),
   signedAt: timestamp('signed_at').defaultNow().notNull(),
 })

@@ -94,5 +94,15 @@ body.admin-body {
 
 .field-disabled { opacity: 0.5; pointer-events: none; }
 
+.payment-terms-box { background: #f0f9ff; border-left: 4px solid #1B7FE8; border-radius: 8px; padding: 1.25rem; font-size: 0.875rem; color: #374151; line-height: 1.6; margin-block: 20px; }
+.payment-terms-box h4 { margin: 0 0 10px; font-family: var(--font-head); font-size: 0.8rem; letter-spacing: 0.04em; color: #1B7FE8; text-transform: uppercase; }
+.payment-terms-box p { margin: 0 0 8px; }
+.payment-terms-box p:last-child { margin-bottom: 0; }
+.payment-terms-box a { color: #1B7FE8; }
+
+.estimate-terms-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; font-size: 0.85rem; color: #6b7280; line-height: 1.6; margin-block: 20px; }
+.estimate-terms-box h4 { margin: 0 0 8px; font-family: var(--font-head); font-size: 0.78rem; letter-spacing: 0.04em; color: #6b7280; text-transform: uppercase; }
+.estimate-terms-box p { margin: 0; }
+
 .state-banner { text-align: center; padding: 60px 24px; }
 .state-banner .icon { font-size: 3rem; margin-bottom: 16px; }

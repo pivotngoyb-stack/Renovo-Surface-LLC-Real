@@ -103,6 +103,14 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
       <div class="doc-total">Total Due: ${money(total)}</div>
       ${invoice.dueDate ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Due ${invoice.dueDate}</p>` : ''}
       ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;">${invoice.notes}</p>` : ''}
+      <div class="payment-terms-box">
+        <h4>Payment Terms</h4>
+        <p>Payment is due upon receipt of this invoice. For recurring contracts, payment is due within 15 days of invoice date.</p>
+        <p>Late payments are subject to a 1.5% monthly interest charge on the outstanding balance.</p>
+        <p>Returned checks are subject to a $35 returned check fee.</p>
+        <p>Accepted payment methods: Cash · Check (payable to Renovo Surface Solutions LLC) · Zelle: 801-369-2330 · Credit Card (3% processing fee applies)</p>
+        <p>Questions about this invoice? Call <a href="tel:8013692330">801-369-2330</a> or email <a href="mailto:info@renovosurface.com">info@renovosurface.com</a>.</p>
+      </div>
       ${statusSection}
     </div>
   `;

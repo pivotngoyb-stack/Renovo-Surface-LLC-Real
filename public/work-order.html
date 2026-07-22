@@ -18,6 +18,7 @@
 const token = new URLSearchParams(window.location.search).get('t');
 let currentTab = 'drawn';
 let hasDrawn = false;
+let shownServiceTypeLabel = 'General';
 
 function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
@@ -62,13 +63,17 @@ const SERVICE_TERMS_CONTENT = {
 <p><strong>MEDICAL DISCLAIMER:</strong> This service is not a substitute for medical advice or disease prevention protocols. Renovo does not guarantee the prevention of any specific illness or disease.</p>`,
 
   lotSweeping: `<h4>PARKING LOT SWEEPING TERMS &amp; CONDITIONS</h4>
-<p>This service includes mechanical or manual sweeping and debris removal from parking lots, garages, or drive areas as specified in the line items above. Client agrees to provide reasonable advance notice to tenants, employees, or customers to relocate vehicles from the service area at the scheduled time.</p><p>Vehicles or obstructions remaining in the work area may result in incomplete service at no reduction in price, or may require rescheduling at Client's request, subject to the Cancellation policy below.</p>`,
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> Ensure the parking lot is accessible at the agreed service time. Vehicles should not block primary sweep lanes. Notify Renovo at least 24 hours before service if the lot cannot be accessed. Disclose any speed bumps, bollards, drainage grates, or obstacles that could damage sweeping equipment. Ensure dumpster access is available for debris disposal.</p>
+<p><strong>HAZARDOUS MATERIALS:</strong> Renovo sweeps standard debris including dirt, gravel, leaves, and litter. Hazardous materials (needles, biohazard material, large quantities of broken glass, oil spills) require separate notification and may incur additional charges. Renovo will notify client immediately upon discovering hazardous materials and will not proceed with that area without authorization.</p>
+<p><strong>DAMAGE POLICY:</strong> Client must disclose all fixed obstacles before service begins. Renovo is not responsible for damage to undisclosed obstacles or pre-existing surface damage. Renovo will notify client immediately if equipment contacts any obstacle.</p>
+<p><strong>INACCESSIBLE LOT:</strong> If the lot is inaccessible at the agreed service time through no fault of Renovo, a $50 trip fee applies.</p>`,
 
   general: `<h4>GENERAL SCOPE OF SERVICE</h4>
 <p>This work order covers the services and pricing detailed in the line items of the referenced estimate. Renovo Surface Solutions LLC will perform the described work in a professional manner consistent with industry standards for commercial surface care. Client agrees to provide safe and reasonable access to the property at the scheduled service time.</p>`
 };
 
 const SERVICE_TYPE_ALIASES = {
+  'parking lot sweeping': 'lotSweeping',
   'pressure washing': 'pressureWashing',
   'gas station cleaning': 'pressureWashing',
   'gas station': 'pressureWashing',
@@ -105,7 +110,9 @@ const CANONICAL_SERVICE_LABEL = {
 };
 
 function getServiceTerms(serviceType) {
-  const key = SERVICE_TYPE_ALIASES[(serviceType || '').trim().toLowerCase()];
+  const text = (serviceType || '').trim().toLowerCase();
+  const matchedAlias = Object.keys(SERVICE_TYPE_ALIASES).find((alias) => text.includes(alias));
+  const key = matchedAlias ? SERVICE_TYPE_ALIASES[matchedAlias] : undefined;
   return SERVICE_TERMS_CONTENT[key] || SERVICE_TERMS_CONTENT.general;
 }
 
@@ -141,6 +148,7 @@ function detectServiceCategories(lineItems) {
 
 function renderServiceTermsHtml(lineItems) {
   const categories = detectServiceCategories(lineItems);
+  shownServiceTypeLabel = categories[0] === 'general' ? 'General' : categories.map((key) => CANONICAL_SERVICE_LABEL[key]).join(', ');
   if (categories[0] === 'general') return SERVICE_TERMS_CONTENT.general;
   return categories.map((key) => getServiceTerms(CANONICAL_SERVICE_LABEL[key])).join('');
 }
@@ -177,6 +185,7 @@ function render(workOrder, client, signature, lineItems) {
           <p><strong>Signed by ${signature.signerName}</strong></p>
           <p style="color:#8A98AC; font-size:0.85rem;">${new Date(signature.signedAt).toLocaleString()}</p>
         </div>
+        ${signature.termsAgreed ? `<p style="text-align:center; font-size:0.85rem; color:#4A5A72; margin-top:-10px; margin-bottom:20px;">Client agreed to <strong>${signature.serviceTypeShown || 'General'}</strong> Terms &amp; Conditions on ${new Date(signature.signedAt).toLocaleDateString()} at ${new Date(signature.signedAt).toLocaleTimeString()}</p>` : ''}
         <div class="doc-terms">${workOrder.termsText}</div>
       </div>
     `;
@@ -198,7 +207,7 @@ function render(workOrder, client, signature, lineItems) {
       <div class="service-terms-scroll" id="serviceTermsBox">${renderServiceTermsHtml(lineItems)}</div>
 
       <div class="consent-row">
-        <input type="checkbox" id="termsCheck" onchange="toggleSigningEnabled()">
+        <input type="checkbox" id="termsCheck" required onchange="toggleSigningEnabled()">
         <label for="termsCheck">I have read and agree to all terms and conditions above</label>
       </div>
 
@@ -317,7 +326,7 @@ async function submitSignature() {
     const res = await fetch(`/api/work-order/${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signerName, signatureType, signatureData, consentConfirmed })
+      body: JSON.stringify({ signerName, signatureType, signatureData, consentConfirmed, termsAgreed, serviceType: shownServiceTypeLabel })
     });
     if (!res.ok) {
       const data = await res.json();
