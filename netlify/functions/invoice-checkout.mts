@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
+import type Stripe from 'stripe'
 import { db, schema } from './_shared/db.mts'
-import { getStripe, isStripeConfigured } from './_shared/stripe.mts'
+import { getStripe, isStripeConfigured, getOrCreateStripeCustomer } from './_shared/stripe.mts'
 import { invoiceNumber } from './_shared/money.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 
@@ -28,6 +29,17 @@ export default async (request: Request, context: Context) => {
 
   if (lineItems.length === 0) return badRequest('This invoice has no line items')
 
+  let body: { saveCard?: boolean } = {}
+  try {
+    body = await request.json()
+  } catch {
+    // no body is fine, saveCard just defaults to false
+  }
+
+  // Only offer to save a card for invoices tied to a recurring contract -
+  // there's nothing to "save for future use" on a one-off invoice.
+  const canSaveCard = Boolean(invoice.recurringContractId) && body.saveCard === true
+
   // Prices are never pre-registered in Stripe (they change per job). Each Stripe
   // Checkout line here is built fresh, right now, from our own database — and we
   // collapse quantity x unit price into one line-total amount with quantity 1,
@@ -51,20 +63,35 @@ export default async (request: Request, context: Context) => {
   const stripe = getStripe()!
   const numberLabel = invoiceNumber(invoice.id)
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: stripeLineItems,
-      customer_email: client?.email,
-      success_url: `${SITE_URL}/invoice.html?t=${token}&paid=1`,
-      cancel_url: `${SITE_URL}/invoice.html?t=${token}`,
-      metadata: {
-        invoiceId: String(invoice.id),
-        invoiceToken: token,
-        invoiceNumber: numberLabel,
-      },
-    })
+  const metadata: Record<string, string> = {
+    invoiceId: String(invoice.id),
+    invoiceToken: token,
+    invoiceNumber: numberLabel,
+  }
+  if (invoice.recurringContractId) metadata.recurringContractId = String(invoice.recurringContractId)
+  if (canSaveCard) metadata.saveCard = 'true'
 
+  const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    mode: 'payment',
+    line_items: stripeLineItems,
+    success_url: `${SITE_URL}/invoice.html?t=${token}&paid=1`,
+    cancel_url: `${SITE_URL}/invoice.html?t=${token}`,
+    metadata,
+  }
+
+  try {
+    if (canSaveCard && client) {
+      const customerId = await getOrCreateStripeCustomer(stripe, client.email, client.name)
+      if (!client.stripeCustomerId) {
+        await db.update(schema.clients).set({ stripeCustomerId: customerId }).where(eq(schema.clients.id, client.id))
+      }
+      sessionParams.customer = customerId
+      sessionParams.payment_intent_data = { setup_future_usage: 'off_session' }
+    } else {
+      sessionParams.customer_email = client?.email
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams)
     return json({ url: session.url })
   } catch (err) {
     console.error('[stripe] checkout session creation failed', err)

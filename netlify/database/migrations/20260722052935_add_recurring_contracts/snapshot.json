@@ -1,0 +1,1206 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "e4c724e1-9934-4051-97d0-11bc837da1af",
+  "prevIds": [
+    "0789679d-f19a-47c3-8f65-a476b3e8e900"
+  ],
+  "ddl": [
+    {
+      "values": [
+        "active",
+        "paused",
+        "cancelled"
+      ],
+      "name": "contract_status",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "values": [
+        "draft",
+        "sent",
+        "viewed",
+        "approved",
+        "declined"
+      ],
+      "name": "estimate_status",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "values": [
+        "unpaid",
+        "paid"
+      ],
+      "name": "invoice_status",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "values": [
+        "drawn",
+        "typed"
+      ],
+      "name": "signature_type",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "values": [
+        "pending",
+        "signed"
+      ],
+      "name": "work_order_status",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "clients",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "estimate_line_items",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "estimates",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "invoice_line_items",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "invoices",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "recurring_contracts",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "signatures",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "work_orders",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "phone",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "company",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "property_address",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "notes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "clients"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "estimate_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'1'",
+      "generated": null,
+      "identity": null,
+      "name": "quantity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unit_price",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "sort_order",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "token",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "estimate_status",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'draft'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "notes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "valid_until",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "viewed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "invoice_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'1'",
+      "generated": null,
+      "identity": null,
+      "name": "quantity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unit_price",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "sort_order",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "work_order_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "recurring_contract_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "token",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "invoice_status",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'unpaid'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "notes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "due_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "reminder_stage",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_reminder_sent_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "paid_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "amount",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "billing_day",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "contract_status",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'active'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_billed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "work_order_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "signer_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "signature_type",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "signature_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "signature_data",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "consent_confirmed",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ip_address",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "signed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "type": "serial",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "estimate_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "token",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "terms_text",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "type": "work_order_status",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'pending'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "estimate_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "estimates",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "estimate_line_items_estimate_id_estimates_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "estimate_line_items"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "client_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "clients",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "estimates_client_id_clients_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "estimates"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "invoice_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "invoices",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "invoice_line_items_invoice_id_invoices_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "invoice_line_items"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "client_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "clients",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "invoices_client_id_clients_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "work_order_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "work_orders",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "invoices_work_order_id_work_orders_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "recurring_contract_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "recurring_contracts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "invoices_recurring_contract_id_recurring_contracts_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "client_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "clients",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "recurring_contracts_client_id_clients_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "recurring_contracts"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "work_order_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "work_orders",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "signatures_work_order_id_work_orders_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "signatures"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "estimate_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "estimates",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "work_orders_estimate_id_estimates_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "work_orders"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "clients_pkey",
+      "schema": "public",
+      "table": "clients",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "estimate_line_items_pkey",
+      "schema": "public",
+      "table": "estimate_line_items",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "estimates_pkey",
+      "schema": "public",
+      "table": "estimates",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "invoice_line_items_pkey",
+      "schema": "public",
+      "table": "invoice_line_items",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "invoices_pkey",
+      "schema": "public",
+      "table": "invoices",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "recurring_contracts_pkey",
+      "schema": "public",
+      "table": "recurring_contracts",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "signatures_pkey",
+      "schema": "public",
+      "table": "signatures",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "work_orders_pkey",
+      "schema": "public",
+      "table": "work_orders",
+      "entityType": "pks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "token"
+      ],
+      "nullsNotDistinct": false,
+      "name": "estimates_token_key",
+      "schema": "public",
+      "table": "estimates",
+      "entityType": "uniques"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "token"
+      ],
+      "nullsNotDistinct": false,
+      "name": "invoices_token_key",
+      "schema": "public",
+      "table": "invoices",
+      "entityType": "uniques"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "token"
+      ],
+      "nullsNotDistinct": false,
+      "name": "work_orders_token_key",
+      "schema": "public",
+      "table": "work_orders",
+      "entityType": "uniques"
+    }
+  ],
+  "renames": []
+}

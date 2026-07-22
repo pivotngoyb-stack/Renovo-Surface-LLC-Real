@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recurring Contracts | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <a href="/admin/invoice-new.html">+ New Invoice</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <div class="dash-header">
+      <h1 style="font-size:1.6rem;">Recurring Contracts</h1>
+      <a href="/admin/contract-new.html" class="btn btn-primary btn-sm">+ New Contract</a>
+    </div>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+async function load() {
+  const res = await adminFetch('/api/admin/contracts');
+  const data = await res.json();
+  const content = document.getElementById('content');
+
+  if (!data.contracts.length) {
+    content.innerHTML = '<div class="empty-state">No recurring contracts yet. <a href="/admin/contract-new.html">Create your first one</a>.</div>';
+    return;
+  }
+
+  const rows = data.contracts.map(c => {
+    let actions = '';
+    if (c.status === 'active') {
+      actions = `<button class="btn btn-sm" style="color:#966A00;" onclick="setStatus(${c.id},'paused')">Pause</button> <button class="btn btn-sm" style="color:#C0392B;" onclick="setStatus(${c.id},'cancelled')">Cancel</button>`;
+    } else if (c.status === 'paused') {
+      actions = `<button class="btn btn-sm" style="color:#1B7A3C;" onclick="setStatus(${c.id},'active')">Resume</button> <button class="btn btn-sm" style="color:#C0392B;" onclick="setStatus(${c.id},'cancelled')">Cancel</button>`;
+    } else {
+      actions = `<span style="color:#8A98AC; font-size:0.85rem;">Cancelled</span>`;
+    }
+    const autoPay = c.autoChargeEnabled
+      ? `<span style="color:#1B7A3C; font-size:0.85rem;">✅ ${c.cardBrand ? c.cardBrand.toUpperCase() : 'Card'} ••${c.cardLast4 || '••••'}</span>`
+      : `<span style="color:#8A98AC; font-size:0.85rem;">Manual</span>`;
+    return `
+      <tr>
+        <td>${c.clientName || '—'}</td>
+        <td>${c.description}</td>
+        <td>${money(c.amount)}/mo</td>
+        <td>Day ${c.billingDay}</td>
+        <td>${statusPill(c.status)}</td>
+        <td>${autoPay}</td>
+        <td>${c.lastBilledAt ? new Date(c.lastBilledAt).toLocaleDateString() : 'Never'}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const activeTotal = data.contracts.filter(c => c.status === 'active').reduce((s, c) => s + Number(c.amount), 0);
+
+  content.innerHTML = `
+    <div class="doc-card" style="margin:0 0 24px; padding:22px;">
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Forecasted Monthly Revenue (Active Contracts)</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:#1B7A3C;">${money(activeTotal)}</div>
+    </div>
+    <table class="dash-table">
+      <thead><tr><th>Client</th><th>Description</th><th>Amount</th><th>Bills On</th><th>Status</th><th>Payment</th><th>Last Billed</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function setStatus(id, status) {
+  const verb = status === 'cancelled' ? 'cancel' : status === 'paused' ? 'pause' : 'resume';
+  if (!confirm(`Are you sure you want to ${verb} this contract?`)) return;
+  const res = await adminFetch(`/api/admin/contracts/${id}/status`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+  });
+  if (res.ok) load(); else alert('Failed to update contract.');
+}
+
+load();
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@
       <img src="../images/logo.png" alt="Renovo">
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/contracts.html">Contracts</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
         <a href="/admin/invoice-new.html">+ New Invoice</a>
         <button onclick="logout()">Log Out</button>
@@ -23,7 +24,7 @@
   </nav>
 
   <div class="admin-wrap">
-    <div id="summary" class="dash-header" style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; width:100%;"></div>
+    <div id="summary" class="dash-header" style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; width:100%;"></div>
 
     <div class="dash-header">
       <h1 style="font-size:1.4rem;">Invoices</h1>
@@ -80,6 +81,13 @@ async function loadInvoices() {
   const outstanding = invoices.filter(i => i.status === 'unpaid').reduce((s, i) => s + i.total, 0);
   const unpaidCount = invoices.filter(i => i.status === 'unpaid').length;
 
+  let forecast = 0;
+  try {
+    const cRes = await adminFetch('/api/admin/contracts');
+    const cData = await cRes.json();
+    forecast = (cData.contracts || []).filter(c => c.status === 'active').reduce((s, c) => s + Number(c.amount), 0);
+  } catch (e) {}
+
   document.getElementById('summary').innerHTML = `
     <div class="doc-card" style="margin:0; padding:22px;">
       <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Total Revenue</div>
@@ -92,6 +100,10 @@ async function loadInvoices() {
     <div class="doc-card" style="margin:0; padding:22px;">
       <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Unpaid Invoices</div>
       <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:var(--navy);">${unpaidCount}</div>
+    </div>
+    <div class="doc-card" style="margin:0; padding:22px; cursor:pointer;" onclick="window.location.href='/admin/contracts.html'">
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">Forecasted Monthly Revenue</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:var(--blue);">${money(forecast)}</div>
     </div>
   `;
 

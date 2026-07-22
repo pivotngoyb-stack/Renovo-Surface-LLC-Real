@@ -34,7 +34,7 @@ function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
-function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnabled }) {
+function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnabled, recurring }) {
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
@@ -49,8 +49,29 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
     const payButton = stripeEnabled
       ? `<button class="btn btn-primary btn-block" id="payBtn" onclick="payNow()" style="margin-bottom:14px;">Pay Now with Card</button>`
       : '';
+
+    let autoPaySection = '';
+    if (stripeEnabled && recurring) {
+      if (recurring.autoChargeEnabled) {
+        autoPaySection = `
+          <div style="background:#E1F7E8; border-radius:12px; padding:18px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <span style="color:#1B7A3C; font-size:0.9rem;">✅ Auto-pay is on — ${recurring.cardBrand ? recurring.cardBrand.toUpperCase() : 'Card'} ending in ${recurring.cardLast4 || '••••'} will be charged automatically for future invoices on this contract.</span>
+            <button type="button" class="btn btn-sm" style="color:#C0392B; white-space:nowrap;" onclick="disableAutoPay()">Turn off auto-pay</button>
+          </div>
+        `;
+      } else {
+        autoPaySection = `
+          <div class="consent-row" style="margin-top:0; margin-bottom:16px;">
+            <input type="checkbox" id="saveCardCheck">
+            <label for="saveCardCheck">Save this card and automatically charge future invoices for this recurring contract. I can turn this off anytime from this page. This authorization stays in effect until I cancel it.</label>
+          </div>
+        `;
+      }
+    }
+
     statusSection = `
       <div style="margin-top:24px;">
+        ${autoPaySection}
         ${payButton}
         <div style="background:var(--off-white); border-radius:12px; padding:24px;">
           <h3 style="font-size:1rem; margin-bottom:10px;">${stripeEnabled ? 'Other Ways to Pay' : 'How to Pay'}</h3>
@@ -94,8 +115,15 @@ async function payNow() {
   btn.disabled = true;
   btn.textContent = 'Redirecting to secure checkout…';
 
+  const saveCardCheck = document.getElementById('saveCardCheck');
+  const saveCard = saveCardCheck ? saveCardCheck.checked : false;
+
   try {
-    const res = await fetch(`/api/invoice/${token}/checkout`, { method: 'POST' });
+    const res = await fetch(`/api/invoice/${token}/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ saveCard })
+    });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
     window.location.href = data.url;
@@ -105,6 +133,16 @@ async function payNow() {
     btn.disabled = false;
     btn.textContent = 'Pay Now with Card';
   }
+}
+
+async function disableAutoPay() {
+  if (!confirm('Turn off auto-pay for this contract? Future invoices will need to be paid manually.')) return;
+  const res = await fetch(`/api/invoice/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'disable-autocharge' })
+  });
+  if (res.ok) load(); else alert('Something went wrong. Please call 801-369-2330.');
 }
 
 load();
