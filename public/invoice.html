@@ -16,6 +16,7 @@
 
 <script>
 const token = new URLSearchParams(window.location.search).get('t');
+const justPaid = new URLSearchParams(window.location.search).get('paid') === '1';
 
 function money(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,15 +26,15 @@ async function load() {
   if (!token) { showError('Missing invoice link.'); return; }
   const res = await fetch(`/api/invoice/${token}`);
   if (!res.ok) { showError('This invoice could not be found.'); return; }
-  const { invoice, client, lineItems, total, invoiceNumber } = await res.json();
-  render(invoice, client, lineItems, total, invoiceNumber);
+  const data = await res.json();
+  render(data);
 }
 
 function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
-function render(invoice, client, lineItems, total, invoiceNumber) {
+function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnabled }) {
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
@@ -41,16 +42,26 @@ function render(invoice, client, lineItems, total, invoiceNumber) {
   let statusSection;
   if (invoice.status === 'paid') {
     statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div>`;
+  } else if (justPaid) {
+    statusSection = `<div class="state-banner"><div class="icon">⏳</div><p>Payment received — finishing up. This page will update in a few seconds.</p></div>`;
+    setTimeout(load, 2500);
   } else {
+    const payButton = stripeEnabled
+      ? `<button class="btn btn-primary btn-block" id="payBtn" onclick="payNow()" style="margin-bottom:14px;">Pay Now with Card</button>`
+      : '';
     statusSection = `
-      <div style="background:var(--off-white); border-radius:12px; padding:24px; margin-top:24px;">
-        <h3 style="font-size:1rem; margin-bottom:10px;">How to Pay</h3>
-        <p style="color:#4A5A72; font-size:0.92rem; line-height:1.6;">
-          Please arrange payment by check, Venmo, or cash. Call us at
-          <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email
-          <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a>
-          with any questions. We'll mark this invoice paid and email you a receipt once payment is received.
-        </p>
+      <div style="margin-top:24px;">
+        ${payButton}
+        <div style="background:var(--off-white); border-radius:12px; padding:24px;">
+          <h3 style="font-size:1rem; margin-bottom:10px;">${stripeEnabled ? 'Other Ways to Pay' : 'How to Pay'}</h3>
+          <p style="color:#4A5A72; font-size:0.92rem; line-height:1.6;">
+            You can also pay by check, Venmo, or cash. Call us at
+            <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email
+            <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a>
+            with any questions. We'll mark this invoice paid and email you a receipt once payment is received.
+          </p>
+        </div>
+        <p id="payError" class="error-text" style="text-align:center; margin-top:12px;"></p>
       </div>
     `;
   }
@@ -74,6 +85,26 @@ function render(invoice, client, lineItems, total, invoiceNumber) {
       ${statusSection}
     </div>
   `;
+}
+
+async function payNow() {
+  const btn = document.getElementById('payBtn');
+  const errEl = document.getElementById('payError');
+  errEl.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = 'Redirecting to secure checkout…';
+
+  try {
+    const res = await fetch(`/api/invoice/${token}/checkout`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
+    window.location.href = data.url;
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Pay Now with Card';
+  }
 }
 
 load();

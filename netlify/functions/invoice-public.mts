@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { computeTotal, invoiceNumber } from './_shared/money.mts'
+import { isStripeConfigured } from './_shared/stripe.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 
 export default async (request: Request, context: Context) => {
@@ -24,6 +25,7 @@ export default async (request: Request, context: Context) => {
     lineItems,
     total: computeTotal(lineItems),
     invoiceNumber: invoiceNumber(invoice.id),
+    stripeEnabled: isStripeConfigured(),
   })
 }
 
