@@ -40,13 +40,26 @@ const SERVICE_TERMS_CONTENT = {
 <p><strong>DAMAGE:</strong> Report any property damage within 24 hours of the service date with photos. Client should remove fragile or high-value items from service areas before cleaning visits. Renovo's liability is limited to the cost of the service in which damage occurred.</p>`,
 
   windowCleaning: `<h4>WINDOW CLEANING TERMS &amp; CONDITIONS</h4>
-<p>This service includes interior and/or exterior window and glass cleaning as specified in the line items above. Exterior work above ground level may require ladders, extension poles, or lift equipment; Client agrees to provide safe, unobstructed access to all areas to be cleaned.</p><p>Renovo is not responsible for pre-existing scratches, seal failures, tint defects, or cracked/broken glass identified before or during service. For crew safety, exterior window work may be rescheduled at Renovo's discretion due to wind, rain, ice, or extreme temperatures, without penalty to either party.</p>`,
+<p><strong>PRE-EXISTING CONDITIONS:</strong> Renovo is NOT responsible for: scratches, chips, or cracks existing before cleaning; hard water spots or mineral deposits that do not fully remove with standard cleaning (specialty treatment available at additional cost); failed seals on double-pane windows revealed during cleaning (foggy appearance between panes is a pre-existing condition); paint, adhesive, or stickers on glass disturbed during cleaning.</p>
+<p><strong>WINDOW TINT:</strong> Renovo will not clean windows with tint that is peeling, bubbling, or improperly applied. Client must disclose any window tint issues before service.</p>
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> Ensure all windows are accessible and not blocked by furniture or signage. Notify Renovo of any windows that should NOT be cleaned. Ensure staff are aware exterior window access is permitted.</p>
+<p><strong>WEATHER POLICY:</strong> In heavy rain, strong wind, or freezing temperatures, Renovo reserves the right to reschedule with no cancellation fee. Client may also request weather-related rescheduling at least 3 hours before service with no penalty.</p>`,
 
-  floorCare: `<h4>FLOOR CARE TERMS &amp; CONDITIONS</h4>
-<p>This service includes floor stripping, waxing, sealing, or restoration as specified in the line items above. Freshly treated floors may remain wet, slick, or require a cure time of up to 24–48 hours. Client agrees to restrict foot and equipment traffic during this period and to post appropriate wet-floor signage if service occurs during business hours.</p><p>Renovo is not liable for slip-and-fall incidents occurring after handoff of a treated floor where Client has failed to maintain restricted access or posted signage during the cure period. Final results vary based on existing floor condition, substrate, and any prior coatings not disclosed to Renovo in advance.</p>`,
+  floorCare: `<h4>FLOOR CARE TERMS &amp; CONDITIONS — PLEASE READ CAREFULLY</h4>
+<p><strong>⚠️ CRITICAL WARNING:</strong> Floor stripping involves chemical strippers and buffing machines that interact directly with your floor. OLD, DAMAGED, OR LOW-QUALITY TILES MAY LIFT, CRACK, OR SEPARATE during stripping. This is NOT damage caused by Renovo — it is a pre-existing condition revealed by the process.</p>
+<p><strong>ASBESTOS:</strong> Tiles installed before 1980 may contain asbestos. By signing this work order, client certifies the tiles have been tested for asbestos OR were installed after 1980. Renovo will not strip tiles suspected of containing asbestos.</p>
+<p><strong>PRE-EXISTING CONDITIONS WAIVER:</strong> Client acknowledges the following risks: (1) Old tiles may lift or crack during stripping. (2) Wetting-sensitive floors may react adversely to chemical strippers. (3) Old or failing grout may be disturbed. (4) Floors may show uneven coloration after stripping — this is the true floor color revealed under old wax, not damage. Renovo is NOT liable for these conditions.</p>
+<p><strong>CHEMICAL ODOR:</strong> Floor stripping produces strong odors. The property must be ventilated during and after service. Keep staff and customers off the floor during service and for minimum 2–4 hours after final wax application.</p>
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> Clear ALL furniture, equipment, and items from the floor area before service begins. Renovo does not move heavy furniture. Do NOT walk on freshly waxed floors until technician confirms the floor is safe.</p>
+<p><strong>DRYING TIME:</strong> Each wax coat requires 30–60 minutes to dry. Allow minimum 2–4 hours after the final coat before opening to foot traffic.</p>
+<p><strong>CANCELLATION:</strong> Less than 48 hours notice: $75 cancellation fee (chemicals and labor pre-allocated). If floor is not cleared by agreed service time: $100 per hour delay fee.</p>`,
 
-  disinfection: `<h4>DISINFECTION &amp; SANITIZING TERMS &amp; CONDITIONS</h4>
-<p>This service includes application of EPA-registered disinfectant or sanitizing products to the surfaces specified in the line items above. Client must disclose any known chemical sensitivities, allergies, or occupied medical, childcare, or food-handling areas prior to service so appropriate products and scheduling can be used.</p><p>Treated areas may require a dwell time or re-entry interval as specified by the product manufacturer; Client agrees to restrict access to treated areas during this period. This service is a surface-level disinfection treatment and is not a substitute for professional medical, mold, or biohazard remediation services.</p>`,
+  disinfection: `<h4>DISINFECTION &amp; SANITIZATION TERMS &amp; CONDITIONS — CHEMICAL SERVICE, READ CAREFULLY</h4>
+<p><strong>CHEMICAL DISCLOSURE:</strong> Renovo uses EPA List N approved disinfectants effective against SARS-CoV-2, influenza, norovirus, and common commercial pathogens. These products are safe for hard non-porous surfaces. Safety Data Sheets available upon request.</p>
+<p><strong>RE-ENTRY WAIT TIME — MANDATORY:</strong> ALL people and animals must vacate the treatment area during service AND for a minimum of 30 minutes after treatment is complete. Medical facilities: minimum 60 minutes. Client is SOLELY responsible for enforcing this wait time among all staff and occupants. Renovo is not liable for health effects caused by premature re-entry.</p>
+<p><strong>CUSTOMER RESPONSIBILITIES:</strong> (1) All people and animals must vacate BEFORE Renovo begins. (2) Remove all food, beverages, and uncovered food prep surfaces from treatment area. (3) Cover or remove fish tanks and open terrariums — disinfectant mist harms aquatic life. (4) Disclose any oxygen equipment, CPAP machines, or medical devices in the treatment area. (5) Notify Renovo of any HVAC vents near sensitive equipment.</p>
+<p><strong>LIABILITY:</strong> Renovo is NOT responsible for: health effects from premature re-entry; damage to electronics not disclosed and covered before treatment; damage to non-hard surfaces (fabric, paper, certain paints) not disclosed before treatment.</p>
+<p><strong>MEDICAL DISCLAIMER:</strong> This service is not a substitute for medical advice or disease prevention protocols. Renovo does not guarantee the prevention of any specific illness or disease.</p>`,
 
   lotSweeping: `<h4>PARKING LOT SWEEPING TERMS &amp; CONDITIONS</h4>
 <p>This service includes mechanical or manual sweeping and debris removal from parking lots, garages, or drive areas as specified in the line items above. Client agrees to provide reasonable advance notice to tenants, employees, or customers to relocate vehicles from the service area at the scheduled time.</p><p>Vehicles or obstructions remaining in the work area may result in incomplete service at no reduction in price, or may require rescheduling at Client's request, subject to the Cancellation policy below.</p>`,
@@ -70,8 +83,15 @@ const SERVICE_TYPE_ALIASES = {
   'office cleaning': 'janitorial',
   'restroom cleaning': 'janitorial',
   'window cleaning': 'windowCleaning',
+  'glass cleaning': 'windowCleaning',
   'floor care': 'floorCare',
+  'strip and wax': 'floorCare',
+  'floor wax': 'floorCare',
+  'floor polish': 'floorCare',
+  'buffing': 'floorCare',
   'disinfection': 'disinfection',
+  'sanitization': 'disinfection',
+  'electrostatic disinfection': 'disinfection',
   'lot sweeping': 'lotSweeping',
 };
 
@@ -107,10 +127,10 @@ const STANDARD_TERMS_HTML = `
 const SERVICE_KEYWORDS = {
   pressureWashing: ['pressure wash', 'power wash', 'dumpster pad', 'dumpster', 'gutter', 'facade', 'graffiti', 'concrete seal', 'concrete clean', 'concrete restoration', 'sidewalk', 'exterior wash', 'building wash', 'building exterior', 'parking garage', 'parking lot clean', 'gas station', 'drive-through', 'drive through'],
   windowCleaning: ['window', 'glass'],
-  floorCare: ['floor strip', 'floor wax', 'strip and wax', 'strip & wax', 'floor care', 'floor restoration', 'vct', 'tile floor'],
-  disinfection: ['disinfect', 'electrostatic', 'fogging', 'pathogen', 'virus', 'bacteria'],
+  floorCare: ['floor strip', 'floor wax', 'strip and wax', 'strip & wax', 'floor care', 'floor restoration', 'floor polish', 'buffing', 'buff', 'vct', 'tile floor'],
+  disinfection: ['disinfect', 'electrostatic', 'fogging', 'pathogen', 'virus', 'bacteria', 'sanitization'],
   lotSweeping: ['lot sweep', 'sweeping', 'parking sweep', 'debris removal'],
-  janitorial: ['janitorial', 'lobby', 'office cleaning', 'interior cleaning', 'common area', 'break room', 'kitchen cleaning', 'restroom', 'sanitation'],
+  janitorial: ['janitorial', 'lobby cleaning', 'office cleaning', 'interior cleaning', 'common area cleaning', 'break room', 'kitchen cleaning', 'restroom', 'sanitation'],
 };
 
 function detectServiceCategories(lineItems) {
