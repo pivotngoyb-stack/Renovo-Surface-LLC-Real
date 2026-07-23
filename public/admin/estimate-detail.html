@@ -45,9 +45,9 @@ async function load() {
 
   let actions = '';
   if (estimate.status === 'draft') {
-    actions = `<button class="btn btn-primary" onclick="sendEstimate()">Send to Client</button>`;
+    actions = `<button class="btn btn-primary" id="sendEstimateBtn" onclick="sendEstimate()">Send to Client</button>`;
   } else if (estimate.status === 'approved' && !workOrder) {
-    actions = `<button class="btn btn-primary" onclick="convertToWorkOrder()">Convert to Work Order</button>`;
+    actions = `<button class="btn btn-primary" id="convertBtn" onclick="convertToWorkOrder()">Convert to Work Order</button>`;
   }
 
   let workOrderSection = '';
@@ -104,13 +104,33 @@ async function load() {
 }
 
 async function sendEstimate() {
-  const res = await adminFetch(`/api/admin/estimates/${id}/send`, { method: 'POST' });
-  if (res.ok) load(); else alert('Failed to send estimate.');
+  const btn = document.getElementById('sendEstimateBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res = await adminFetch(`/api/admin/estimates/${id}/send`, { method: 'POST' });
+    if (res.ok) { load(); return; }
+    alert('Failed to send estimate.');
+  } catch (err) {
+    alert('Failed to send estimate. Please check your connection and try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Send to Client';
 }
 
 async function convertToWorkOrder() {
-  const res = await adminFetch(`/api/admin/estimates/${id}/convert`, { method: 'POST' });
-  if (res.ok) load(); else alert('Failed to convert to work order.');
+  const btn = document.getElementById('convertBtn');
+  btn.disabled = true;
+  btn.textContent = 'Converting…';
+  try {
+    const res = await adminFetch(`/api/admin/estimates/${id}/convert`, { method: 'POST' });
+    if (res.ok) { load(); return; }
+    alert('Failed to convert to work order.');
+  } catch (err) {
+    alert('Failed to convert to work order. Please check your connection and try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Convert to Work Order';
 }
 
 async function archiveEstimate(archived) {
