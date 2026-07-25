@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Documents | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <div class="dash-header">
+      <h1 style="font-size:1.6rem;">All Documents</h1>
+    </div>
+    <p style="color:#4A5A72; margin-bottom:20px;">Search across every estimate, work order, invoice, subcontractor agreement, and contract by client or subcontractor name.</p>
+
+    <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+      <input type="text" id="searchInput" placeholder="Search by name…" style="flex:1; min-width:220px; padding:12px 14px; border:1.5px solid #DCE4EF; border-radius:var(--radius-sm); font:inherit;">
+      <select id="typeFilter" style="padding:9px 14px; border-radius:999px; border:1px solid #DCE4EF; font-size:0.85rem; font-weight:600; color:var(--navy); font-family:var(--font-head);">
+        <option value="">All Types</option>
+        <option value="estimate">Estimates</option>
+        <option value="workOrder">Work Orders</option>
+        <option value="invoice">Invoices</option>
+        <option value="subcontractorAgreement">Subcontractor Agreements</option>
+        <option value="contract">Contracts</option>
+      </select>
+    </div>
+
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const TYPE_LABELS = {
+  estimate: '📄 Estimate',
+  workOrder: '📝 Work Order',
+  invoice: '💵 Invoice',
+  subcontractorAgreement: '👷 Subcontractor Agreement',
+  contract: '🔁 Contract',
+};
+
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(load, 300);
+});
+document.getElementById('typeFilter').addEventListener('change', load);
+
+async function load() {
+  const q = document.getElementById('searchInput').value.trim();
+  const type = document.getElementById('typeFilter').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (type) params.set('type', type);
+
+  const res = await adminFetch(`/api/admin/documents?${params.toString()}`);
+  const data = await res.json();
+  const content = document.getElementById('content');
+
+  if (!data.documents.length) {
+    content.innerHTML = '<div class="empty-state">No matching documents found.</div>';
+    return;
+  }
+
+  const rows = data.documents.map(d => `
+    <tr>
+      <td>${TYPE_LABELS[d.type] || d.type}</td>
+      <td><a href="${d.detailUrl}">${d.title}</a></td>
+      <td>${d.name}</td>
+      <td>${statusPill(d.status)}</td>
+      <td>${new Date(d.date).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+
+  content.innerHTML = `
+    <table class="dash-table">
+      <thead><tr><th>Type</th><th>Document</th><th>Name</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>

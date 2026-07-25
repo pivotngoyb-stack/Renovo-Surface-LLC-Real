@@ -16,7 +16,9 @@
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
         <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
         <button onclick="logout()">Log Out</button>
       </div>
@@ -65,7 +67,7 @@ async function load() {
     const archiveBtn = `<button class="btn btn-sm" style="color:${a.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveAgreement(${a.id}, ${!a.archived})">${a.archived ? 'Unarchive' : 'Archive'}</button>`;
     return `
       <tr>
-        <td>${a.subcontractorName}</td>
+        <td><a href="/admin/subcontractor-detail.html?id=${a.id}">${a.subcontractorName}</a></td>
         <td>${a.subcontractorPhone}</td>
         <td>${paymentLabel(a)}</td>
         <td>${statusPill(a.status)}</td>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subcontractor Agreement Detail | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:720px;">
+    <a href="/admin/subcontractors.html" style="color:var(--blue); font-size:0.9rem;">&larr; Back to Subcontractors</a>
+    <div id="content" style="margin-top:20px;">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const id = new URLSearchParams(window.location.search).get('id');
+
+function paymentLabel(a) {
+  return a.paymentType === 'flat' ? `${money(a.paymentAmount)}/job` : `${Number(a.paymentPercentage)}% of job revenue`;
+}
+
+async function load() {
+  const res = await adminFetch(`/api/admin/subcontractors/${id}`);
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Agreement not found.</div>'; return; }
+  const { agreement } = await res.json();
+
+  const link = `${window.location.origin}/subcontractor-agreement.html?t=${agreement.token}`;
+
+  let auditHtml = '';
+  if (agreement.status === 'signed') {
+    auditHtml = `
+      <h3 style="margin:28px 0 12px;">Signature Audit Trail</h3>
+      <table class="dash-table">
+        <tbody>
+          <tr><td style="font-weight:700; width:200px;">Signed By</td><td>${agreement.signerName}</td></tr>
+          <tr><td style="font-weight:700;">Signature Type</td><td>${agreement.signatureType === 'drawn' ? 'Drawn' : 'Typed'}</td></tr>
+          <tr><td style="font-weight:700;">Signed At</td><td>${new Date(agreement.signedAt).toLocaleString()}</td></tr>
+          <tr><td style="font-weight:700;">IP Address</td><td>${agreement.ipAddress || '—'}</td></tr>
+          <tr><td style="font-weight:700;">Electronic Signature Consent</td><td>${agreement.consentConfirmed ? '✅ Confirmed' : '❌ Not confirmed'}</td></tr>
+        </tbody>
+      </table>
+    `;
+  } else {
+    auditHtml = `<div class="empty-state" style="padding:24px;">Not signed yet.</div>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+      <div>
+        <h1 style="font-size:1.6rem;">${agreement.subcontractorName}</h1>
+        <p style="color:#8A98AC;">${agreement.subcontractorPhone}${agreement.subcontractorEmail ? ' &middot; ' + agreement.subcontractorEmail : ''}</p>
+      </div>
+      <div style="text-align:right;">
+        ${statusPill(agreement.status)}
+        <div style="margin-top:10px;">
+          <button class="btn btn-sm" style="color:${agreement.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveAgreement(${!agreement.archived})">${agreement.archived ? 'Unarchive' : 'Archive'}</button>
+        </div>
+      </div>
+    </div>
+
+    <table class="dash-table">
+      <tbody>
+        <tr><td style="font-weight:700; width:200px;">Payment Terms</td><td>${paymentLabel(agreement)}, within 24 hours of client payment</td></tr>
+        <tr><td style="font-weight:700;">Created</td><td>${new Date(agreement.createdAt).toLocaleString()}</td></tr>
+      </tbody>
+    </table>
+
+    ${auditHtml}
+
+    <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Signing link:</strong> <a href="${link}" target="_blank">${link}</a></p>
+  `;
+}
+
+async function archiveAgreement(archived) {
+  const res = await adminFetch(`/api/admin/subcontractors/${id}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  if (res.ok) load(); else alert('Failed to update agreement.');
+}
+
+load();
+</script>
+</body>
+</html>

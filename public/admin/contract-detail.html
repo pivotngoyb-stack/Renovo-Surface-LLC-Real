@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract Detail | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/documents.html">Documents</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:720px;">
+    <a href="/admin/contracts.html" style="color:var(--blue); font-size:0.9rem;">&larr; Back to Contracts</a>
+    <div id="content" style="margin-top:20px;">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const id = new URLSearchParams(window.location.search).get('id');
+
+async function load() {
+  const res = await adminFetch(`/api/admin/contracts/${id}`);
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Contract not found.</div>'; return; }
+  const { contract, client, invoices } = await res.json();
+
+  const autoPay = contract.autoChargeEnabled
+    ? `✅ ${contract.cardBrand ? contract.cardBrand.toUpperCase() : 'Card'} ending in ${contract.cardLast4 || '••••'}`
+    : 'Manual payment';
+
+  let statusActions = '';
+  if (contract.status === 'active') {
+    statusActions = `<button class="btn btn-sm" style="color:#966A00;" onclick="setStatus('paused')">Pause</button> <button class="btn btn-sm" style="color:#C0392B;" onclick="setStatus('cancelled')">Cancel</button>`;
+  } else if (contract.status === 'paused') {
+    statusActions = `<button class="btn btn-sm" style="color:#1B7A3C;" onclick="setStatus('active')">Resume</button> <button class="btn btn-sm" style="color:#C0392B;" onclick="setStatus('cancelled')">Cancel</button>`;
+  }
+
+  const invoiceRows = invoices.map(inv => `
+    <tr>
+      <td><a href="/admin/invoice-detail.html?id=${inv.id}">INV-${1000 + inv.id}</a></td>
+      <td>${statusPill(inv.status)}</td>
+      <td>${money(inv.total || 0)}</td>
+      <td>${new Date(inv.createdAt).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+      <div>
+        <h1 style="font-size:1.6rem;">${contract.description}</h1>
+        <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
+      </div>
+      <div style="text-align:right;">
+        ${statusPill(contract.status)}
+        <div style="margin-top:10px;">
+          <button class="btn btn-sm" style="color:${contract.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveContract(${!contract.archived})">${contract.archived ? 'Unarchive' : 'Archive'}</button>
+        </div>
+      </div>
+    </div>
+
+    <table class="dash-table">
+      <tbody>
+        <tr><td style="font-weight:700; width:200px;">Monthly Amount</td><td>${money(contract.amount)}</td></tr>
+        <tr><td style="font-weight:700;">Bills On</td><td>Day ${contract.billingDay} of each month</td></tr>
+        <tr><td style="font-weight:700;">Payment Method</td><td>${autoPay}</td></tr>
+        <tr><td style="font-weight:700;">Last Billed</td><td>${contract.lastBilledAt ? new Date(contract.lastBilledAt).toLocaleDateString() : 'Never'}</td></tr>
+        <tr><td style="font-weight:700;">Created</td><td>${new Date(contract.createdAt).toLocaleDateString()}</td></tr>
+      </tbody>
+    </table>
+
+    ${statusActions ? `<div style="margin-top:16px;">${statusActions}</div>` : ''}
+
+    <h3 style="margin:28px 0 12px;">Billing History</h3>
+    ${invoices.length ? `
+      <table class="dash-table">
+        <thead><tr><th>Invoice</th><th>Status</th><th>Total</th><th>Date</th></tr></thead>
+        <tbody>${invoiceRows}</tbody>
+      </table>
+    ` : '<div class="empty-state">No invoices generated yet.</div>'}
+  `;
+}
+
+async function setStatus(status) {
+  const verb = status === 'cancelled' ? 'cancel' : status === 'paused' ? 'pause' : 'resume';
+  if (!confirm(`Are you sure you want to ${verb} this contract?`)) return;
+  const res = await adminFetch(`/api/admin/contracts/${id}/status`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+  });
+  if (res.ok) load(); else alert('Failed to update contract.');
+}
+
+async function archiveContract(archived) {
+  const res = await adminFetch(`/api/admin/contracts/${id}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  if (res.ok) load(); else alert('Failed to update contract.');
+}
+
+load();
+</script>
+</body>
+</html>

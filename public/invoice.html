@@ -41,27 +41,27 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
 
   let statusSection;
   if (invoice.status === 'paid') {
-    statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div>`;
+    statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div><div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Receipt</button></div>`;
   } else if (justPaid) {
     statusSection = `<div class="state-banner"><div class="icon">⏳</div><p>Payment received — finishing up. This page will update in a few seconds.</p></div>`;
     setTimeout(load, 2500);
   } else {
     const payButton = stripeEnabled
-      ? `<button class="btn btn-primary btn-block" id="payBtn" onclick="payNow()" style="margin-bottom:14px;">Pay Now with Card</button>`
+      ? `<button class="btn btn-primary btn-block no-print" id="payBtn" onclick="payNow()" style="margin-bottom:14px;">Pay Now with Card</button>`
       : '';
 
     let autoPaySection = '';
     if (stripeEnabled && recurring) {
       if (recurring.autoChargeEnabled) {
         autoPaySection = `
-          <div style="background:#E1F7E8; border-radius:12px; padding:18px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div class="no-print" style="background:#E1F7E8; border-radius:12px; padding:18px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <span style="color:#1B7A3C; font-size:0.9rem;">✅ Auto-pay is on — ${recurring.cardBrand ? recurring.cardBrand.toUpperCase() : 'Card'} ending in ${recurring.cardLast4 || '••••'} will be charged automatically for future invoices on this contract.</span>
             <button type="button" class="btn btn-sm" style="color:#C0392B; white-space:nowrap;" onclick="disableAutoPay()">Turn off auto-pay</button>
           </div>
         `;
       } else {
         autoPaySection = `
-          <div class="consent-row" style="margin-top:0; margin-bottom:16px;">
+          <div class="consent-row no-print" style="margin-top:0; margin-bottom:16px;">
             <input type="checkbox" id="saveCardCheck">
             <label for="saveCardCheck">Save this card and automatically charge future invoices for this recurring contract. I can turn this off anytime from this page. This authorization stays in effect until I cancel it.</label>
           </div>
@@ -73,6 +73,7 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
       <div style="margin-top:24px;">
         ${autoPaySection}
         ${payButton}
+        <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Invoice</button></div>
         <div style="background:var(--off-white); border-radius:12px; padding:24px;">
           <h3 style="font-size:1rem; margin-bottom:10px;">${stripeEnabled ? 'Other Ways to Pay' : 'How to Pay'}</h3>
           <p style="color:#4A5A72; font-size:0.92rem; line-height:1.6;">
@@ -82,7 +83,7 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
             with any questions. We'll mark this invoice paid and email you a receipt once payment is received.
           </p>
         </div>
-        <p id="payError" class="error-text" style="text-align:center; margin-top:12px;"></p>
+        <p id="payError" class="error-text no-print" style="text-align:center; margin-top:12px;"></p>
       </div>
     `;
   }

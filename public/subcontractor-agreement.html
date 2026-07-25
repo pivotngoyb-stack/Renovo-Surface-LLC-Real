@@ -89,6 +89,7 @@ function render(agreement) {
           <strong>Pivot Ngoy — Renovo Surface Solutions LLC</strong><br>
           Owner &middot; Agreement issued ${effectiveDate}
         </div>
+        <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Signed Agreement</button></div>
       </div>
     `;
     return;
@@ -111,34 +112,55 @@ function render(agreement) {
         Owner &middot; Agreement issued ${effectiveDate}
       </div>
 
-      <div class="field-group">
-        <label for="signerName">Your Full Name</label>
-        <input type="text" id="signerName" placeholder="Type your full legal name">
+      <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print for In-Person Signature</button></div>
+
+      <div class="no-print">
+        <div class="field-group">
+          <label for="signerName">Your Full Name</label>
+          <input type="text" id="signerName" placeholder="Type your full legal name">
+        </div>
+
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Subcontractor Signature</label>
+        <div class="sig-tabs">
+          <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')">Draw Signature</button>
+          <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')">Type Signature</button>
+        </div>
+
+        <div class="sig-panel active" id="panelDrawn">
+          <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+          <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
+        </div>
+        <div class="sig-panel" id="panelTyped">
+          <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;">
+        </div>
+
+        <div class="consent-row">
+          <input type="checkbox" id="consentCheck">
+          <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
+        </div>
+
+        <div class="doc-actions">
+          <button class="btn btn-primary" id="signBtn" onclick="submitSignature()">Sign Agreement</button>
+        </div>
+        <p id="signError" class="error-text" style="text-align:center;"></p>
       </div>
 
-      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Subcontractor Signature</label>
-      <div class="sig-tabs">
-        <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')">Draw Signature</button>
-        <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')">Type Signature</button>
+      <div class="print-only sign-lines">
+        <div style="display:flex; gap:40px;">
+          <div style="flex:1;">
+            <div class="sign-line"></div>
+            <p class="sign-line-label">Subcontractor Signature</p>
+          </div>
+          <div style="width:140px;">
+            <div class="sign-line"></div>
+            <p class="sign-line-label">Date</p>
+          </div>
+        </div>
+        <div style="margin-top:24px; width:60%;">
+          <div class="sign-line"></div>
+          <p class="sign-line-label">Print Name</p>
+        </div>
       </div>
-
-      <div class="sig-panel active" id="panelDrawn">
-        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
-        <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
-      </div>
-      <div class="sig-panel" id="panelTyped">
-        <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;">
-      </div>
-
-      <div class="consent-row">
-        <input type="checkbox" id="consentCheck">
-        <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
-      </div>
-
-      <div class="doc-actions">
-        <button class="btn btn-primary" id="signBtn" onclick="submitSignature()">Sign Agreement</button>
-      </div>
-      <p id="signError" class="error-text" style="text-align:center;"></p>
     </div>
   `;
 

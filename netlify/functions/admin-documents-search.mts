@@ -1,0 +1,167 @@
+import { eq, and, ilike, desc } from 'drizzle-orm'
+import { db, schema } from './_shared/db.mts'
+import { isAuthenticated } from './_shared/auth.mts'
+import { json, unauthorized } from './_shared/http.mts'
+
+interface DocRow {
+  type: 'estimate' | 'workOrder' | 'invoice' | 'subcontractorAgreement' | 'contract'
+  id: number
+  title: string
+  name: string
+  status: string
+  date: string
+  detailUrl: string
+}
+
+const LIMIT_PER_TYPE = 30
+
+export default async (request: Request) => {
+  if (!isAuthenticated(request)) return unauthorized()
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 })
+
+  const url = new URL(request.url)
+  const q = (url.searchParams.get('q') || '').trim()
+  const typeFilter = url.searchParams.get('type') || ''
+  const pattern = q ? `%${q}%` : null
+
+  const results: DocRow[] = []
+
+  if (!typeFilter || typeFilter === 'estimate') {
+    const rows = await db
+      .select({
+        id: schema.estimates.id,
+        status: schema.estimates.status,
+        createdAt: schema.estimates.createdAt,
+        clientName: schema.clients.name,
+      })
+      .from(schema.estimates)
+      .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
+      .where(and(eq(schema.estimates.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .orderBy(desc(schema.estimates.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'estimate',
+        id: r.id,
+        title: `Estimate #${r.id}`,
+        name: r.clientName || '—',
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        detailUrl: `/admin/estimate-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  if (!typeFilter || typeFilter === 'workOrder') {
+    const rows = await db
+      .select({
+        id: schema.workOrders.id,
+        status: schema.workOrders.status,
+        createdAt: schema.workOrders.createdAt,
+        clientName: schema.clients.name,
+      })
+      .from(schema.workOrders)
+      .leftJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
+      .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
+      .where(and(eq(schema.estimates.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .orderBy(desc(schema.workOrders.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'workOrder',
+        id: r.id,
+        title: `Work Order #${r.id}`,
+        name: r.clientName || '—',
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        detailUrl: `/admin/work-order-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  if (!typeFilter || typeFilter === 'invoice') {
+    const rows = await db
+      .select({
+        id: schema.invoices.id,
+        status: schema.invoices.status,
+        createdAt: schema.invoices.createdAt,
+        clientName: schema.clients.name,
+      })
+      .from(schema.invoices)
+      .leftJoin(schema.clients, eq(schema.invoices.clientId, schema.clients.id))
+      .where(and(eq(schema.invoices.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .orderBy(desc(schema.invoices.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'invoice',
+        id: r.id,
+        title: `INV-${1000 + r.id}`,
+        name: r.clientName || '—',
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        detailUrl: `/admin/invoice-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  if (!typeFilter || typeFilter === 'subcontractorAgreement') {
+    const rows = await db
+      .select()
+      .from(schema.subcontractorAgreements)
+      .where(and(eq(schema.subcontractorAgreements.archived, false), pattern ? ilike(schema.subcontractorAgreements.subcontractorName, pattern) : undefined))
+      .orderBy(desc(schema.subcontractorAgreements.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'subcontractorAgreement',
+        id: r.id,
+        title: 'Subcontractor Agreement',
+        name: r.subcontractorName,
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        detailUrl: `/admin/subcontractor-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  if (!typeFilter || typeFilter === 'contract') {
+    const rows = await db
+      .select({
+        id: schema.recurringContracts.id,
+        status: schema.recurringContracts.status,
+        createdAt: schema.recurringContracts.createdAt,
+        description: schema.recurringContracts.description,
+        clientName: schema.clients.name,
+      })
+      .from(schema.recurringContracts)
+      .leftJoin(schema.clients, eq(schema.recurringContracts.clientId, schema.clients.id))
+      .where(and(eq(schema.recurringContracts.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .orderBy(desc(schema.recurringContracts.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'contract',
+        id: r.id,
+        title: r.description,
+        name: r.clientName || '—',
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        detailUrl: `/admin/contract-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  return json({ documents: results })
+}
+
+export const config = {
+  path: '/api/admin/documents',
+}

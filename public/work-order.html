@@ -187,6 +187,7 @@ function render(workOrder, client, signature, lineItems) {
         </div>
         ${signature.termsAgreed ? `<p style="text-align:center; font-size:0.85rem; color:#4A5A72; margin-top:-10px; margin-bottom:20px;">Client agreed to <strong>${signature.serviceTypeShown || 'General'}</strong> Terms &amp; Conditions on ${new Date(signature.signedAt).toLocaleDateString()} at ${new Date(signature.signedAt).toLocaleTimeString()}</p>` : ''}
         <div class="doc-terms">${workOrder.termsText}</div>
+        <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Signed Work Order</button></div>
       </div>
     `;
     return;
@@ -213,7 +214,9 @@ function render(workOrder, client, signature, lineItems) {
 
       <div class="standard-terms-block">${STANDARD_TERMS_HTML}</div>
 
-      <div id="signingBlock" class="field-disabled">
+      <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print for In-Person Signature</button></div>
+
+      <div id="signingBlock" class="field-disabled no-print">
         <div class="field-group">
           <label for="signerName">Your Full Name</label>
           <input type="text" id="signerName" placeholder="Type your full legal name" disabled>
@@ -242,6 +245,23 @@ function render(workOrder, client, signature, lineItems) {
           <button class="btn btn-primary" id="signBtn" onclick="submitSignature()" disabled>Sign Work Order</button>
         </div>
         <p id="signError" class="error-text" style="text-align:center;"></p>
+      </div>
+
+      <div class="print-only sign-lines">
+        <div style="display:flex; gap:40px;">
+          <div style="flex:1;">
+            <div class="sign-line"></div>
+            <p class="sign-line-label">Client Signature</p>
+          </div>
+          <div style="width:140px;">
+            <div class="sign-line"></div>
+            <p class="sign-line-label">Date</p>
+          </div>
+        </div>
+        <div style="margin-top:24px; width:60%;">
+          <div class="sign-line"></div>
+          <p class="sign-line-label">Print Name</p>
+        </div>
       </div>
     </div>
   `;

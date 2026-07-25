@@ -16,7 +16,9 @@
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
         <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
         <button onclick="logout()">Log Out</button>
       </div>
@@ -70,6 +72,7 @@ async function load() {
       <h3 style="margin:28px 0 12px;">Work Order</h3>
       <p>Status: ${statusPill(workOrder.status)}</p>
       <p style="margin-top:10px; font-size:0.85rem;"><a href="${woLink}" target="_blank">${woLink}</a></p>
+      <p style="margin-top:10px;"><a href="/admin/work-order-detail.html?id=${workOrder.id}" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);">View Work Order Details</a></p>
       ${invoiceHtml}
     `;
   }

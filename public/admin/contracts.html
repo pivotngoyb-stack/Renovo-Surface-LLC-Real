@@ -16,7 +16,9 @@
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
         <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
         <a href="/admin/invoice-new.html">+ New Invoice</a>
         <button onclick="logout()">Log Out</button>
@@ -75,7 +77,7 @@ async function load() {
     return `
       <tr>
         <td>${c.clientName || '—'}</td>
-        <td>${c.description}</td>
+        <td><a href="/admin/contract-detail.html?id=${c.id}">${c.description}</a></td>
         <td>${money(c.amount)}/mo</td>
         <td>Day ${c.billingDay}</td>
         <td>${statusPill(c.status)}</td>

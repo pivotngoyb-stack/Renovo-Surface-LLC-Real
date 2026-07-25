@@ -106,3 +106,19 @@ body.admin-body {
 
 .state-banner { text-align: center; padding: 60px 24px; }
 .state-banner .icon { font-size: 3rem; margin-bottom: 16px; }
+
+.print-btn-row { text-align: center; margin-bottom: 20px; }
+.print-only { display: none; }
+.sign-lines { margin-top: 40px; }
+.sign-line { border-bottom: 1px solid #000; height: 40px; }
+.sign-line-label { font-size: 0.8rem; color: #4A5A72; margin-top: 4px; }
+
+@media print {
+  body.admin-body { background: #fff; }
+  .admin-nav, .mobile-menu, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .doc-card { box-shadow: none; border: none; margin: 0; padding: 0; max-width: 100%; }
+  .service-terms-scroll { max-height: none; overflow: visible; border: 1px solid #ccc; }
+  .standard-terms-block, .payment-terms-box, .estimate-terms-box, .doc-terms, .service-terms-scroll { break-inside: avoid; }
+  a[href]::after { content: none !important; }
+}
