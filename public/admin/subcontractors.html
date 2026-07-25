@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subcontractor Agreements | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <div class="dash-header">
+      <h1 style="font-size:1.6rem;">Subcontractor Agreements</h1>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-sm" style="color:var(--navy); border:1px solid #DCE4EF;" id="archiveToggle" onclick="toggleArchived()">Show Archived</button>
+        <a href="/admin/subcontractor-new.html" class="btn btn-primary btn-sm">+ New Agreement</a>
+      </div>
+    </div>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+let showArchived = false;
+
+function toggleArchived() {
+  showArchived = !showArchived;
+  document.getElementById('archiveToggle').textContent = showArchived ? 'Show Active' : 'Show Archived';
+  load();
+}
+
+function paymentLabel(a) {
+  return a.paymentType === 'flat' ? `${money(a.paymentAmount)}/job` : `${Number(a.paymentPercentage)}% of job revenue`;
+}
+
+async function load() {
+  const res = await adminFetch(`/api/admin/subcontractors${showArchived ? '?archived=1' : ''}`);
+  const data = await res.json();
+  const content = document.getElementById('content');
+
+  if (!data.agreements.length) {
+    content.innerHTML = showArchived
+      ? '<div class="empty-state">No archived agreements.</div>'
+      : '<div class="empty-state">No subcontractor agreements yet. <a href="/admin/subcontractor-new.html">Create your first one</a>.</div>';
+    return;
+  }
+
+  const rows = data.agreements.map(a => {
+    const link = `${window.location.origin}/subcontractor-agreement.html?t=${a.token}`;
+    const archiveBtn = `<button class="btn btn-sm" style="color:${a.archived ? '#1B7A3C' : '#C0392B'};" onclick="archiveAgreement(${a.id}, ${!a.archived})">${a.archived ? 'Unarchive' : 'Archive'}</button>`;
+    return `
+      <tr>
+        <td>${a.subcontractorName}</td>
+        <td>${a.subcontractorPhone}</td>
+        <td>${paymentLabel(a)}</td>
+        <td>${statusPill(a.status)}</td>
+        <td>${a.signedAt ? new Date(a.signedAt).toLocaleDateString() : '—'}</td>
+        <td style="font-size:0.82rem; word-break:break-all;"><a href="${link}" target="_blank">${link}</a></td>
+        <td>${archiveBtn}</td>
+      </tr>
+    `;
+  }).join('');
+
+  content.innerHTML = `
+    <table class="dash-table">
+      <thead><tr><th>Name</th><th>Phone</th><th>Payment</th><th>Status</th><th>Signed</th><th>Signing Link</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function archiveAgreement(id, archived) {
+  const res = await adminFetch(`/api/admin/subcontractors/${id}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  if (res.ok) load(); else alert('Failed to update agreement.');
+}
+
+load();
+</script>
+</body>
+</html>

@@ -5,6 +5,8 @@ export const workOrderStatusEnum = pgEnum('work_order_status', ['pending', 'sign
 export const signatureTypeEnum = pgEnum('signature_type', ['drawn', 'typed'])
 export const invoiceStatusEnum = pgEnum('invoice_status', ['unpaid', 'paid'])
 export const contractStatusEnum = pgEnum('contract_status', ['active', 'paused', 'cancelled'])
+export const paymentTypeEnum = pgEnum('payment_type', ['flat', 'percentage'])
+export const subAgreementStatusEnum = pgEnum('sub_agreement_status', ['pending', 'signed'])
 
 export const clients = pgTable('clients', {
   id: serial('id').primaryKey(),
@@ -102,4 +104,24 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   quantity: numeric('quantity').notNull().default('1'),
   unitPrice: numeric('unit_price').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
+})
+
+export const subcontractorAgreements = pgTable('subcontractor_agreements', {
+  id: serial('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  subcontractorName: text('subcontractor_name').notNull(),
+  subcontractorPhone: text('subcontractor_phone').notNull(),
+  subcontractorEmail: text('subcontractor_email'),
+  paymentType: paymentTypeEnum('payment_type').notNull(),
+  paymentAmount: numeric('payment_amount'),
+  paymentPercentage: numeric('payment_percentage'),
+  status: subAgreementStatusEnum('status').notNull().default('pending'),
+  signerName: text('signer_name'),
+  signatureType: signatureTypeEnum('signature_type'),
+  signatureData: text('signature_data'),
+  consentConfirmed: boolean('consent_confirmed').notNull().default(false),
+  ipAddress: text('ip_address'),
+  signedAt: timestamp('signed_at'),
+  archived: boolean('archived').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 })

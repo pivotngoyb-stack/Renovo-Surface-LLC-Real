@@ -215,3 +215,24 @@ export async function sendSignedWorkOrderConfirmation(clientEmail: string, clien
     html: wrapper(`<p style="color:#4A5A72;"><strong>${clientName}</strong> signed work order #${workOrderId}. Time to schedule the job.</p>`),
   })
 }
+
+export async function sendSubcontractorAgreementLink(subEmail: string, subName: string, token: string) {
+  const url = `${SITE_URL}/subcontractor-agreement.html?t=${token}`
+  await sendEmail({
+    to: subEmail,
+    subject: 'Subcontractor Agreement — Renovo Surface Solutions',
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Hi ${subName},</h2>
+      <p style="color:#4A5A72; line-height:1.6;">Before your first job with Renovo Surface Solutions, please review and sign the subcontractor agreement below.</p>
+      ${button('Review & Sign Agreement', url)}
+    `),
+  })
+}
+
+export async function notifyAdminSubcontractorAgreementSigned(subName: string) {
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `✅ Subcontractor Agreement Signed — ${subName}`,
+    html: wrapper(`<p style="color:#4A5A72;"><strong>${subName}</strong> signed their subcontractor agreement. They're cleared to start work.</p>`),
+  })
+}

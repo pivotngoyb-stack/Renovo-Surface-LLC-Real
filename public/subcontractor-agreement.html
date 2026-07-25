@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subcontractor Agreement | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading agreement…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+let currentTab = 'drawn';
+let hasDrawn = false;
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
+}
+
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function paymentSentence(a) {
+  const rate = a.paymentType === 'flat' ? `${money(a.paymentAmount)} per job` : `${Number(a.paymentPercentage)}% of job revenue`;
+  return `Subcontractor will be paid <strong>${rate}</strong>, within 24 hours of the client's payment being received by Renovo Surface Solutions LLC.`;
+}
+
+async function load() {
+  if (!token) { showError('Missing agreement link.'); return; }
+  const res = await fetch(`/api/subcontractor-agreement/${token}`);
+  if (!res.ok) { showError('This agreement could not be found.'); return; }
+  const { agreement } = await res.json();
+  render(agreement);
+}
+
+function render(agreement) {
+  const effectiveDate = new Date(agreement.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const agreementBodyHtml = `
+    <div class="doc-terms" style="margin-top:0;">
+      <p style="text-align:center; font-family:var(--font-head); font-size:1.1rem; color:var(--navy); font-weight:800; letter-spacing:0.02em; margin-bottom:4px;">SUBCONTRACTOR AGREEMENT</p>
+      <p style="text-align:center; font-size:0.82rem; color:#8A98AC; margin-bottom:24px;">Effective ${effectiveDate}</p>
+
+      <p><strong>Subcontractor Name:</strong> ${agreement.subcontractorName}<br><strong>Phone:</strong> ${agreement.subcontractorPhone}</p>
+
+      <p style="margin-top:18px;">Subcontractor agrees to perform cleaning services on behalf of <strong>Renovo Surface Solutions LLC</strong> ("the Company") on an as-needed basis, as assigned by the Company from time to time.</p>
+
+      <h4 style="margin:20px 0 6px;">Payment</h4>
+      <p>${paymentSentence(agreement)}</p>
+
+      <h4 style="margin:20px 0 6px;">Independent Contractor Status</h4>
+      <p>Subcontractor is an independent contractor and is not an employee, agent, or partner of Renovo Surface Solutions LLC. Nothing in this agreement creates an employment relationship between the parties.</p>
+
+      <h4 style="margin:20px 0 6px;">Equipment, Insurance &amp; Taxes</h4>
+      <p>Subcontractor is responsible for providing their own equipment and supplies unless otherwise agreed in writing, and is solely responsible for their own insurance coverage and all applicable federal, state, and local taxes arising from payments made under this agreement. Renovo Surface Solutions LLC will not withhold taxes on Subcontractor's behalf.</p>
+
+      <h4 style="margin:20px 0 6px;">Non-Solicitation</h4>
+      <p>For a period of <strong>12 months</strong> following the last job performed under this agreement, Subcontractor agrees not to directly or indirectly contact, solicit, or perform work for any client of Renovo Surface Solutions LLC that Subcontractor was introduced to or serviced through the Company, outside of an engagement with the Company.</p>
+
+      <h4 style="margin:20px 0 6px;">Entire Agreement</h4>
+      <p>This document constitutes the entire agreement between Subcontractor and Renovo Surface Solutions LLC regarding the subject matter herein and supersedes any prior discussions or understandings, written or oral.</p>
+    </div>
+  `;
+
+  if (agreement.status === 'signed') {
+    document.getElementById('content').innerHTML = `
+      <div class="doc-card">
+        <div class="doc-header">
+          <img src="images/logo.png" alt="Renovo Surface Solutions">
+          <div style="text-align:right;">
+            <h1 style="font-size:1.3rem;">Subcontractor Agreement</h1>
+            <p style="color:#8A98AC; font-size:0.85rem;">${agreement.subcontractorName}</p>
+          </div>
+        </div>
+        <div class="state-banner">
+          <div class="icon">✅</div>
+          <p><strong>Signed by ${agreement.signerName}</strong></p>
+          <p style="color:#8A98AC; font-size:0.85rem;">${new Date(agreement.signedAt).toLocaleString()}</p>
+        </div>
+        ${agreementBodyHtml}
+        <div style="margin-top:24px; padding-top:20px; border-top:1px solid #EEF2F8; font-size:0.85rem; color:#4A5A72;">
+          <strong>Pivot Ngoy — Renovo Surface Solutions LLC</strong><br>
+          Owner &middot; Agreement issued ${effectiveDate}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="doc-card">
+      <div class="doc-header">
+        <img src="images/logo.png" alt="Renovo Surface Solutions">
+        <div style="text-align:right;">
+          <h1 style="font-size:1.3rem;">Subcontractor Agreement</h1>
+          <p style="color:#8A98AC; font-size:0.85rem;">${agreement.subcontractorName}</p>
+        </div>
+      </div>
+
+      ${agreementBodyHtml}
+
+      <div style="margin:24px 0; padding:16px 18px; background:var(--off-white); border-radius:8px; font-size:0.85rem; color:#4A5A72;">
+        <strong>Pivot Ngoy — Renovo Surface Solutions LLC</strong><br>
+        Owner &middot; Agreement issued ${effectiveDate}
+      </div>
+
+      <div class="field-group">
+        <label for="signerName">Your Full Name</label>
+        <input type="text" id="signerName" placeholder="Type your full legal name">
+      </div>
+
+      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Subcontractor Signature</label>
+      <div class="sig-tabs">
+        <button type="button" class="sig-tab-btn active" id="tabDrawn" onclick="switchTab('drawn')">Draw Signature</button>
+        <button type="button" class="sig-tab-btn" id="tabTyped" onclick="switchTab('typed')">Type Signature</button>
+      </div>
+
+      <div class="sig-panel active" id="panelDrawn">
+        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+        <button type="button" class="btn btn-sm" style="margin-top:8px; color:var(--blue);" onclick="clearCanvas()">Clear</button>
+      </div>
+      <div class="sig-panel" id="panelTyped">
+        <input type="text" id="typedSignature" placeholder="Type your name as your signature" style="font-family: 'Brush Script MT', cursive; font-size:1.6rem; width:100%; padding:14px; border:1.5px solid #DCE4EF; border-radius:8px;">
+      </div>
+
+      <div class="consent-row">
+        <input type="checkbox" id="consentCheck">
+        <label for="consentCheck">I consent to sign this document electronically and agree that my electronic signature is legally binding, the same as a handwritten signature. I understand I may request a paper copy at any time by contacting Renovo Surface Solutions.</label>
+      </div>
+
+      <div class="doc-actions">
+        <button class="btn btn-primary" id="signBtn" onclick="submitSignature()">Sign Agreement</button>
+      </div>
+      <p id="signError" class="error-text" style="text-align:center;"></p>
+    </div>
+  `;
+
+  initCanvas();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabDrawn').classList.toggle('active', tab === 'drawn');
+  document.getElementById('tabTyped').classList.toggle('active', tab === 'typed');
+  document.getElementById('panelDrawn').classList.toggle('active', tab === 'drawn');
+  document.getElementById('panelTyped').classList.toggle('active', tab === 'typed');
+}
+
+let canvas, ctx, drawing = false;
+
+function initCanvas() {
+  canvas = document.getElementById('sigCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.strokeStyle = '#0D1F38';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return { x: point.clientX - r.left, y: point.clientY - r.top };
+  };
+
+  const start = (e) => { e.preventDefault(); drawing = true; hasDrawn = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+  const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const end = () => { drawing = false; };
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasDrawn = false;
+}
+
+async function submitSignature() {
+  const errEl = document.getElementById('signError');
+  errEl.classList.remove('show');
+
+  const signerName = document.getElementById('signerName').value.trim();
+  const consentConfirmed = document.getElementById('consentCheck').checked;
+
+  if (!signerName) return fail('Please enter your full name.');
+  if (!consentConfirmed) return fail('Please confirm you consent to sign electronically.');
+
+  let signatureData, signatureType;
+  if (currentTab === 'drawn') {
+    if (!hasDrawn) return fail('Please draw your signature, or switch to "Type Signature".');
+    signatureData = canvas.toDataURL('image/png');
+    signatureType = 'drawn';
+  } else {
+    const typed = document.getElementById('typedSignature').value.trim();
+    if (!typed) return fail('Please type your signature.');
+    signatureData = typed;
+    signatureType = 'typed';
+  }
+
+  const btn = document.getElementById('signBtn');
+  btn.disabled = true;
+  btn.textContent = 'Signing…';
+
+  try {
+    const res = await fetch(`/api/subcontractor-agreement/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signerName, signatureType, signatureData, consentConfirmed })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to sign');
+    }
+    load();
+  } catch (err) {
+    fail(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Sign Agreement';
+  }
+}
+
+function fail(msg) {
+  const errEl = document.getElementById('signError');
+  errEl.textContent = msg;
+  errEl.classList.add('show');
+}
+
+load();
+</script>
+</body>
+</html>

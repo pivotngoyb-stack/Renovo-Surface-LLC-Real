@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Subcontractor Agreement | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap" style="max-width:600px;">
+    <h1 style="font-size:1.6rem; margin-bottom:24px;">New Subcontractor Agreement</h1>
+    <p style="color:#4A5A72; margin-bottom:24px;">Fill this out before the subcontractor does a single job. You'll get a signing link to hand them on-site or send by email.</p>
+
+    <form id="subForm">
+      <h3 style="margin-bottom:12px;">Subcontractor</h3>
+      <div class="field-group"><label>Full Name *</label><input type="text" id="subName" required></div>
+      <div class="field-group"><label>Phone *</label><input type="tel" id="subPhone" required></div>
+      <div class="field-group"><label>Email (optional — to send the link directly)</label><input type="email" id="subEmail"></div>
+
+      <h3 style="margin: 28px 0 12px;">Payment Terms</h3>
+      <div class="field-group">
+        <label>Payment Structure *</label>
+        <select id="paymentType" required>
+          <option value="flat">Flat fee per job</option>
+          <option value="percentage">Percentage of job revenue</option>
+        </select>
+      </div>
+      <div class="field-group" id="flatField"><label>Amount per Job ($) *</label><input type="number" id="paymentAmount" min="0.01" step="0.01"></div>
+      <div class="field-group" id="pctField" style="display:none;"><label>Percentage of Job Revenue (%) *</label><input type="number" id="paymentPercentage" min="0.01" max="100" step="0.1"></div>
+      <p style="font-size:0.8rem; color:#8A98AC; margin-top:-8px;">Paid within 24 hours of client payment, per the agreement terms.</p>
+
+      <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Create Agreement</button>
+      <p class="error-text" id="errorText"></p>
+    </form>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const paymentType = document.getElementById('paymentType');
+paymentType.addEventListener('change', () => {
+  const isFlat = paymentType.value === 'flat';
+  document.getElementById('flatField').style.display = isFlat ? 'block' : 'none';
+  document.getElementById('pctField').style.display = isFlat ? 'none' : 'block';
+});
+
+document.getElementById('subForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const errorText = document.getElementById('errorText');
+  errorText.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  try {
+    const res = await adminFetch('/api/admin/subcontractors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subcontractorName: document.getElementById('subName').value,
+        subcontractorPhone: document.getElementById('subPhone').value,
+        subcontractorEmail: document.getElementById('subEmail').value,
+        paymentType: paymentType.value,
+        paymentAmount: document.getElementById('paymentAmount').value,
+        paymentPercentage: document.getElementById('paymentPercentage').value,
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to create agreement');
+    }
+    window.location.href = '/admin/subcontractors.html';
+  } catch (err) {
+    errorText.textContent = err.message;
+    errorText.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Create Agreement';
+  }
+});
+</script>
+</body>
+</html>
