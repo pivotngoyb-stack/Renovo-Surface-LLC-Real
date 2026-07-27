@@ -11,26 +11,35 @@ interface SendEmailArgs {
 /**
  * Sends via Resend. If RESEND_API_KEY isn't set yet, logs instead of throwing so
  * the rest of the estimate/work-order flow keeps working during setup.
+ * Returns false only on an actual Resend API failure (not on the no-key no-op),
+ * so callers that need to know can alert someone instead of failing silently.
  */
-export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<void> {
+export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn(`[email] RESEND_API_KEY not set — skipping send. Would have emailed "${subject}" to ${to}`)
-    return
+    return true
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
-  })
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: FROM, to, subject, html }),
+    })
 
-  if (!res.ok) {
-    const body = await res.text()
-    console.error(`[email] Resend send failed (${res.status}): ${body}`)
+    if (!res.ok) {
+      const body = await res.text()
+      console.error(`[email] Resend send failed (${res.status}): ${body}`)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error(`[email] Resend send threw`, err)
+    return false
   }
 }
 
@@ -92,9 +101,9 @@ export async function notifyAdminEstimateDeclined(clientName: string, estimateId
   })
 }
 
-export async function sendWorkOrderToClient(clientEmail: string, clientName: string, token: string) {
+export async function sendWorkOrderToClient(clientEmail: string, clientName: string, token: string): Promise<boolean> {
   const url = `${SITE_URL}/work-order.html?t=${token}`
-  await sendEmail({
+  return sendEmail({
     to: clientEmail,
     subject: 'Work Order Ready for Your Signature',
     html: wrapper(`
@@ -186,6 +195,17 @@ export async function notifyAdminAutoChargeFailed(clientName: string, invoiceId:
       <p style="color:#4A5A72;">The saved card on file for <strong>${clientName}</strong> failed on invoice #${invoiceId}.</p>
       <p style="color:#4A5A72;"><strong>Reason:</strong> ${reason}</p>
       <p style="color:#4A5A72;">The invoice email was still sent normally so the client can pay manually. You may want to follow up with them directly.</p>
+    `),
+  })
+}
+
+export async function notifyAdminEmailDeliveryFailed(clientName: string, clientEmail: string, whatFailed: string, link: string) {
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `⚠️ Email Delivery Failed — ${whatFailed} for ${clientName}`,
+    html: wrapper(`
+      <p style="color:#4A5A72;">The ${whatFailed} email to <strong>${clientName}</strong> (${clientEmail}) failed to send.</p>
+      <p style="color:#4A5A72;">Please follow up directly — call, text, or forward this link: <a href="${link}" style="color:#1B7FE8;">${link}</a></p>
     `),
   })
 }

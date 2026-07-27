@@ -1,7 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { db, schema } from './db.mts'
 import { generateToken } from './tokens.mts'
-import { sendWorkOrderToClient } from './email.mts'
+import { sendWorkOrderToClient, notifyAdminEmailDeliveryFailed } from './email.mts'
+
+const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
 
 /**
  * Creates a work order for an approved estimate and emails the client to sign.
@@ -56,7 +58,11 @@ upon completion. This authorization is legally binding once signed.`
     })
     .returning()
 
-  await sendWorkOrderToClient(client.email, client.name, workOrder.token)
+  const sent = await sendWorkOrderToClient(client.email, client.name, workOrder.token)
+  if (!sent) {
+    const link = `${SITE_URL}/work-order.html?t=${workOrder.token}`
+    await notifyAdminEmailDeliveryFailed(client.name, client.email, 'work order', link)
+  }
 
   return workOrder
 }
