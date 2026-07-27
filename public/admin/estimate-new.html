@@ -45,6 +45,12 @@
         <div id="calcBody" class="calc-body">
           <p style="color:#4A5A72; font-size:0.85rem; margin-bottom:14px;">Pick a service, fill in the job details, and add the priced line item straight to this estimate.</p>
 
+          <div class="field-group" style="max-width:220px;">
+            <label>Your Labor Rate ($/hr)</label>
+            <input type="number" id="laborRate" min="0" step="1" value="30" oninput="recalculate()">
+            <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">Fully-loaded cost of your time (wages, payroll tax, insurance). Used to calculate real profit below — set this to your actual number.</p>
+          </div>
+
           <div class="calc-service-grid" id="calcServiceGrid"></div>
 
           <div id="calcFields" class="calc-fields"></div>
@@ -249,7 +255,7 @@ const CALCULATORS = {
     const priced = base * contamination * stories * schedule;
     const final = Math.max(priced + tripFee, 175);
     const duration = Math.max(sqft / 1000, 1);
-    const productCost = sqft * 0.01;
+    const productCost = sqft * 0.01 * contamination;
     const fuelCost = miles * 2 * 0.65;
     const description = PW_DESCRIPTIONS[jobType] || `Professional hot-water pressure washing service for ${jobType.toLowerCase()}. Appropriate PSI and technique selected for surface material. Before and after photo documentation included.`;
     return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
@@ -284,7 +290,7 @@ const CALCULATORS = {
     const restroomAdd = restrooms * 30;
     const final = Math.max((facilityAdjusted + restroomAdd) * frequency, 99);
     const duration = sqft / 1500 + restrooms * 0.25;
-    const productCost = sqft * 0.015 + restrooms * 2;
+    const productCost = sqft * 0.015 + restrooms * 3;
     const fuelCost = 5;
     const description = 'Recurring professional janitorial service including restroom sanitization, floor sweeping and mopping, surface disinfection, trash removal and liner replacement, and interior glass cleaning.';
     return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'visit', qty: 1 };
@@ -297,7 +303,7 @@ const CALCULATORS = {
     const base = sqft * rate;
     const final = Math.max(base * condition, 400);
     const duration = Math.max(sqft / 500, 1);
-    const productCost = sqft * 0.03;
+    const productCost = sqft * rate * 0.12;
     const fuelCost = 10;
     const description = svcName === 'Full Strip & Wax'
       ? 'Professional commercial VCT floor strip and wax service. Complete removal of existing wax layers, scrub and neutralize, professional-grade finish applied in multiple coats. After-hours scheduling to avoid business disruption.'
@@ -354,13 +360,20 @@ function recalculate() {
   document.getElementById('calcPriceDisplay').style.display = 'block';
   document.getElementById('calcPriceValue').textContent = money(result.finalPrice);
 
-  const profit = result.finalPrice - result.productCost - result.fuelCost;
+  const laborRate = Number(val('laborRate')) || 0;
+  const laborCost = result.duration * laborRate;
+  const profit = result.finalPrice - result.productCost - result.fuelCost - laborCost;
+  const profitColor = profit < 0 ? '#C0392B' : '#1B7A3C';
   document.getElementById('calcBreakdown').innerHTML = `
     <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
     <div><span>Chemical/Product Cost</span><strong>${money(result.productCost)}</strong></div>
     <div><span>Fuel Cost</span><strong>${money(result.fuelCost)}</strong></div>
-    <div><span>Approx. Profit</span><strong>${money(profit)}</strong></div>
+    <div><span>Labor Cost (@ ${money(laborRate)}/hr)</span><strong>${money(laborCost)}</strong></div>
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Est. Profit After All Costs</span><strong style="color:${profitColor};">${money(profit)}</strong></div>
   `;
+  if (profit < 0) {
+    document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#C0392B; font-weight:700; margin-top:4px;">⚠️ This price would lose money at your labor rate — consider raising it.</div>`;
+  }
 
   const lowRange = result.finalPrice * 0.85;
   const highRange = result.finalPrice * 1.15;
