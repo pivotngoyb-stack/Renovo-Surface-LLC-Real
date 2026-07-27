@@ -45,10 +45,17 @@
         <div id="calcBody" class="calc-body">
           <p style="color:#4A5A72; font-size:0.85rem; margin-bottom:14px;">Pick a service, fill in the job details, and add the priced line item straight to this estimate.</p>
 
-          <div class="field-group" style="max-width:220px;">
-            <label>Your Labor Rate ($/hr)</label>
-            <input type="number" id="laborRate" min="0" step="1" value="30" oninput="recalculate()">
-            <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">Fully-loaded cost of your time (wages, payroll tax, insurance). Used to calculate real profit below — set this to your actual number.</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px; max-width:520px;">
+            <div class="field-group">
+              <label>Your Labor Cost ($/hr)</label>
+              <input type="number" id="laborRate" min="0" step="1" value="27" oninput="recalculate()">
+              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">Fully-loaded cost of your time (wages, payroll tax, insurance). Utah pressure-washing techs run ~$24–31/hr; janitorial ~$16–17/hr. Set to your real number.</p>
+            </div>
+            <div class="field-group">
+              <label>Minimum Billing Rate ($/hr)</label>
+              <input type="number" id="minBillingRate" min="0" step="1" value="65" oninput="recalculate()">
+              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">The floor for what you charge per hour of work — separate from labor cost, this covers overhead/equipment/profit. SLC-area pressure washing bills $50–$160/hr (avg ~$78). If a job's price would pay less than this per hour, the price is bumped up automatically.</p>
+            </div>
           </div>
 
           <div class="calc-service-grid" id="calcServiceGrid"></div>
@@ -355,24 +362,43 @@ let lastCalcResult = null;
 function recalculate() {
   if (!activeService) return;
   const result = CALCULATORS[activeService]();
+
+  const minBillingRate = Number(val('minBillingRate')) || 0;
+  const laborRate = Number(val('laborRate')) || 0;
+  const laborCost = result.duration * laborRate;
+  const formulaPrice = result.finalPrice;
+
+  // Floor 1: never pay less than your minimum $/hr for the time on the job.
+  const billingFloor = result.duration * minBillingRate;
+  // Floor 2: never price below what the job actually costs you, plus a safety margin —
+  // catches cases (e.g. a small job with a long drive) where the flat trip fee doesn't
+  // cover real fuel cost even though the $/hr on paper looks fine.
+  const totalCost = result.productCost + result.fuelCost + laborCost;
+  const costFloor = totalCost * 1.25;
+
+  result.finalPrice = Math.max(formulaPrice, billingFloor, costFloor);
+  const bumpedForRate = result.finalPrice === billingFloor && billingFloor > formulaPrice;
+  const bumpedForCost = result.finalPrice === costFloor && costFloor > formulaPrice && costFloor >= billingFloor;
   lastCalcResult = result;
 
   document.getElementById('calcPriceDisplay').style.display = 'block';
   document.getElementById('calcPriceValue').textContent = money(result.finalPrice);
 
-  const laborRate = Number(val('laborRate')) || 0;
-  const laborCost = result.duration * laborRate;
-  const profit = result.finalPrice - result.productCost - result.fuelCost - laborCost;
+  const profit = result.finalPrice - totalCost;
   const profitColor = profit < 0 ? '#C0392B' : '#1B7A3C';
+  const finalEffectiveRate = result.finalPrice / result.duration;
   document.getElementById('calcBreakdown').innerHTML = `
     <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
+    <div><span>Effective Billing Rate</span><strong>${money(finalEffectiveRate)}/hr</strong></div>
     <div><span>Chemical/Product Cost</span><strong>${money(result.productCost)}</strong></div>
     <div><span>Fuel Cost</span><strong>${money(result.fuelCost)}</strong></div>
     <div><span>Labor Cost (@ ${money(laborRate)}/hr)</span><strong>${money(laborCost)}</strong></div>
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Est. Profit After All Costs</span><strong style="color:${profitColor};">${money(profit)}</strong></div>
   `;
-  if (profit < 0) {
-    document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#C0392B; font-weight:700; margin-top:4px;">⚠️ This price would lose money at your labor rate — consider raising it.</div>`;
+  if (bumpedForRate) {
+    document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#966A00; font-weight:700; margin-top:4px;">⬆️ Price raised from ${money(formulaPrice)} to meet your ${money(minBillingRate)}/hr minimum billing rate.</div>`;
+  } else if (bumpedForCost) {
+    document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#966A00; font-weight:700; margin-top:4px;">⬆️ Price raised from ${money(formulaPrice)} — the original price didn't cover real costs (fuel/materials/labor) with a safe margin.</div>`;
   }
 
   const lowRange = result.finalPrice * 0.85;
