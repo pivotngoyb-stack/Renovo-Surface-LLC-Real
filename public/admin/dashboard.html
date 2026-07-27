@@ -102,7 +102,7 @@ async function archiveEstimate(id, archived) {
   const res = await adminFetch(`/api/admin/estimates/${id}/archive`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
   });
-  if (res.ok) loadEstimates(); else alert('Failed to update estimate.');
+  if (res.ok) loadEstimates(); else adminToast('Failed to update estimate.');
 }
 
 async function loadInvoices() {
@@ -194,7 +194,7 @@ async function archiveInvoice(id, archived) {
   const res = await adminFetch(`/api/admin/invoices/${id}/archive`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
   });
-  if (res.ok) loadInvoices(); else alert('Failed to update invoice.');
+  if (res.ok) loadInvoices(); else adminToast('Failed to update invoice.');
 }
 
 loadEstimates();

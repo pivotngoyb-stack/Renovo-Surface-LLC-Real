@@ -105,18 +105,18 @@ async function load() {
 
 async function setStatus(id, status) {
   const verb = status === 'cancelled' ? 'cancel' : status === 'paused' ? 'pause' : 'resume';
-  if (!confirm(`Are you sure you want to ${verb} this contract?`)) return;
+  if (!(await adminConfirm(`Are you sure you want to ${verb} this contract?`, verb.charAt(0).toUpperCase() + verb.slice(1)))) return;
   const res = await adminFetch(`/api/admin/contracts/${id}/status`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
   });
-  if (res.ok) load(); else alert('Failed to update contract.');
+  if (res.ok) load(); else adminToast('Failed to update contract.');
 }
 
 async function archiveContract(id, archived) {
   const res = await adminFetch(`/api/admin/contracts/${id}/archive`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
   });
-  if (res.ok) load(); else alert('Failed to update contract.');
+  if (res.ok) load(); else adminToast('Failed to update contract.');
 }
 
 load();

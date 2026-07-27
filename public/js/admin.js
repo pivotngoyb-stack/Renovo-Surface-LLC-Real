@@ -20,3 +20,49 @@ async function logout() {
   await fetch('/api/admin/login', { method: 'DELETE' });
   window.location.href = '/admin/login.html';
 }
+
+/** Branded toast notification, replaces native alert(). */
+function adminToast(message, type = 'error') {
+  let container = document.getElementById('adminToastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'adminToastContainer';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `admin-toast admin-toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.add('show'), 10);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 4500);
+}
+
+/** Branded confirmation dialog, replaces native confirm(). Returns a Promise<boolean>. */
+function adminConfirm(message, confirmLabel = 'Confirm') {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'admin-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="admin-confirm-card">
+        <p>${message}</p>
+        <div class="admin-confirm-actions">
+          <button type="button" class="btn btn-outline btn-sm admin-confirm-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm admin-confirm-ok">${confirmLabel}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add('show'), 10);
+    function close(result) {
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    }
+    overlay.querySelector('.admin-confirm-cancel').addEventListener('click', () => close(false));
+    overlay.querySelector('.admin-confirm-ok').addEventListener('click', () => close(true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+  });
+}

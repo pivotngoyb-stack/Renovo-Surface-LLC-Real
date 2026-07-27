@@ -92,7 +92,7 @@ async function archiveAgreement(archived) {
   const res = await adminFetch(`/api/admin/subcontractors/${id}/archive`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
   });
-  if (res.ok) load(); else alert('Failed to update agreement.');
+  if (res.ok) load(); else adminToast('Failed to update agreement.');
 }
 
 load();

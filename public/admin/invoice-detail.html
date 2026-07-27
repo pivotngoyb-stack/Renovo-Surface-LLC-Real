@@ -103,7 +103,7 @@ async function sendInvoice() {
 }
 
 async function markPaid() {
-  if (!confirm('Mark this invoice as paid? This will email a receipt to the client.')) return;
+  if (!(await adminConfirm('Mark this invoice as paid? This will email a receipt to the client.', 'Mark as Paid'))) return;
   const btn = document.getElementById('markPaidBtn');
   btn.disabled = true;
   btn.textContent = 'Marking Paid…';
