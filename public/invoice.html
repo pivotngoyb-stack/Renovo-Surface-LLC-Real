@@ -34,10 +34,20 @@ function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
-function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnabled, recurring }) {
+function render({ invoice, client, lineItems, subtotal, total, invoiceNumber, stripeEnabled, recurring }) {
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
+
+  const totalsHtml = invoice.taxApplied
+    ? `
+      <div style="text-align:right; margin-top:12px;">
+        <p style="color:#4A5A72;">Subtotal: ${money(subtotal)}</p>
+        <p style="color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</p>
+        <div class="doc-total">Total Due: ${money(total)}</div>
+      </div>
+    `
+    : `<div class="doc-total">Total Due: ${money(total)}</div>`;
 
   let statusSection;
   if (invoice.status === 'paid') {
@@ -101,7 +111,7 @@ function render({ invoice, client, lineItems, total, invoiceNumber, stripeEnable
         <thead><tr><th>Description</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class="doc-total">Total Due: ${money(total)}</div>
+      ${totalsHtml}
       ${invoice.dueDate ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Due ${invoice.dueDate}</p>` : ''}
       ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;">${invoice.notes}</p>` : ''}
       <div class="payment-terms-box">

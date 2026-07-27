@@ -60,6 +60,17 @@ export default async (request: Request, context: Context) => {
     }
   })
 
+  if (invoice.taxApplied && Number(invoice.taxAmount) > 0) {
+    stripeLineItems.push({
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: Math.round(Number(invoice.taxAmount) * 100),
+        product_data: { name: 'Utah Sales Tax (7.25%)' },
+      },
+    })
+  }
+
   const stripe = getStripe()!
   const numberLabel = invoiceNumber(invoice.id)
 

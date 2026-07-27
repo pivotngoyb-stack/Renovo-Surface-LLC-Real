@@ -3,6 +3,7 @@ import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined } from './_shared/email.mts'
+import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
 
 export default async (request: Request, context: Context) => {
   const token = context.params.token
@@ -43,6 +44,11 @@ export default async (request: Request, context: Context) => {
     if (body.action === 'approve') {
       await db.update(schema.estimates).set({ status: 'approved', approvedAt: new Date() }).where(eq(schema.estimates.id, estimate.id))
       if (client) await notifyAdminEstimateApproved(client.name, estimate.id)
+      try {
+        await createWorkOrderForEstimate(estimate.id)
+      } catch (err) {
+        console.error(`[estimate-public] auto work-order creation failed for estimate ${estimate.id}`, err)
+      }
       return json({ ok: true, status: 'approved' })
     }
 

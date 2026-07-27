@@ -18,7 +18,7 @@ export async function markInvoicePaid(invoiceId: number): Promise<void> {
 
   const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
   const lineItems = await db.select().from(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.invoiceId, invoiceId))
-  const total = computeTotal(lineItems)
+  const total = computeTotal(lineItems) + Number(invoice.taxAmount || 0)
   const numberLabel = invoiceNumber(invoice.id)
   const totalLabel = formatMoney(total)
 

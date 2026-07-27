@@ -40,6 +40,8 @@ export default async (request: Request) => {
         paidAt: schema.invoices.paidAt,
         token: schema.invoices.token,
         archived: schema.invoices.archived,
+        taxApplied: schema.invoices.taxApplied,
+        taxAmount: schema.invoices.taxAmount,
         clientId: schema.clients.id,
         clientName: schema.clients.name,
         clientEmail: schema.clients.email,
@@ -52,7 +54,7 @@ export default async (request: Request) => {
     const allLineItems = await db.select().from(schema.invoiceLineItems)
     const invoices = invoiceRows.map((inv) => {
       const items = allLineItems.filter((li) => li.invoiceId === inv.id)
-      return { ...inv, total: computeTotal(items) }
+      return { ...inv, total: computeTotal(items) + Number(inv.taxAmount || 0) }
     })
 
     return json({ invoices })
@@ -69,6 +71,8 @@ export default async (request: Request) => {
     let clientId: number
     let lineItems: LineItemInput[]
     let workOrderId: number | undefined
+    let taxApplied = false
+    let taxAmount = '0'
 
     if (body.workOrderId) {
       const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, body.workOrderId)).limit(1)
@@ -82,6 +86,8 @@ export default async (request: Request) => {
       if (!estimate) return notFound()
       clientId = estimate.clientId
       workOrderId = workOrder.id
+      taxApplied = estimate.taxApplied
+      taxAmount = estimate.taxAmount
 
       const estimateItems = await db
         .select()
@@ -121,6 +127,8 @@ export default async (request: Request) => {
         notes: body.notes,
         dueDate: body.dueDate,
         status: 'unpaid',
+        taxApplied,
+        taxAmount,
       })
       .returning()
 

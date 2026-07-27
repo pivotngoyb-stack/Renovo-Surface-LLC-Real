@@ -22,7 +22,8 @@ export default async (request: Request, context: Context) => {
     .where(eq(schema.invoiceLineItems.invoiceId, id))
     .orderBy(schema.invoiceLineItems.sortOrder)
 
-  return json({ invoice, client, lineItems, total: computeTotal(lineItems) })
+  const subtotal = computeTotal(lineItems)
+  return json({ invoice, client, lineItems, subtotal, total: subtotal + Number(invoice.taxAmount || 0) })
 }
 
 export const config = {

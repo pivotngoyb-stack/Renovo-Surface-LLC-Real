@@ -36,9 +36,42 @@
       <div class="field-group"><label>Company</label><input type="text" id="clientCompany"></div>
       <div class="field-group"><label>Property Address</label><input type="text" id="clientAddress"></div>
 
+      <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
+      <div class="calc-box">
+        <button type="button" class="calc-toggle" onclick="toggleCalculator()">
+          <span>🧮 Smart Pricing Calculator</span>
+          <span id="calcToggleIcon">▾</span>
+        </button>
+        <div id="calcBody" class="calc-body">
+          <p style="color:#4A5A72; font-size:0.85rem; margin-bottom:14px;">Pick a service, fill in the job details, and add the priced line item straight to this estimate.</p>
+
+          <div class="calc-service-grid" id="calcServiceGrid"></div>
+
+          <div id="calcFields" class="calc-fields"></div>
+
+          <div id="calcPriceDisplay" class="calc-price-display" style="display:none;">
+            <div class="calc-price-main">
+              <span class="calc-price-label">Recommended Price</span>
+              <span class="calc-price-value" id="calcPriceValue">$0.00</span>
+            </div>
+            <div class="calc-breakdown" id="calcBreakdown"></div>
+            <div class="calc-market-range" id="calcMarketRange"></div>
+            <button type="button" class="btn btn-primary btn-block" style="margin-top:14px;" onclick="addCalculatorLineItem()">Add This Service to Estimate →</button>
+          </div>
+        </div>
+      </div>
+
       <h3 style="margin: 28px 0 12px;">Line Items</h3>
       <div id="lineItems"></div>
       <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="addLineItem()">+ Add Line Item</button>
+      <div class="totals-row" id="subtotalRow">Subtotal: <span id="subtotalDisplay">$0.00</span></div>
+
+      <div class="consent-row" id="taxRow" style="margin-top:14px;">
+        <input type="checkbox" id="applyTax" onchange="updateTotal()">
+        <label for="applyTax">Apply Utah Sales Tax (7.25%)</label>
+      </div>
+      <p style="font-size:0.78rem; color:#8A98AC; margin-top:-8px; margin-bottom:10px;">Utah Code 59-12-103 — janitorial and cleaning services are subject to Utah state and local sales tax. Current Salt Lake City rate: 7.25%.</p>
+      <div class="totals-row" id="taxRowDisplay" style="display:none;">Utah Sales Tax (7.25%): <span id="taxDisplay">$0.00</span></div>
       <div class="totals-row">Total: <span id="totalDisplay">$0.00</span></div>
 
       <h3 style="margin: 28px 0 12px;">Details</h3>
@@ -52,31 +85,357 @@
 
 <script src="../js/admin.js"></script>
 <script>
+/* ---------- Smart Pricing Calculator ---------- */
+
+const TAX_RATE = 0.0725;
+const TAX_DEFAULT_ON = { janitorial: true, floorCare: true, windowCleaning: true, disinfection: true };
+let taxDefaultSet = false;
+
+const SERVICES = [
+  { key: 'pressureWashing', label: 'Pressure Washing', icon: '⚡' },
+  { key: 'windowCleaning', label: 'Window Cleaning', icon: '🪟' },
+  { key: 'janitorial', label: 'Janitorial', icon: '🏢' },
+  { key: 'floorCare', label: 'Floor Care', icon: '✨' },
+  { key: 'dumpsterPad', label: 'Dumpster Pad', icon: '🗑️' },
+  { key: 'lotSweeping', label: 'Lot Sweeping', icon: '🅿️' },
+  { key: 'disinfection', label: 'Disinfection', icon: '🛡️' },
+];
+
+const PW_DESCRIPTIONS = {
+  'Commercial Gas Station': 'Professional hot-water pressure washing of gas station forecourt including pump islands, canopy columns, and concrete surface. Industrial-grade petroleum degreaser applied. Before and after photo documentation included.',
+  'Commercial Parking Lot': 'Commercial parking lot surface restoration using industrial hot-water pressure washing and 28-inch surface cleaner. Oil stain treatment, tire mark removal, and debris clearing included.',
+  'Residential House Wash': 'Professional exterior house washing including siding, trim, and entryway surfaces. Appropriate PSI and soft wash technique selected for surface material.',
+};
+
+let activeService = null;
+
+function toggleCalculator() {
+  const body = document.getElementById('calcBody');
+  const icon = document.getElementById('calcToggleIcon');
+  const open = body.classList.toggle('open');
+  icon.textContent = open ? '▴' : '▾';
+}
+
+function renderServiceGrid() {
+  const grid = document.getElementById('calcServiceGrid');
+  grid.innerHTML = SERVICES.map(s => `<button type="button" class="calc-service-btn" id="calcBtn-${s.key}" onclick="selectService('${s.key}')">${s.icon} ${s.label}</button>`).join('');
+}
+
+function selectService(key) {
+  activeService = key;
+  SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.toggle('active', s.key === key));
+  document.getElementById('calcFields').innerHTML = FIELD_BUILDERS[key]();
+  document.getElementById('calcPriceDisplay').style.display = 'none';
+  attachFieldListeners();
+  recalculate();
+}
+
+function attachFieldListeners() {
+  document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => {
+    el.addEventListener('input', recalculate);
+    el.addEventListener('change', recalculate);
+  });
+}
+
+function fieldGroup(label, innerHtml) {
+  return `<div class="field-group"><label>${label}</label>${innerHtml}</div>`;
+}
+
+function selectHtml(id, options) {
+  return `<select id="${id}">${options.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select>`;
+}
+
+const FIELD_BUILDERS = {
+  pressureWashing: () => `
+    ${fieldGroup('Job Type', selectHtml('pw_jobType', [
+      { v: 'Residential House Wash', l: 'Residential House Wash' },
+      { v: 'Residential Driveway', l: 'Residential Driveway' },
+      { v: 'Residential Deck', l: 'Residential Deck' },
+      { v: 'Commercial Gas Station', l: 'Commercial Gas Station' },
+      { v: 'Commercial Parking Lot', l: 'Commercial Parking Lot' },
+      { v: 'Commercial Building Exterior', l: 'Commercial Building Exterior' },
+      { v: 'Commercial Sidewalk', l: 'Commercial Sidewalk' },
+      { v: 'Commercial Drive-Through', l: 'Commercial Drive-Through' },
+    ]))}
+    ${fieldGroup('Square Footage', '<input type="number" id="pw_sqft" min="0" value="1000">')}
+    ${fieldGroup('Contamination Level', selectHtml('pw_contamination', [
+      { v: '1.0', l: 'Light' }, { v: '1.25', l: 'Medium' }, { v: '1.5', l: 'Heavy Grease' }, { v: '1.75', l: 'Severe Petroleum' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="pw_miles" min="0" value="5">')}
+    ${fieldGroup('Number of Stories', selectHtml('pw_stories', [
+      { v: '1.0', l: '1 Story' }, { v: '1.2', l: '2 Stories' }, { v: '1.45', l: '3+ Stories' },
+    ]))}
+    ${fieldGroup('Schedule', selectHtml('pw_schedule', [
+      { v: '1.0', l: 'Regular Hours' }, { v: '1.35', l: 'After Hours (+35%)' }, { v: '1.25', l: 'Weekend (+25%)' },
+    ]))}
+  `,
+  windowCleaning: () => `
+    ${fieldGroup('Job Type', selectHtml('wc_jobType', [
+      { v: 'Residential', l: 'Residential' }, { v: 'Commercial Storefront', l: 'Commercial Storefront' }, { v: 'Office Building', l: 'Office Building' },
+    ]))}
+    ${fieldGroup('Number of Panes', '<input type="number" id="wc_panes" min="0" value="20">')}
+    ${fieldGroup('Sides', selectHtml('wc_sides', [
+      { v: 'both', l: 'Both Interior and Exterior' }, { v: 'exterior', l: 'Exterior Only (−35%)' },
+    ]))}
+    ${fieldGroup('Hard Water Buildup', selectHtml('wc_hardwater', [
+      { v: 'none', l: 'None' }, { v: 'light', l: 'Light (+$3/pane)' }, { v: 'severe', l: 'Severe (+$5/pane)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="wc_miles" min="0" value="5">')}
+  `,
+  janitorial: () => `
+    ${fieldGroup('Facility Type', selectHtml('jan_facility', [
+      { v: '1.0', l: 'Office' }, { v: '1.15', l: 'Gas Station (+15%)' }, { v: '1.05', l: 'Retail (+5%)' }, { v: '1.25', l: 'Restaurant (+25%)' }, { v: '1.45', l: 'Medical/Dental (+45%)' },
+    ]))}
+    ${fieldGroup('Square Footage', '<input type="number" id="jan_sqft" min="0" value="2000">')}
+    ${fieldGroup('Number of Restrooms', '<input type="number" id="jan_restrooms" min="0" value="2">')}
+    ${fieldGroup('Frequency', selectHtml('jan_frequency', [
+      { v: '1.3', l: 'One-Time Deep Clean (+30%)' }, { v: '1.0', l: 'Weekly Contract' }, { v: '0.85', l: 'Nightly Contract (−15%)' }, { v: '1.1', l: 'Monthly (+10%)' },
+    ]))}
+  `,
+  floorCare: () => `
+    ${fieldGroup('Service Type', selectHtml('fc_serviceType', [
+      { v: '0.62|Full Strip & Wax', l: 'Full Strip & Wax ($0.62/sqft)' },
+      { v: '0.28|Recoat & Buff', l: 'Recoat & Buff ($0.28/sqft)' },
+      { v: '0.16|High-Gloss Burnishing', l: 'High-Gloss Burnishing ($0.16/sqft)' },
+      { v: '0.35|Scrub & Recoat', l: 'Scrub & Recoat ($0.35/sqft)' },
+    ]))}
+    ${fieldGroup('Square Footage', '<input type="number" id="fc_sqft" min="0" value="3000">')}
+    ${fieldGroup('Floor Condition', selectHtml('fc_condition', [
+      { v: '1.0', l: 'Good' }, { v: '1.2', l: 'Average' }, { v: '1.4', l: 'Poor' },
+    ]))}
+  `,
+  dumpsterPad: () => `
+    ${fieldGroup('Number of Dumpsters', '<input type="number" id="dp_count" min="1" value="1">')}
+    ${fieldGroup('Condition', selectHtml('dp_condition', [
+      { v: '1.0', l: 'Normal' }, { v: '1.3', l: 'Heavy Grease' }, { v: '1.6', l: 'Severe' },
+    ]))}
+    ${fieldGroup('Odor Treatment', selectHtml('dp_odor', [
+      { v: 'no', l: 'No' }, { v: 'yes', l: 'Yes (+$35)' },
+    ]))}
+    ${fieldGroup('Frequency', selectHtml('dp_frequency', [
+      { v: 'onetime', l: 'One-Time' }, { v: 'monthly', l: 'Monthly Contract (−5%)' },
+    ]))}
+  `,
+  lotSweeping: () => `
+    ${fieldGroup('Number of Parking Spaces', '<input type="number" id="ls_spaces" min="0" value="100">')}
+    ${fieldGroup('Frequency', selectHtml('ls_frequency', [
+      { v: '1.2', l: 'One-Time (+20%)' }, { v: '1.0', l: 'Weekly' }, { v: '0.85', l: 'Nightly (−15%)' },
+    ]))}
+  `,
+  disinfection: () => `
+    ${fieldGroup('Facility Type', selectHtml('di_facility', [
+      { v: '1.0', l: 'Office' }, { v: '1.3', l: 'Medical (+30%)' }, { v: '1.2', l: 'Gym (+20%)' }, { v: '1.15', l: 'School (+15%)' }, { v: '1.1', l: 'Restaurant (+10%)' },
+    ]))}
+    ${fieldGroup('Square Footage', '<input type="number" id="di_sqft" min="0" value="2000">')}
+    ${fieldGroup('Frequency', selectHtml('di_frequency', [
+      { v: 'onetime', l: 'One-Time' }, { v: 'monthly', l: 'Monthly' }, { v: 'weekly', l: 'Weekly' },
+    ]))}
+  `,
+};
+
+function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+function num(id) { return Number(val(id)) || 0; }
+
+const CALCULATORS = {
+  pressureWashing: () => {
+    const jobType = val('pw_jobType');
+    const sqft = num('pw_sqft');
+    const contamination = num('pw_contamination') || 1;
+    const miles = num('pw_miles');
+    const stories = num('pw_stories') || 1;
+    const schedule = num('pw_schedule') || 1;
+    const base = sqft * 0.15;
+    const tripFee = miles > 25 ? 50 : 0;
+    const priced = base * contamination * stories * schedule;
+    const final = Math.max(priced + tripFee, 175);
+    const duration = Math.max(sqft / 1000, 1);
+    const productCost = sqft * 0.01;
+    const fuelCost = miles * 2 * 0.65;
+    const description = PW_DESCRIPTIONS[jobType] || `Professional hot-water pressure washing service for ${jobType.toLowerCase()}. Appropriate PSI and technique selected for surface material. Before and after photo documentation included.`;
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  windowCleaning: () => {
+    const jobType = val('wc_jobType');
+    const panes = num('wc_panes');
+    const sides = val('wc_sides');
+    const hardwater = val('wc_hardwater');
+    const miles = num('wc_miles');
+    const base = panes * 3.5;
+    const sidesAdjusted = base * (sides === 'exterior' ? 0.65 : 1);
+    const hwRate = hardwater === 'light' ? 3 : hardwater === 'severe' ? 5 : 0;
+    const hwAdd = panes * hwRate;
+    const tripFee = miles > 25 ? 50 : 0;
+    const final = Math.max(sidesAdjusted + hwAdd + tripFee, 89);
+    const duration = Math.max(panes / 40, 0.5);
+    const productCost = panes * 0.15;
+    const fuelCost = miles * 2 * 0.65;
+    const description = jobType === 'Residential'
+      ? 'Professional residential window cleaning, interior and exterior, including screens and sills wiped down. Streak-free squeegee technique.'
+      : 'Professional commercial window cleaning including frame and sill wiping. Streak-free squeegee technique. Utah hard water spot treatment applied where needed.';
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  janitorial: () => {
+    const facility = num('jan_facility') || 1;
+    const sqft = num('jan_sqft');
+    const restrooms = num('jan_restrooms');
+    const frequency = num('jan_frequency') || 1;
+    const base = sqft * 0.10;
+    const facilityAdjusted = base * facility;
+    const restroomAdd = restrooms * 30;
+    const final = Math.max((facilityAdjusted + restroomAdd) * frequency, 99);
+    const duration = sqft / 1500 + restrooms * 0.25;
+    const productCost = sqft * 0.015 + restrooms * 2;
+    const fuelCost = 5;
+    const description = 'Recurring professional janitorial service including restroom sanitization, floor sweeping and mopping, surface disinfection, trash removal and liner replacement, and interior glass cleaning.';
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'visit', qty: 1 };
+  },
+  floorCare: () => {
+    const [rateStr, svcName] = (val('fc_serviceType') || '0.62|Full Strip & Wax').split('|');
+    const rate = Number(rateStr);
+    const sqft = num('fc_sqft');
+    const condition = num('fc_condition') || 1;
+    const base = sqft * rate;
+    const final = Math.max(base * condition, 400);
+    const duration = Math.max(sqft / 500, 1);
+    const productCost = sqft * 0.03;
+    const fuelCost = 10;
+    const description = svcName === 'Full Strip & Wax'
+      ? 'Professional commercial VCT floor strip and wax service. Complete removal of existing wax layers, scrub and neutralize, professional-grade finish applied in multiple coats. After-hours scheduling to avoid business disruption.'
+      : `Professional commercial floor care service: ${svcName}. Surface prepped and treated with professional-grade products for a durable, high-quality finish.`;
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  dumpsterPad: () => {
+    const count = Math.max(num('dp_count'), 1);
+    const condition = num('dp_condition') || 1;
+    const odor = val('dp_odor');
+    const frequency = val('dp_frequency');
+    const base = 175 + Math.max(0, count - 1) * 75;
+    const conditionAdjusted = base * condition;
+    const odorAdd = odor === 'yes' ? 35 : 0;
+    const freqMult = frequency === 'monthly' ? 0.95 : 1;
+    const final = Math.max((conditionAdjusted + odorAdd) * freqMult, 175);
+    const duration = count * 0.75;
+    const productCost = count * 15 + (odor === 'yes' ? 10 : 0);
+    const fuelCost = 15;
+    const description = 'Industrial hot-water dumpster pad deep cleaning and deodorizing. Grease and biological contamination removed. Commercial odor neutralizer applied.';
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  lotSweeping: () => {
+    const spaces = num('ls_spaces');
+    const frequency = num('ls_frequency') || 1;
+    const base = Math.max(spaces * 1.40, 89);
+    const final = Math.max(base * frequency, 89);
+    const duration = Math.max(spaces / 200, 0.5);
+    const productCost = 0;
+    const fuelCost = 20;
+    const description = 'Commercial parking lot sweeping including drive aisles, parking stalls, and perimeter curbs. Debris and trash removal included.';
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  disinfection: () => {
+    const facility = num('di_facility') || 1;
+    const sqft = num('di_sqft');
+    const base = Math.max(sqft * 0.12, 150);
+    const final = Math.max(base * facility, 150);
+    const duration = Math.max(sqft / 2000, 0.5);
+    const productCost = sqft * 0.02;
+    const fuelCost = 10;
+    const description = 'EPA List N registered electrostatic disinfection treatment. Eliminates 99.9% of pathogens including SARS-CoV-2, influenza, and norovirus. All hard surfaces treated. 30-minute re-entry period required after treatment.';
+    return { basePrice: base, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+};
+
+let lastCalcResult = null;
+
+function recalculate() {
+  if (!activeService) return;
+  const result = CALCULATORS[activeService]();
+  lastCalcResult = result;
+
+  document.getElementById('calcPriceDisplay').style.display = 'block';
+  document.getElementById('calcPriceValue').textContent = money(result.finalPrice);
+
+  const profit = result.finalPrice - result.productCost - result.fuelCost;
+  document.getElementById('calcBreakdown').innerHTML = `
+    <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
+    <div><span>Chemical/Product Cost</span><strong>${money(result.productCost)}</strong></div>
+    <div><span>Fuel Cost</span><strong>${money(result.fuelCost)}</strong></div>
+    <div><span>Approx. Profit</span><strong>${money(profit)}</strong></div>
+  `;
+
+  const lowRange = result.finalPrice * 0.85;
+  const highRange = result.finalPrice * 1.15;
+  document.getElementById('calcMarketRange').innerHTML = `Salt Lake City market range (est.): ${money(lowRange)} – ${money(highRange)}`;
+}
+
+function addCalculatorLineItem() {
+  if (!activeService || !lastCalcResult) return;
+  const r = lastCalcResult;
+  const meta = {
+    serviceType: activeService,
+    calculatorInputs: JSON.stringify(collectInputs(activeService)),
+    basePrice: r.basePrice,
+    finalPrice: r.finalPrice,
+    estimatedDurationHours: r.duration,
+    estimatedProductCost: r.productCost,
+  };
+  addLineItem(r.description, r.qty, r.finalPrice.toFixed(2), meta);
+
+  if (!taxDefaultSet) {
+    document.getElementById('applyTax').checked = !!TAX_DEFAULT_ON[activeService];
+    taxDefaultSet = true;
+  }
+
+  document.getElementById('calcFields').innerHTML = '';
+  document.getElementById('calcPriceDisplay').style.display = 'none';
+  SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.remove('active'));
+  activeService = null;
+  lastCalcResult = null;
+  updateTotal();
+}
+
+function collectInputs(key) {
+  const inputs = {};
+  document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => { inputs[el.id] = el.value; });
+  return inputs;
+}
+
+renderServiceGrid();
+
+/* ---------- Line items (existing behavior, extended with pricing metadata) ---------- */
+
 let lineItemCount = 0;
 
-function addLineItem(desc = '', qty = 1, price = '') {
+function addLineItem(desc = '', qty = 1, price = '', meta = null) {
   lineItemCount++;
   const id = lineItemCount;
   const row = document.createElement('div');
   row.className = 'line-item-row';
   row.id = `li-${id}`;
+  if (meta) row.dataset.meta = JSON.stringify(meta);
   row.innerHTML = `
-    <input type="text" placeholder="Description" class="li-desc" value="${desc}">
+    <input type="text" placeholder="Description" class="li-desc" value="${desc.replace(/"/g, '&quot;')}">
     <input type="number" placeholder="Qty" class="li-qty" value="${qty}" min="0" step="0.1" oninput="updateTotal()">
     <input type="number" placeholder="Unit Price" class="li-price" value="${price}" min="0" step="0.01" oninput="updateTotal()">
     <span class="remove-line-btn" onclick="document.getElementById('li-${id}').remove(); updateTotal();">✕</span>
   `;
   document.getElementById('lineItems').appendChild(row);
+  updateTotal();
 }
 
 function updateTotal() {
-  let total = 0;
+  let subtotal = 0;
   document.querySelectorAll('.line-item-row').forEach(row => {
     const qty = parseFloat(row.querySelector('.li-qty').value) || 0;
     const price = parseFloat(row.querySelector('.li-price').value) || 0;
-    total += qty * price;
+    subtotal += qty * price;
   });
-  document.getElementById('totalDisplay').textContent = money(total);
+  document.getElementById('subtotalDisplay').textContent = money(subtotal);
+
+  const applyTax = document.getElementById('applyTax').checked;
+  const taxAmount = applyTax ? subtotal * TAX_RATE : 0;
+  document.getElementById('taxRowDisplay').style.display = applyTax ? 'block' : 'none';
+  document.getElementById('taxDisplay').textContent = money(taxAmount);
+  document.getElementById('totalDisplay').textContent = money(subtotal + taxAmount);
 }
 
 addLineItem();
@@ -87,17 +446,25 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
   const errorText = document.getElementById('errorText');
   errorText.classList.remove('show');
 
-  const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => ({
-    description: row.querySelector('.li-desc').value,
-    quantity: row.querySelector('.li-qty').value || 1,
-    unitPrice: row.querySelector('.li-price').value || 0
-  })).filter(li => li.description.trim());
+  const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => {
+    const meta = row.dataset.meta ? JSON.parse(row.dataset.meta) : {};
+    return {
+      description: row.querySelector('.li-desc').value,
+      quantity: row.querySelector('.li-qty').value || 1,
+      unitPrice: row.querySelector('.li-price').value || 0,
+      ...meta,
+    };
+  }).filter(li => li.description.trim());
 
   if (!lineItems.length) {
     errorText.textContent = 'Add at least one line item.';
     errorText.classList.add('show');
     return;
   }
+
+  const subtotal = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+  const taxApplied = document.getElementById('applyTax').checked;
+  const taxAmount = taxApplied ? subtotal * TAX_RATE : 0;
 
   btn.disabled = true;
   btn.textContent = 'Creating…';
@@ -116,7 +483,9 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
         },
         validUntil: document.getElementById('validUntil').value || undefined,
         notes: document.getElementById('notes').value,
-        lineItems
+        lineItems,
+        taxApplied,
+        taxAmount,
       })
     });
 

@@ -8,6 +8,12 @@ interface LineItemInput {
   description: string
   quantity?: number | string
   unitPrice: number | string
+  serviceType?: string
+  calculatorInputs?: string
+  basePrice?: number | string
+  finalPrice?: number | string
+  estimatedDurationHours?: number | string
+  estimatedProductCost?: number | string
 }
 
 interface CreateEstimateBody {
@@ -21,6 +27,8 @@ interface CreateEstimateBody {
   notes?: string
   validUntil?: string
   lineItems: LineItemInput[]
+  taxApplied?: boolean
+  taxAmount?: number | string
 }
 
 export default async (request: Request) => {
@@ -97,6 +105,8 @@ export default async (request: Request) => {
         notes: body.notes,
         validUntil: body.validUntil,
         status: 'draft',
+        taxApplied: Boolean(body.taxApplied),
+        taxAmount: String(body.taxAmount ?? 0),
       })
       .returning()
 
@@ -107,6 +117,12 @@ export default async (request: Request) => {
         quantity: String(item.quantity ?? 1),
         unitPrice: String(item.unitPrice),
         sortOrder: idx,
+        serviceType: item.serviceType,
+        calculatorInputs: item.calculatorInputs,
+        basePrice: item.basePrice != null ? String(item.basePrice) : null,
+        finalPrice: item.finalPrice != null ? String(item.finalPrice) : null,
+        estimatedDurationHours: item.estimatedDurationHours != null ? String(item.estimatedDurationHours) : null,
+        estimatedProductCost: item.estimatedProductCost != null ? String(item.estimatedProductCost) : null,
       })),
     )
 

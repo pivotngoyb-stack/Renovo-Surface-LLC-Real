@@ -25,11 +25,13 @@ export default async (request: Request, context: Context) => {
       .where(eq(schema.invoiceLineItems.invoiceId, invoice.id))
       .orderBy(schema.invoiceLineItems.sortOrder)
 
+    const subtotal = computeTotal(lineItems)
     return json({
       invoice,
       client,
       lineItems,
-      total: computeTotal(lineItems),
+      subtotal,
+      total: subtotal + Number(invoice.taxAmount || 0),
       invoiceNumber: invoiceNumber(invoice.id),
       stripeEnabled: isStripeConfigured(),
       recurring: contract

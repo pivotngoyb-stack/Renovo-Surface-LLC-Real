@@ -29,6 +29,8 @@ export const estimates = pgTable('estimates', {
   validUntil: date('valid_until'),
   viewedAt: timestamp('viewed_at'),
   approvedAt: timestamp('approved_at'),
+  taxApplied: boolean('tax_applied').notNull().default(false),
+  taxAmount: numeric('tax_amount').notNull().default('0'),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -41,6 +43,12 @@ export const estimateLineItems = pgTable('estimate_line_items', {
   quantity: numeric('quantity').notNull().default('1'),
   unitPrice: numeric('unit_price').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
+  serviceType: text('service_type'),
+  calculatorInputs: text('calculator_inputs'),
+  basePrice: numeric('base_price'),
+  finalPrice: numeric('final_price'),
+  estimatedDurationHours: numeric('estimated_duration_hours'),
+  estimatedProductCost: numeric('estimated_product_cost'),
 })
 
 export const workOrders = pgTable('work_orders', {
@@ -90,6 +98,8 @@ export const invoices = pgTable('invoices', {
   status: invoiceStatusEnum('status').notNull().default('unpaid'),
   notes: text('notes'),
   dueDate: date('due_date'),
+  taxApplied: boolean('tax_applied').notNull().default(false),
+  taxAmount: numeric('tax_amount').notNull().default('0'),
   reminderStage: integer('reminder_stage').notNull().default(0),
   lastReminderSentAt: timestamp('last_reminder_sent_at'),
   archived: boolean('archived').notNull().default(false),

@@ -95,7 +95,8 @@ async function load() {
       <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
       <tbody>${itemsHtml}</tbody>
     </table>
-    <div class="totals-row">Total: ${money(total)}</div>
+    ${estimate.taxApplied ? `<div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Subtotal: ${money(total)}</div><div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Utah Sales Tax (7.25%): ${money(estimate.taxAmount)}</div>` : ''}
+    <div class="totals-row">Total: ${money(total + Number(estimate.taxAmount || 0))}</div>
 
     ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${estimate.notes}</p>` : ''}
     ${estimate.validUntil ? `<p style="color:#4A5A72;"><strong>Valid Until:</strong> ${estimate.validUntil}</p>` : ''}

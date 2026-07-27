@@ -37,7 +37,7 @@ const id = new URLSearchParams(window.location.search).get('id');
 async function load() {
   const res = await adminFetch(`/api/admin/invoices/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Invoice not found.</div>'; return; }
-  const { invoice, client, lineItems, total } = await res.json();
+  const { invoice, client, lineItems, subtotal, total } = await res.json();
 
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
@@ -74,6 +74,7 @@ async function load() {
       <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
       <tbody>${itemsHtml}</tbody>
     </table>
+    ${invoice.taxApplied ? `<div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Subtotal: ${money(subtotal)}</div><div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</div>` : ''}
     <div class="totals-row">Total: ${money(total)}</div>
 
     ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
