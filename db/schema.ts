@@ -158,6 +158,12 @@ export const subcontractorPayments = pgTable('subcontractor_payments', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+export const loginAttempts = pgTable('login_attempts', {
+  id: serial('id').primaryKey(),
+  key: text('key').notNull(),
+  attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
+})
+
 export const workOrderPhotos = pgTable('work_order_photos', {
   id: serial('id').primaryKey(),
   workOrderId: integer('work_order_id').notNull().references(() => workOrders.id),

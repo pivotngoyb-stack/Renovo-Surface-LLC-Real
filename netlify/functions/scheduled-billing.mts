@@ -8,8 +8,10 @@ import {
   sendOverdueReminder,
   notifyAdminInvoiceOverdue,
   notifyAdminAutoChargeFailed,
+  notifyAdminFunctionError,
 } from './_shared/email.mts'
 import { formatMoney, invoiceNumber } from './_shared/money.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const DUE_DAYS = 15 // net-15 terms for recurring invoices
 
@@ -81,44 +83,53 @@ async function runRecurringBilling(today: Date): Promise<{ generated: number }> 
 
   let generated = 0
   for (const contract of dueToday) {
-    const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, contract.clientId)).limit(1)
-    if (!client) continue
+    // Isolate each contract's billing so one bad row (a DB hiccup, a malformed
+    // client record) doesn't stop every remaining client in today's batch from
+    // being billed.
+    try {
+      const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, contract.clientId)).limit(1)
+      if (!client) continue
 
-    const [invoice] = await db
-      .insert(schema.invoices)
-      .values({
-        clientId: contract.clientId,
-        recurringContractId: contract.id,
-        token: generateToken(),
-        status: 'unpaid',
-        dueDate: toDateOnly(addDays(today, DUE_DAYS)),
-        notes: `Recurring: ${contract.description}`,
+      const [invoice] = await db
+        .insert(schema.invoices)
+        .values({
+          clientId: contract.clientId,
+          recurringContractId: contract.id,
+          token: generateToken(),
+          status: 'unpaid',
+          dueDate: toDateOnly(addDays(today, DUE_DAYS)),
+          notes: `Recurring: ${contract.description}`,
+        })
+        .returning()
+
+      await db.insert(schema.invoiceLineItems).values({
+        invoiceId: invoice.id,
+        description: contract.description,
+        quantity: '1',
+        unitPrice: contract.amount,
       })
-      .returning()
 
-    await db.insert(schema.invoiceLineItems).values({
-      invoiceId: invoice.id,
-      description: contract.description,
-      quantity: '1',
-      unitPrice: contract.amount,
-    })
+      await db.update(schema.recurringContracts).set({ lastBilledAt: today }).where(eq(schema.recurringContracts.id, contract.id))
 
-    await db.update(schema.recurringContracts).set({ lastBilledAt: today }).where(eq(schema.recurringContracts.id, contract.id))
+      await sendRecurringInvoiceToClient(
+        client.email,
+        client.name,
+        invoice.token,
+        invoiceNumber(invoice.id),
+        formatMoney(Number(contract.amount)),
+        contract.description,
+      )
 
-    await sendRecurringInvoiceToClient(
-      client.email,
-      client.name,
-      invoice.token,
-      invoiceNumber(invoice.id),
-      formatMoney(Number(contract.amount)),
-      contract.description,
-    )
+      if (contract.autoChargeEnabled && contract.stripePaymentMethodId) {
+        await attemptAutoCharge(contract, client, invoice.id)
+      }
 
-    if (contract.autoChargeEnabled && contract.stripePaymentMethodId) {
-      await attemptAutoCharge(contract, client, invoice.id)
+      generated++
+    } catch (err) {
+      const message = err instanceof Error ? (err.stack || err.message) : String(err)
+      console.error(`[scheduled-billing] billing generation failed for contract ${contract.id}`, err)
+      await notifyAdminFunctionError(`scheduled-billing (contract ${contract.id})`, message, 'recurring billing generation').catch(() => {})
     }
-
-    generated++
   }
 
   return { generated }
@@ -133,39 +144,45 @@ async function runOverdueReminders(today: Date): Promise<{ reminded: number }> {
 
   let reminded = 0
   for (const invoice of unpaidPastDue) {
-    if (!invoice.dueDate) continue
-    const daysOverdue = Math.floor((today.getTime() - new Date(invoice.dueDate).getTime()) / 86_400_000)
+    try {
+      if (!invoice.dueDate) continue
+      const daysOverdue = Math.floor((today.getTime() - new Date(invoice.dueDate).getTime()) / 86_400_000)
 
-    let targetStage = 0
-    if (daysOverdue >= 14) targetStage = 3
-    else if (daysOverdue >= 7) targetStage = 2
-    else if (daysOverdue >= 3) targetStage = 1
+      let targetStage = 0
+      if (daysOverdue >= 14) targetStage = 3
+      else if (daysOverdue >= 7) targetStage = 2
+      else if (daysOverdue >= 3) targetStage = 1
 
-    if (targetStage === 0 || invoice.reminderStage >= targetStage) continue
+      if (targetStage === 0 || invoice.reminderStage >= targetStage) continue
 
-    const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
-    if (!client) continue
+      const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
+      if (!client) continue
 
-    const lineItems = await db.select().from(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.invoiceId, invoice.id))
-    const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0)
-    const totalLabel = formatMoney(total)
-    const numberLabel = invoiceNumber(invoice.id)
+      const lineItems = await db.select().from(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.invoiceId, invoice.id))
+      const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0)
+      const totalLabel = formatMoney(total)
+      const numberLabel = invoiceNumber(invoice.id)
 
-    await sendOverdueReminder(client.email, client.name, invoice.token, numberLabel, totalLabel, targetStage)
-    await notifyAdminInvoiceOverdue(client.name, numberLabel, totalLabel, daysOverdue)
+      await sendOverdueReminder(client.email, client.name, invoice.token, numberLabel, totalLabel, targetStage)
+      await notifyAdminInvoiceOverdue(client.name, numberLabel, totalLabel, daysOverdue)
 
-    await db
-      .update(schema.invoices)
-      .set({ reminderStage: targetStage, lastReminderSentAt: today })
-      .where(eq(schema.invoices.id, invoice.id))
+      await db
+        .update(schema.invoices)
+        .set({ reminderStage: targetStage, lastReminderSentAt: today })
+        .where(eq(schema.invoices.id, invoice.id))
 
-    reminded++
+      reminded++
+    } catch (err) {
+      const message = err instanceof Error ? (err.stack || err.message) : String(err)
+      console.error(`[scheduled-billing] overdue reminder failed for invoice ${invoice.id}`, err)
+      await notifyAdminFunctionError(`scheduled-billing (invoice ${invoice.id})`, message, 'overdue reminder processing').catch(() => {})
+    }
   }
 
   return { reminded }
 }
 
-export default async (req: Request) => {
+export default withErrorHandling('scheduled-billing', async (req: Request) => {
   const today = new Date()
   const billingResult = await runRecurringBilling(today)
   const reminderResult = await runOverdueReminders(today)
@@ -176,7 +193,7 @@ export default async (req: Request) => {
     JSON.stringify({ ok: true, ...billingResult, ...reminderResult }),
     { headers: { 'Content-Type': 'application/json' } },
   )
-}
+})
 
 export const config = {
   schedule: '0 13 * * *',

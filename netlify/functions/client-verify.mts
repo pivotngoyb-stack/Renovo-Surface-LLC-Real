@@ -2,8 +2,9 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { verifyLoginLinkToken, createClientSessionCookie } from './_shared/client-auth.mts'
 import { json, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request) => {
+export default withErrorHandling('client-verify', async (request: Request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
   let body: { token?: string }
@@ -24,7 +25,7 @@ export default async (request: Request) => {
     { ok: true, clientName: client.name },
     { headers: { 'Set-Cookie': createClientSessionCookie(client.id) } },
   )
-}
+})
 
 export const config = {
   path: '/api/client/verify',

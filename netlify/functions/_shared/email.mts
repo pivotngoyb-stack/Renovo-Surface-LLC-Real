@@ -289,6 +289,19 @@ export async function sendClientLoginLink(clientEmail: string, clientName: strin
   })
 }
 
+export async function notifyAdminFunctionError(functionName: string, message: string, requestInfo: string) {
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `⚠️ Server Error — ${functionName}`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Something broke</h2>
+      <p style="color:#4A5A72;"><strong>${functionName}</strong> threw an unhandled error.</p>
+      <p style="color:#4A5A72; font-size:0.85rem;">${requestInfo}</p>
+      <pre style="white-space:pre-wrap; background:#F5F8FC; padding:12px; border-radius:8px; font-size:0.8rem; color:#B23A3A;">${message}</pre>
+    `),
+  })
+}
+
 export async function notifyAdminSubcontractorAgreementSigned(subName: string) {
   await sendEmail({
     to: ADMIN_EMAIL,

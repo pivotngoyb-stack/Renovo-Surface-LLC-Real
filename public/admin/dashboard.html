@@ -27,7 +27,7 @@
   </nav>
 
   <div class="admin-wrap">
-    <div id="summary" class="dash-header" style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; width:100%;"></div>
+    <div id="summary" class="summary-grid"></div>
 
     <div class="dash-header">
       <h1 style="font-size:1.4rem;">Invoices</h1>
@@ -247,7 +247,7 @@ function renderAgingReport(outstandingInvoices) {
 
   section.innerHTML = `
     <h2 style="font-size:1.2rem; margin-bottom:14px;">Accounts Receivable Aging</h2>
-    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px;">${tiles}</div>
+    <div class="aging-tiles">${tiles}</div>
     <table class="dash-table">
       <thead><tr><th>Invoice</th><th>Client</th><th>Due Date</th><th>Days Overdue</th><th>Balance Due</th></tr></thead>
       <tbody>${tableRows}</tbody>

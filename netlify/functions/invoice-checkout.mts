@@ -6,10 +6,11 @@ import { getStripe, isStripeConfigured, getOrCreateStripeCustomer } from './_sha
 import { invoiceNumber } from './_shared/money.mts'
 import { getInvoiceTotals } from './_shared/invoices.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('invoice-checkout', async (request: Request, context: Context) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
   if (!isStripeConfigured()) {
@@ -122,7 +123,7 @@ export default async (request: Request, context: Context) => {
     console.error('[stripe] checkout session creation failed', err)
     return json({ error: 'Could not start checkout. Please try again or use the payment instructions on this page.' }, { status: 500 })
   }
-}
+})
 
 export const config = {
   path: '/api/invoice/:token/checkout',

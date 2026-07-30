@@ -5,8 +5,9 @@ import { getInvoiceTotals, InvoiceNotFoundError } from './_shared/invoices.mts'
 import { invoiceNumber } from './_shared/money.mts'
 import { generateInvoicePdf } from './_shared/pdf.mts'
 import { notFound } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('invoice-pdf', async (request: Request, context: Context) => {
   const token = context.params.token
   const [invoiceRow] = await db.select().from(schema.invoices).where(eq(schema.invoices.token, token)).limit(1)
   if (!invoiceRow) return notFound()
@@ -40,7 +41,7 @@ export default async (request: Request, context: Context) => {
     if (err instanceof InvoiceNotFoundError) return notFound()
     throw err
   }
-}
+})
 
 export const config = {
   path: '/api/invoice/:token/pdf',

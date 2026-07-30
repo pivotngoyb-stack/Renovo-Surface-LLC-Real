@@ -3,10 +3,11 @@ import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const VALID_METHODS = new Set(['cash', 'check', 'card', 'other'])
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('admin-subcontractor-payments', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   const subId = Number(context.params.id)
@@ -48,7 +49,7 @@ export default async (request: Request, context: Context) => {
   }
 
   return json({ error: 'Method not allowed' }, { status: 405 })
-}
+})
 
 export const config = {
   path: '/api/admin/subcontractors/:id/payments',

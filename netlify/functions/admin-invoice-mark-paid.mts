@@ -2,8 +2,9 @@ import type { Context } from '@netlify/functions'
 import { isAuthenticated } from './_shared/auth.mts'
 import { markInvoicePaid, InvoiceAlreadyPaidError, InvoiceNotFoundError } from './_shared/invoices.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('admin-invoice-mark-paid', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
@@ -18,7 +19,7 @@ export default async (request: Request, context: Context) => {
     if (err instanceof InvoiceAlreadyPaidError) return badRequest('This invoice is already marked paid')
     throw err
   }
-}
+})
 
 export const config = {
   path: '/api/admin/invoices/:id/mark-paid',

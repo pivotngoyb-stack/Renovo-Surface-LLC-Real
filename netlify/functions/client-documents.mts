@@ -2,6 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { getClientSession } from './_shared/client-auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 interface DocRow {
   type: 'estimate' | 'workOrder' | 'invoice' | 'contract'
@@ -11,7 +12,7 @@ interface DocRow {
   detailUrl: string | null
 }
 
-export default async (request: Request) => {
+export default withErrorHandling('client-documents', async (request: Request) => {
   const session = getClientSession(request)
   if (!session) return unauthorized()
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 })
@@ -59,7 +60,7 @@ export default async (request: Request) => {
   results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   return json({ documents: results })
-}
+})
 
 export const config = {
   path: '/api/client/documents',

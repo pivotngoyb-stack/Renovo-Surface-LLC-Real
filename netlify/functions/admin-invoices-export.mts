@@ -4,8 +4,9 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { computeTotal, invoiceNumber } from './_shared/money.mts'
 import { toCsv } from './_shared/csv.mts'
 import { unauthorized } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request) => {
+export default withErrorHandling('admin-invoices-export', async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   const url = new URL(request.url)
@@ -89,7 +90,7 @@ export default async (request: Request) => {
       'Content-Disposition': `attachment; filename="${filename}"`,
     },
   })
-}
+})
 
 export const config = {
   path: '/api/admin/invoices-export',

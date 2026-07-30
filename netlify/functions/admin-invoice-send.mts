@@ -5,8 +5,9 @@ import { getInvoiceTotals, InvoiceNotFoundError } from './_shared/invoices.mts'
 import { generateInvoicePdf } from './_shared/pdf.mts'
 import { sendInvoiceToClient } from './_shared/email.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('admin-invoice-send', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
@@ -40,7 +41,7 @@ export default async (request: Request, context: Context) => {
     if (err instanceof InvoiceNotFoundError) return notFound()
     throw err
   }
-}
+})
 
 export const config = {
   path: '/api/admin/invoices/:id/send',

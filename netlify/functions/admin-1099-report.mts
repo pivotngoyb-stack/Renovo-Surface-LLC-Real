@@ -3,10 +3,11 @@ import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { toCsv } from './_shared/csv.mts'
 import { json, unauthorized, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const THRESHOLD = 600
 
-export default async (request: Request) => {
+export default withErrorHandling('admin-1099-report', async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   const url = new URL(request.url)
@@ -71,7 +72,7 @@ export default async (request: Request) => {
   }
 
   return json({ year, subs })
-}
+})
 
 export const config = {
   path: '/api/admin/1099-report',

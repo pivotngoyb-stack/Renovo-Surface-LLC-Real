@@ -5,6 +5,7 @@ import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const MAX_BYTES = 4 * 1024 * 1024
 const ALLOWED_TYPES: Record<string, string> = {
@@ -13,7 +14,7 @@ const ALLOWED_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 }
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('admin-work-order-photos', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
   const workOrderId = Number(context.params.id)
@@ -91,7 +92,7 @@ export default async (request: Request, context: Context) => {
   }
 
   return json({ error: 'Method not allowed' }, { status: 405 })
-}
+})
 
 export const config = {
   path: '/api/admin/work-orders/:id/photos',

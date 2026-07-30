@@ -1,8 +1,18 @@
 import { verifyPassword, createSessionCookie, clearSessionCookie } from './_shared/auth.mts'
-import { json, badRequest } from './_shared/http.mts'
+import { json, badRequest, getClientIp } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
+import { checkRateLimit } from './_shared/rateLimit.mts'
 
-export default async (request: Request) => {
+const MAX_ATTEMPTS = 8
+const WINDOW_MINUTES = 15
+
+export default withErrorHandling('admin-login', async (request: Request) => {
   if (request.method === 'POST') {
+    const allowed = await checkRateLimit(`admin-login:${getClientIp(request)}`, MAX_ATTEMPTS, WINDOW_MINUTES)
+    if (!allowed) {
+      return json({ error: 'Too many login attempts. Please try again in a few minutes.' }, { status: 429 })
+    }
+
     let body: { password?: string }
     try {
       body = await request.json()
@@ -36,7 +46,7 @@ export default async (request: Request) => {
   }
 
   return json({ error: 'Method not allowed' }, { status: 405 })
-}
+})
 
 export const config = {
   path: '/api/admin/login',

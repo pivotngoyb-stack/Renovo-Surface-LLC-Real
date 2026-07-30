@@ -52,6 +52,9 @@ body.admin-body {
 .status-partially_paid { background: #FFF3D6; color: #966A00; }
 .status-paid { background: #E1F7E8; color: #1B7A3C; }
 
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%; margin-bottom: 28px; }
+.aging-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); display: block; }
 .empty-state { text-align: center; padding: 60px 20px; color: #8A98AC; }
@@ -174,6 +177,36 @@ body.admin-body {
 .sign-lines { margin-top: 40px; }
 .sign-line { border-bottom: 1px solid #000; height: 40px; }
 .sign-line-label { font-size: 0.8rem; color: #4A5A72; margin-top: 4px; }
+
+@media (max-width: 720px) {
+  .admin-nav .container { flex-wrap: nowrap; }
+  .admin-nav > .container > div { overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 16px !important; padding-bottom: 2px; }
+  .admin-nav a, .admin-nav button { white-space: nowrap; flex-shrink: 0; }
+
+  .admin-wrap { padding: 24px 16px 60px; }
+
+  .dash-header { gap: 10px; }
+  .dash-header > div { display: flex; flex-wrap: wrap; gap: 8px !important; width: 100%; }
+  .dash-header .btn { flex: 1 1 auto; text-align: center; }
+
+  .dash-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  .dash-table th, .dash-table td { padding: 10px 12px; }
+
+  .summary-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+  .aging-tiles { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+
+  .doc-card { padding: 24px 18px; margin: 20px auto; }
+  .doc-header { flex-wrap: wrap; gap: 12px; }
+  .est-header { gap: 12px; }
+  .est-company-info { text-align: left; }
+
+  .line-item-row { grid-template-columns: 1fr 50px 80px 28px; gap: 6px; }
+
+  .calc-fields { grid-template-columns: 1fr; }
+  .calc-service-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+
+  .login-card { margin: 8vh auto; padding: 28px 22px; }
+}
 
 @media print {
   body.admin-body { background: #fff; }

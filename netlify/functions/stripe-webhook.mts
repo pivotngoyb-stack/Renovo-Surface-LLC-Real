@@ -5,6 +5,7 @@ import { db, schema } from './_shared/db.mts'
 import { markInvoicePaid, InvoiceAlreadyPaidError, InvoiceNotFoundError } from './_shared/invoices.mts'
 import { notifyAdminAutoChargeFailed } from './_shared/email.mts'
 import { json, badRequest } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
 async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.Session) {
   const invoiceId = Number(session.metadata?.invoiceId)
@@ -82,7 +83,7 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   await notifyAdminAutoChargeFailed(client?.name || 'Unknown client', invoiceId, paymentIntent.last_payment_error?.message || 'Unknown reason')
 }
 
-export default async (request: Request) => {
+export default withErrorHandling('stripe-webhook', async (request: Request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
   const stripe = getStripe()
@@ -121,7 +122,7 @@ export default async (request: Request) => {
   }
 
   return json({ received: true })
-}
+})
 
 export const config = {
   path: '/api/stripe-webhook',

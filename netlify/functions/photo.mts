@@ -3,8 +3,9 @@ import type { Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { db, schema } from './_shared/db.mts'
 import { notFound } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
 
-export default async (request: Request, context: Context) => {
+export default withErrorHandling('photo', async (request: Request, context: Context) => {
   const token = context.params.token
   const [photo] = await db.select().from(schema.workOrderPhotos).where(eq(schema.workOrderPhotos.token, token)).limit(1)
   if (!photo) return notFound()
@@ -19,7 +20,7 @@ export default async (request: Request, context: Context) => {
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
   })
-}
+})
 
 export const config = {
   path: '/api/photos/:token',
