@@ -52,9 +52,15 @@ export default async (request: Request) => {
       .orderBy(desc(schema.invoices.createdAt))
 
     const allLineItems = await db.select().from(schema.invoiceLineItems)
+    const allPayments = await db.select().from(schema.invoicePayments)
     const invoices = invoiceRows.map((inv) => {
       const items = allLineItems.filter((li) => li.invoiceId === inv.id)
-      return { ...inv, total: computeTotal(items) + Number(inv.taxAmount || 0) }
+      const total = computeTotal(items) + Number(inv.taxAmount || 0)
+      const ledgerSum = allPayments.filter((p) => p.invoiceId === inv.id).reduce((sum, p) => sum + Number(p.amount), 0)
+      // Invoices paid before the ledger existed have no ledger rows -- fall back to total.
+      const amountPaid = ledgerSum > 0 ? ledgerSum : inv.status === 'paid' ? total : 0
+      const balanceDue = Math.max(0, Math.round((total - amountPaid) * 100) / 100)
+      return { ...inv, total, amountPaid, balanceDue }
     })
 
     return json({ invoices })

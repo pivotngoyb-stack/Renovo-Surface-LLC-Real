@@ -48,6 +48,12 @@ body.admin-body {
 .status-declined { background: #FCE4E4; color: #B23A3A; }
 .status-pending { background: #FFF3D6; color: #966A00; }
 .status-signed { background: #E1F7E8; color: #1B7A3C; }
+.status-unpaid { background: #FCE4E4; color: #B23A3A; }
+.status-partially_paid { background: #FFF3D6; color: #966A00; }
+.status-paid { background: #E1F7E8; color: #1B7A3C; }
+
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); display: block; }
 .empty-state { text-align: center; padding: 60px 20px; color: #8A98AC; }
 
 .line-item-row { display: grid; grid-template-columns: 1fr 90px 120px 36px; gap: 10px; margin-bottom: 10px; align-items: center; }

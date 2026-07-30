@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
-import { computeTotal, invoiceNumber } from './_shared/money.mts'
+import { invoiceNumber } from './_shared/money.mts'
+import { getInvoiceTotals } from './_shared/invoices.mts'
 import { isStripeConfigured } from './_shared/stripe.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 
@@ -19,19 +20,27 @@ export default async (request: Request, context: Context) => {
   }
 
   if (request.method === 'GET') {
-    const lineItems = await db
-      .select()
-      .from(schema.invoiceLineItems)
-      .where(eq(schema.invoiceLineItems.invoiceId, invoice.id))
-      .orderBy(schema.invoiceLineItems.sortOrder)
+    const totals = await getInvoiceTotals(invoice.id)
+    const publicPayments = totals.payments.map((p) => ({ amount: p.amount, method: p.method, createdAt: p.createdAt }))
 
-    const subtotal = computeTotal(lineItems)
+    const photos = invoice.workOrderId
+      ? await db
+          .select({ token: schema.workOrderPhotos.token, category: schema.workOrderPhotos.category, caption: schema.workOrderPhotos.caption })
+          .from(schema.workOrderPhotos)
+          .where(eq(schema.workOrderPhotos.workOrderId, invoice.workOrderId))
+          .orderBy(schema.workOrderPhotos.sortOrder)
+      : []
+
     return json({
       invoice,
       client,
-      lineItems,
-      subtotal,
-      total: subtotal + Number(invoice.taxAmount || 0),
+      lineItems: totals.lineItems,
+      subtotal: totals.subtotal,
+      total: totals.total,
+      amountPaid: totals.amountPaid,
+      balanceDue: totals.balanceDue,
+      payments: publicPayments,
+      photos,
       invoiceNumber: invoiceNumber(invoice.id),
       stripeEnabled: isStripeConfigured(),
       recurring: contract

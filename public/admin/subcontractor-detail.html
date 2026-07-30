@@ -44,6 +44,9 @@ async function load() {
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Agreement not found.</div>'; return; }
   const { agreement } = await res.json();
 
+  const payRes = await adminFetch(`/api/admin/subcontractors/${id}/payments`);
+  const { payments, totalPaid } = payRes.ok ? await payRes.json() : { payments: [], totalPaid: 0 };
+
   const link = `${window.location.origin}/subcontractor-agreement.html?t=${agreement.token}`;
 
   let auditHtml = '';
@@ -87,8 +90,66 @@ async function load() {
 
     ${auditHtml}
 
+    <h3 style="margin:28px 0 12px;">Payments</h3>
+    <p style="color:#4A5A72; margin-bottom:10px;">Total paid: <strong>${money(totalPaid)}</strong></p>
+    ${payments.length ? `
+      <table class="dash-table">
+        <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Note</th><th></th></tr></thead>
+        <tbody>${payments.map(p => `
+          <tr>
+            <td>${p.paidDate}</td>
+            <td>${money(p.amount)}</td>
+            <td style="text-transform:capitalize;">${p.method}</td>
+            <td>${p.note || '—'}</td>
+            <td><button class="btn btn-sm" style="color:#C0392B;" onclick="deletePayment(${p.id})">Delete</button></td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    ` : '<div class="empty-state" style="padding:16px;">No payments recorded yet.</div>'}
+
+    <div style="background:var(--off-white); border-radius:12px; padding:20px; margin-top:16px;">
+      <div class="field-group"><label>Amount ($)</label><input type="number" id="payAmount" min="0.01" step="0.01"></div>
+      <div class="field-group">
+        <label>Method</label>
+        <select id="payMethod">
+          <option value="cash">Cash</option>
+          <option value="check">Check</option>
+          <option value="card">Card</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field-group"><label>Date Paid</label><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="field-group"><label>Note (optional)</label><input type="text" id="payNote"></div>
+      <button class="btn btn-primary btn-sm" type="button" id="addPaymentBtn" onclick="addPayment()">Record Payment</button>
+    </div>
+
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Signing link:</strong> <a href="${link}" target="_blank">${link}</a></p>
   `;
+}
+
+async function addPayment() {
+  const amount = Number(document.getElementById('payAmount').value);
+  const method = document.getElementById('payMethod').value;
+  const paidDate = document.getElementById('payDate').value;
+  const note = document.getElementById('payNote').value;
+  if (!amount || amount <= 0) { adminToast('Enter a valid payment amount.'); return; }
+
+  const btn = document.getElementById('addPaymentBtn');
+  btn.disabled = true;
+  btn.textContent = 'Recording…';
+  const res = await adminFetch(`/api/admin/subcontractors/${id}/payments`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, method, paidDate, note })
+  });
+  if (res.ok) { load(); return; }
+  adminToast('Failed to record payment.');
+  btn.disabled = false;
+  btn.textContent = 'Record Payment';
+}
+
+async function deletePayment(paymentId) {
+  if (!(await adminConfirm('Delete this payment record?', 'Delete'))) return;
+  const res = await adminFetch(`/api/admin/subcontractors/${id}/payments/${paymentId}`, { method: 'DELETE' });
+  if (res.ok) load(); else adminToast('Failed to delete payment.');
 }
 
 async function archiveAgreement(archived) {

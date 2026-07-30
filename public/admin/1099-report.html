@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1099 Report | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <a href="/admin/invoice-new.html">+ New Invoice</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <a href="/admin/subcontractors.html" style="color:var(--blue); font-size:0.9rem;">&larr; Back to Subcontractors</a>
+    <div class="dash-header" style="margin-top:16px;">
+      <h1 style="font-size:1.6rem;">1099 Report</h1>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <select id="yearSelect" onchange="load()" style="padding:9px 14px; border-radius:999px; border:1px solid #DCE4EF; font-size:0.85rem; font-weight:600; color:var(--navy); font-family:var(--font-head);"></select>
+        <a id="exportLink" class="btn btn-sm" style="color:var(--navy); border:1px solid #DCE4EF;">⬇ Export CSV</a>
+      </div>
+    </div>
+    <p style="color:#8A98AC; font-size:0.85rem; margin-bottom:20px;">Subcontractors paid $600 or more in a calendar year require a 1099-NEC. Note: this threshold is tracked per agreement — if the same person has multiple agreement records, their totals won't automatically combine.</p>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const yearSelect = document.getElementById('yearSelect');
+const currentYear = new Date().getFullYear();
+for (let y = currentYear; y >= currentYear - 3; y--) {
+  const opt = document.createElement('option');
+  opt.value = y;
+  opt.textContent = y;
+  yearSelect.appendChild(opt);
+}
+
+async function load() {
+  const year = yearSelect.value;
+  document.getElementById('exportLink').href = `/api/admin/1099-report?year=${year}&format=csv`;
+
+  const res = await adminFetch(`/api/admin/1099-report?year=${year}`);
+  const data = await res.json();
+  const content = document.getElementById('content');
+
+  if (!data.subs.length) {
+    content.innerHTML = `<div class="empty-state">No subcontractor payments recorded for ${year}.</div>`;
+    return;
+  }
+
+  const rows = data.subs.map(s => `
+    <tr>
+      <td>${s.subcontractorName}</td>
+      <td>${s.subcontractorPhone}</td>
+      <td>${s.subcontractorEmail || '—'}</td>
+      <td>${money(s.totalPaid)}</td>
+      <td>${s.paymentCount}</td>
+      <td><span class="status-pill" style="background:${s.meetsThreshold ? '#FCE4E4' : '#EEF1F6'}; color:${s.meetsThreshold ? '#B23A3A' : '#5A6B82'};">${s.meetsThreshold ? '1099 Required' : 'Below Threshold'}</span></td>
+    </tr>
+  `).join('');
+
+  content.innerHTML = `
+    <table class="dash-table">
+      <thead><tr><th>Subcontractor</th><th>Phone</th><th>Email</th><th>Total Paid</th><th>Payments</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>

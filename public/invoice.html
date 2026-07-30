@@ -34,24 +34,47 @@ function showError(msg) {
   document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${msg}</p></div>`;
 }
 
-function render({ invoice, client, lineItems, subtotal, total, invoiceNumber, stripeEnabled, recurring }) {
+function photoGalleryHtml(photos) {
+  if (!photos || !photos.length) return '';
+  const section = (category, label) => {
+    const items = photos.filter(p => p.category === category);
+    if (!items.length) return '';
+    return `<h4 style="margin:14px 0 8px; font-size:0.9rem; color:#4A5A72;">${label}</h4><div class="photo-grid">${items.map(p => `<img src="/api/photos/${p.token}" class="photo-thumb" alt="${label} photo">`).join('')}</div>`;
+  };
+  return `
+    <h3 style="margin:24px 0 4px;">Job Photos</h3>
+    ${section('before', 'Before')}
+    ${section('after', 'After')}
+  `;
+}
+
+function render({ invoice, client, lineItems, subtotal, total, amountPaid, balanceDue, invoiceNumber, stripeEnabled, recurring, photos }) {
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
+
+  const paidBreakdown = amountPaid > 0
+    ? `
+      <p style="color:#1B7A3C;">Amount Paid: −${money(amountPaid)}</p>
+      <div class="doc-total">Balance Due: ${money(balanceDue)}</div>
+    `
+    : `<div class="doc-total">Total Due: ${money(total)}</div>`;
 
   const totalsHtml = invoice.taxApplied
     ? `
       <div style="text-align:right; margin-top:12px;">
         <p style="color:#4A5A72;">Subtotal: ${money(subtotal)}</p>
         <p style="color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</p>
-        <div class="doc-total">Total Due: ${money(total)}</div>
+        ${amountPaid > 0 ? paidBreakdown : `<div class="doc-total">Total Due: ${money(total)}</div>`}
       </div>
     `
-    : `<div class="doc-total">Total Due: ${money(total)}</div>`;
+    : `<div style="text-align:right; margin-top:12px;">${paidBreakdown}</div>`;
+
+  const pdfBtn = `<a href="/api/invoice/${token}/pdf" target="_blank" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);">⬇ Download PDF</a>`;
 
   let statusSection;
   if (invoice.status === 'paid') {
-    statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div><div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Receipt</button></div>`;
+    statusSection = `<div class="state-banner"><div class="icon">✅</div><p><strong>Paid</strong> on ${new Date(invoice.paidAt).toLocaleDateString()}. Thank you!</p></div><div class="print-btn-row no-print">${pdfBtn}<button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Receipt</button></div>`;
   } else if (justPaid) {
     statusSection = `<div class="state-banner"><div class="icon">⏳</div><p>Payment received — finishing up. This page will update in a few seconds.</p></div>`;
     setTimeout(load, 2500);
@@ -83,7 +106,7 @@ function render({ invoice, client, lineItems, subtotal, total, invoiceNumber, st
       <div style="margin-top:24px;">
         ${autoPaySection}
         ${payButton}
-        <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Invoice</button></div>
+        <div class="print-btn-row no-print">${pdfBtn}<button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Invoice</button></div>
         <div style="background:var(--off-white); border-radius:12px; padding:24px;">
           <h3 style="font-size:1rem; margin-bottom:10px;">${stripeEnabled ? 'Other Ways to Pay' : 'How to Pay'}</h3>
           <p style="color:#4A5A72; font-size:0.92rem; line-height:1.6;">
@@ -114,6 +137,7 @@ function render({ invoice, client, lineItems, subtotal, total, invoiceNumber, st
       ${totalsHtml}
       ${invoice.dueDate ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;">Due ${invoice.dueDate}</p>` : ''}
       ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;">${invoice.notes}</p>` : ''}
+      ${photoGalleryHtml(photos)}
       <div class="payment-terms-box">
         <h4>Payment Terms</h4>
         <p>Payment is due upon receipt of this invoice. For recurring contracts, payment is due within 15 days of invoice date.</p>

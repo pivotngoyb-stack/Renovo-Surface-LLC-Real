@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
-import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { computeTotal, formatMoney, invoiceNumber } from './_shared/money.mts'
+import { formatMoney, invoiceNumber } from './_shared/money.mts'
+import { getInvoiceTotals, InvoiceNotFoundError } from './_shared/invoices.mts'
+import { generateInvoicePdf } from './_shared/pdf.mts'
 import { sendInvoiceToClient } from './_shared/email.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
 
@@ -13,18 +13,33 @@ export default async (request: Request, context: Context) => {
   const id = Number(context.params.id)
   if (!Number.isInteger(id)) return badRequest('Invalid invoice id')
 
-  const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)).limit(1)
-  if (!invoice) return notFound()
+  try {
+    const { invoice, client, lineItems, subtotal, total, amountPaid, balanceDue } = await getInvoiceTotals(id)
+    if (!client) return notFound()
 
-  const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
-  if (!client) return notFound()
+    const numberLabel = invoiceNumber(invoice.id)
+    const pdfBytes = await generateInvoicePdf({
+      invoiceNumber: numberLabel,
+      status: invoice.status,
+      client,
+      lineItems,
+      subtotal,
+      taxApplied: invoice.taxApplied,
+      taxAmount: Number(invoice.taxAmount || 0),
+      total,
+      amountPaid,
+      balanceDue,
+      dueDate: invoice.dueDate,
+      notes: invoice.notes,
+    })
 
-  const lineItems = await db.select().from(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.invoiceId, id))
-  const total = computeTotal(lineItems)
+    await sendInvoiceToClient(client.email, client.name, invoice.token, numberLabel, formatMoney(balanceDue > 0 ? balanceDue : total), pdfBytes)
 
-  await sendInvoiceToClient(client.email, client.name, invoice.token, invoiceNumber(invoice.id), formatMoney(total))
-
-  return json({ ok: true })
+    return json({ ok: true })
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return notFound()
+    throw err
+  }
 }
 
 export const config = {

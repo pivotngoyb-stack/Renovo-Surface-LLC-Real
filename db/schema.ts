@@ -3,10 +3,12 @@ import { pgTable, serial, text, integer, numeric, timestamp, boolean, pgEnum, da
 export const estimateStatusEnum = pgEnum('estimate_status', ['draft', 'sent', 'viewed', 'approved', 'declined'])
 export const workOrderStatusEnum = pgEnum('work_order_status', ['pending', 'signed'])
 export const signatureTypeEnum = pgEnum('signature_type', ['drawn', 'typed'])
-export const invoiceStatusEnum = pgEnum('invoice_status', ['unpaid', 'paid'])
+export const invoiceStatusEnum = pgEnum('invoice_status', ['unpaid', 'partially_paid', 'paid'])
 export const contractStatusEnum = pgEnum('contract_status', ['active', 'paused', 'cancelled'])
 export const paymentTypeEnum = pgEnum('payment_type', ['flat', 'percentage'])
 export const subAgreementStatusEnum = pgEnum('sub_agreement_status', ['pending', 'signed'])
+export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'check', 'card', 'stripe', 'other'])
+export const photoCategoryEnum = pgEnum('photo_category', ['before', 'after'])
 
 export const clients = pgTable('clients', {
   id: serial('id').primaryKey(),
@@ -116,6 +118,16 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
+export const invoicePayments = pgTable('invoice_payments', {
+  id: serial('id').primaryKey(),
+  invoiceId: integer('invoice_id').notNull().references(() => invoices.id),
+  amount: numeric('amount').notNull(),
+  method: paymentMethodEnum('method').notNull(),
+  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  note: text('note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export const subcontractorAgreements = pgTable('subcontractor_agreements', {
   id: serial('id').primaryKey(),
   token: text('token').notNull().unique(),
@@ -134,4 +146,27 @@ export const subcontractorAgreements = pgTable('subcontractor_agreements', {
   signedAt: timestamp('signed_at'),
   archived: boolean('archived').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const subcontractorPayments = pgTable('subcontractor_payments', {
+  id: serial('id').primaryKey(),
+  subcontractorAgreementId: integer('subcontractor_agreement_id').notNull().references(() => subcontractorAgreements.id),
+  amount: numeric('amount').notNull(),
+  method: paymentMethodEnum('method').notNull(),
+  paidDate: date('paid_date').notNull(),
+  note: text('note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const workOrderPhotos = pgTable('work_order_photos', {
+  id: serial('id').primaryKey(),
+  workOrderId: integer('work_order_id').notNull().references(() => workOrders.id),
+  token: text('token').notNull().unique(),
+  blobKey: text('blob_key').notNull(),
+  category: photoCategoryEnum('category').notNull(),
+  caption: text('caption'),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
 })

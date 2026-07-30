@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logging In... | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Logging you in…</p></div>
+  </div>
+
+<script>
+async function verify() {
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) {
+    document.getElementById('content').innerHTML = '<div class="state-banner"><div class="icon">⚠️</div><p>Missing login link. <a href="/client/login.html">Request a new one</a>.</p></div>';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/client/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'This link is invalid or has expired.');
+    window.location.href = '/client/dashboard.html';
+  } catch (err) {
+    document.getElementById('content').innerHTML = `<div class="state-banner"><div class="icon">⚠️</div><p>${err.message} <a href="/client/login.html">Request a new one</a>.</p></div>`;
+  }
+}
+
+verify();
+</script>
+</body>
+</html>

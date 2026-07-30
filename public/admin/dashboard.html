@@ -32,6 +32,7 @@
     <div class="dash-header">
       <h1 style="font-size:1.4rem;">Invoices</h1>
       <div style="display:flex; gap:10px;">
+        <a href="/api/admin/invoices-export" class="btn btn-sm" style="color:var(--navy); border:1px solid #DCE4EF;">⬇ Export CSV</a>
         <button class="btn btn-sm" style="color:var(--navy); border:1px solid #DCE4EF;" id="invoiceArchiveToggle" onclick="toggleInvoiceArchived()">Show Archived</button>
         <a href="/admin/invoice-new.html" class="btn btn-primary btn-sm">+ New Invoice</a>
       </div>
@@ -39,6 +40,7 @@
     <div id="invoiceContent">Loading…</div>
 
     <div id="balancesSection" style="margin-top:40px;"></div>
+    <div id="agingSection" style="margin-top:40px;"></div>
 
     <div class="dash-header" style="margin-top:40px;">
       <h1 style="font-size:1.4rem;">Estimates &amp; Work Orders</h1>
@@ -112,9 +114,13 @@ async function loadInvoices() {
   const invoices = data.invoices || [];
 
   if (!showArchivedInvoices) {
-    const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-    const outstanding = invoices.filter(i => i.status === 'unpaid').reduce((s, i) => s + i.total, 0);
-    const unpaidCount = invoices.filter(i => i.status === 'unpaid').length;
+    // Revenue is cash actually collected (amountPaid), not just fully-paid invoices --
+    // a partially_paid invoice has real revenue collected too. Outstanding/unpaid count
+    // are driven by balanceDue so a partial payment reduces what's still owed.
+    const totalRevenue = invoices.reduce((s, i) => s + i.amountPaid, 0);
+    const outstandingInvoices = invoices.filter(i => i.balanceDue > 0.005);
+    const outstanding = outstandingInvoices.reduce((s, i) => s + i.balanceDue, 0);
+    const unpaidCount = outstandingInvoices.length;
 
     let forecast = 0;
     try {
@@ -144,10 +150,10 @@ async function loadInvoices() {
 
     // Per-client outstanding balances (active view only)
     const byClient = {};
-    invoices.filter(i => i.status === 'unpaid').forEach(inv => {
+    outstandingInvoices.forEach(inv => {
       const key = inv.clientId;
       if (!byClient[key]) byClient[key] = { name: inv.clientName, total: 0 };
-      byClient[key].total += inv.total;
+      byClient[key].total += inv.balanceDue;
     });
     const balances = Object.values(byClient).sort((a, b) => b.total - a.total);
     const balancesSection = document.getElementById('balancesSection');
@@ -162,8 +168,11 @@ async function loadInvoices() {
     } else {
       balancesSection.innerHTML = '';
     }
+
+    renderAgingReport(outstandingInvoices);
   } else {
     document.getElementById('balancesSection').innerHTML = '';
+    document.getElementById('agingSection').innerHTML = '';
   }
 
   if (!invoices.length) {
@@ -188,6 +197,62 @@ async function loadInvoices() {
       </table>
     `;
   }
+}
+
+function renderAgingReport(outstandingInvoices) {
+  const section = document.getElementById('agingSection');
+  if (!outstandingInvoices.length) { section.innerHTML = ''; return; }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const rows = outstandingInvoices.map(inv => {
+    const effectiveDue = new Date(inv.dueDate || inv.createdAt);
+    effectiveDue.setHours(0, 0, 0, 0);
+    const daysOverdue = Math.round((today - effectiveDue) / 86400000);
+    let bucket;
+    if (daysOverdue <= 0) bucket = 'current';
+    else if (daysOverdue <= 30) bucket = 'b1_30';
+    else if (daysOverdue <= 60) bucket = 'b31_60';
+    else if (daysOverdue <= 90) bucket = 'b61_90';
+    else bucket = 'b90plus';
+    return { ...inv, daysOverdue, bucket };
+  }).sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  const buckets = {
+    current: { label: 'Current', color: 'var(--navy)', total: 0 },
+    b1_30: { label: '1-30 Days', color: '#966A00', total: 0 },
+    b31_60: { label: '31-60 Days', color: '#C97A1F', total: 0 },
+    b61_90: { label: '61-90 Days', color: '#C0392B', total: 0 },
+    b90plus: { label: '90+ Days', color: '#8B0000', total: 0 },
+  };
+  rows.forEach(r => { buckets[r.bucket].total += r.balanceDue; });
+
+  const tiles = Object.values(buckets).map(b => `
+    <div class="doc-card" style="margin:0; padding:18px;">
+      <div style="font-size:0.75rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">${b.label}</div>
+      <div style="font-size:1.4rem; font-family:var(--font-head); font-weight:800; color:${b.color};">${money(b.total)}</div>
+    </div>
+  `).join('');
+
+  const tableRows = rows.map(r => `
+    <tr style="cursor:pointer;" onclick="window.location.href='/admin/invoice-detail.html?id=${r.id}'">
+      <td>INV-${1000 + r.id}</td>
+      <td>${r.clientName || '—'}</td>
+      <td>${r.dueDate || new Date(r.createdAt).toLocaleDateString()}</td>
+      <td>${r.daysOverdue > 0 ? r.daysOverdue + ' days' : 'Not yet due'}</td>
+      <td>${money(r.balanceDue)}</td>
+    </tr>
+  `).join('');
+
+  section.innerHTML = `
+    <h2 style="font-size:1.2rem; margin-bottom:14px;">Accounts Receivable Aging</h2>
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px;">${tiles}</div>
+    <table class="dash-table">
+      <thead><tr><th>Invoice</th><th>Client</th><th>Due Date</th><th>Days Overdue</th><th>Balance Due</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  `;
 }
 
 async function archiveInvoice(id, archived) {

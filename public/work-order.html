@@ -168,11 +168,25 @@ async function load() {
   if (!token) { showError('Missing work order link.'); return; }
   const res = await fetch(`/api/work-order/${token}`);
   if (!res.ok) { showError('This work order could not be found.'); return; }
-  const { workOrder, client, signature, lineItems } = await res.json();
-  render(workOrder, client, signature, lineItems);
+  const { workOrder, client, signature, lineItems, photos } = await res.json();
+  render(workOrder, client, signature, lineItems, photos || []);
 }
 
-function render(workOrder, client, signature, lineItems) {
+function photoGalleryHtml(photos) {
+  if (!photos.length) return '';
+  const section = (category, label) => {
+    const items = photos.filter(p => p.category === category);
+    if (!items.length) return '';
+    return `<h4 style="margin:14px 0 8px; font-size:0.9rem; color:#4A5A72;">${label}</h4><div class="photo-grid">${items.map(p => `<img src="/api/photos/${p.token}" class="photo-thumb" alt="${label} photo">`).join('')}</div>`;
+  };
+  return `
+    <h3 style="margin:24px 0 4px;">Job Photos</h3>
+    ${section('before', 'Before')}
+    ${section('after', 'After')}
+  `;
+}
+
+function render(workOrder, client, signature, lineItems, photos) {
   if (workOrder.status === 'signed' && signature) {
     document.getElementById('content').innerHTML = `
       <div class="doc-card">
@@ -186,6 +200,7 @@ function render(workOrder, client, signature, lineItems) {
           <p style="color:#8A98AC; font-size:0.85rem;">${new Date(signature.signedAt).toLocaleString()}</p>
         </div>
         ${signature.termsAgreed ? `<p style="text-align:center; font-size:0.85rem; color:#4A5A72; margin-top:-10px; margin-bottom:20px;">Client agreed to <strong>${signature.serviceTypeShown || 'General'}</strong> Terms &amp; Conditions on ${new Date(signature.signedAt).toLocaleDateString()} at ${new Date(signature.signedAt).toLocaleTimeString()}</p>` : ''}
+        ${photoGalleryHtml(photos)}
         <div class="doc-terms">${workOrder.termsText}</div>
         <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print Signed Work Order</button></div>
       </div>
@@ -202,6 +217,7 @@ function render(workOrder, client, signature, lineItems) {
           <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
         </div>
       </div>
+      ${photoGalleryHtml(photos)}
       <div class="doc-terms">${workOrder.termsText}</div>
 
       <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:8px; color:var(--navy);">Terms &amp; Conditions</label>

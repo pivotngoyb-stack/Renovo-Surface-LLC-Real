@@ -1,8 +1,6 @@
-import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
-import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { computeTotal } from './_shared/money.mts'
+import { getInvoiceTotals, InvoiceNotFoundError } from './_shared/invoices.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
 
 export default async (request: Request, context: Context) => {
@@ -12,18 +10,13 @@ export default async (request: Request, context: Context) => {
   const id = Number(context.params.id)
   if (!Number.isInteger(id)) return badRequest('Invalid invoice id')
 
-  const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)).limit(1)
-  if (!invoice) return notFound()
-
-  const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
-  const lineItems = await db
-    .select()
-    .from(schema.invoiceLineItems)
-    .where(eq(schema.invoiceLineItems.invoiceId, id))
-    .orderBy(schema.invoiceLineItems.sortOrder)
-
-  const subtotal = computeTotal(lineItems)
-  return json({ invoice, client, lineItems, subtotal, total: subtotal + Number(invoice.taxAmount || 0) })
+  try {
+    const { invoice, client, lineItems, payments, subtotal, total, amountPaid, balanceDue } = await getInvoiceTotals(id)
+    return json({ invoice, client, lineItems, payments, subtotal, total, amountPaid, balanceDue })
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return notFound()
+    throw err
+  }
 }
 
 export const config = {

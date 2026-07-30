@@ -35,27 +35,70 @@
 <script>
 const id = new URLSearchParams(window.location.search).get('id');
 
+let lastBalanceDue = 0;
+
 async function load() {
   const res = await adminFetch(`/api/admin/invoices/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Invoice not found.</div>'; return; }
-  const { invoice, client, lineItems, subtotal, total } = await res.json();
+  const { invoice, client, lineItems, payments, subtotal, total, amountPaid, balanceDue } = await res.json();
+  lastBalanceDue = balanceDue;
 
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
 
   const invoiceLink = `${window.location.origin}/invoice.html?t=${invoice.token}`;
+  const pdfLink = `${window.location.origin}/api/invoice/${invoice.token}/pdf`;
   const invNumber = `INV-${1000 + invoice.id}`;
 
   let actions = '';
-  if (invoice.status === 'unpaid') {
+  if (invoice.status === 'paid') {
+    actions = `<p style="color:#1B7A3C; font-weight:700;">✅ Paid in full ${new Date(invoice.paidAt).toLocaleDateString()}</p>`;
+  } else {
     actions = `
       <button class="btn btn-primary" id="sendInvoiceBtn" onclick="sendInvoice()">Send to Client</button>
-      <button class="btn btn-outline" id="markPaidBtn" style="color:var(--navy); border-color:var(--navy);" onclick="markPaid()">Mark as Paid</button>
+      <button class="btn btn-outline" id="recordPaymentBtn" style="color:var(--navy); border-color:var(--navy);" onclick="toggleRecordPayment()">Record Payment</button>
     `;
-  } else {
-    actions = `<p style="color:#1B7A3C; font-weight:700;">✅ Paid ${new Date(invoice.paidAt).toLocaleDateString()}</p>`;
   }
+
+  const paymentForm = invoice.status === 'paid' ? '' : `
+    <div id="recordPaymentForm" style="display:none; background:var(--off-white); border-radius:12px; padding:20px; margin-top:16px;">
+      <div class="field-group"><label>Amount ($)</label><input type="number" id="paymentAmount" min="0.01" max="${balanceDue}" step="0.01" value="${balanceDue.toFixed(2)}"></div>
+      <div class="field-group">
+        <label>Method</label>
+        <select id="paymentMethod">
+          <option value="cash">Cash</option>
+          <option value="check">Check</option>
+          <option value="card">Card (in person)</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field-group"><label>Note (optional)</label><input type="text" id="paymentNote" placeholder="e.g. Deposit collected on-site"></div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="toggleRecordPayment()">Cancel</button>
+        <button class="btn btn-primary btn-sm" type="button" id="confirmPaymentBtn" onclick="submitPayment()">Confirm Payment</button>
+      </div>
+    </div>
+  `;
+
+  const paymentsLedger = payments && payments.length ? `
+    <h3 style="margin:24px 0 10px; font-size:1rem;">Payments Received</h3>
+    <table class="dash-table">
+      <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Note</th></tr></thead>
+      <tbody>${payments.map(p => `<tr><td>${new Date(p.createdAt).toLocaleDateString()}</td><td>${money(p.amount)}</td><td style="text-transform:capitalize;">${p.method}</td><td>${p.note || '—'}</td></tr>`).join('')}</tbody>
+    </table>
+  ` : '';
+
+  const totalsHtml = amountPaid > 0
+    ? `
+      ${invoice.taxApplied ? `<div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Subtotal: ${money(subtotal)}</div><div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</div>` : ''}
+      <div class="totals-row" style="font-size:0.9rem; color:#1B7A3C;">Amount Paid: −${money(amountPaid)}</div>
+      <div class="totals-row">Balance Due: ${money(balanceDue)}</div>
+    `
+    : `
+      ${invoice.taxApplied ? `<div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Subtotal: ${money(subtotal)}</div><div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</div>` : ''}
+      <div class="totals-row">Total: ${money(total)}</div>
+    `;
 
   document.getElementById('content').innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
@@ -75,17 +118,50 @@ async function load() {
       <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
       <tbody>${itemsHtml}</tbody>
     </table>
-    ${invoice.taxApplied ? `<div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Subtotal: ${money(subtotal)}</div><div class="totals-row" style="font-size:0.9rem; color:#4A5A72;">Utah Sales Tax (7.25%): ${money(invoice.taxAmount)}</div>` : ''}
-    <div class="totals-row">Total: ${money(total)}</div>
+    ${totalsHtml}
 
     ${invoice.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
     ${invoice.dueDate ? `<p style="color:#4A5A72;"><strong>Due:</strong> ${invoice.dueDate}</p>` : ''}
 
+    ${paymentsLedger}
+
     <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${invoiceLink}" target="_blank">${invoiceLink}</a></p>
+    <p style="font-size:0.85rem;"><a href="${pdfLink}" target="_blank">⬇ Download PDF</a></p>
 
     <div style="margin-top:24px; display:flex; gap:12px;">${actions}</div>
+    ${paymentForm}
     <p id="actionError" class="error-text"></p>
   `;
+}
+
+function toggleRecordPayment() {
+  const form = document.getElementById('recordPaymentForm');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function submitPayment() {
+  const amount = Number(document.getElementById('paymentAmount').value);
+  const method = document.getElementById('paymentMethod').value;
+  const note = document.getElementById('paymentNote').value;
+  if (!amount || amount <= 0) { adminToast('Enter a valid payment amount.'); return; }
+  if (amount > lastBalanceDue + 0.01) { adminToast(`Amount exceeds the balance due (${money(lastBalanceDue)}).`); return; }
+
+  const btn = document.getElementById('confirmPaymentBtn');
+  btn.disabled = true;
+  btn.textContent = 'Recording…';
+  try {
+    const res = await adminFetch(`/api/admin/invoices/${id}/record-payment`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, method, note })
+    });
+    if (res.ok) { load(); return; }
+    const data = await res.json().catch(() => ({}));
+    showError(data.error || 'Failed to record payment.');
+  } catch (err) {
+    showError('Failed to record payment. Please check your connection and try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Confirm Payment';
 }
 
 async function sendInvoice() {
@@ -101,22 +177,6 @@ async function sendInvoice() {
   }
   btn.disabled = false;
   btn.textContent = 'Send to Client';
-}
-
-async function markPaid() {
-  if (!(await adminConfirm('Mark this invoice as paid? This will email a receipt to the client.', 'Mark as Paid'))) return;
-  const btn = document.getElementById('markPaidBtn');
-  btn.disabled = true;
-  btn.textContent = 'Marking Paid…';
-  try {
-    const res = await adminFetch(`/api/admin/invoices/${id}/mark-paid`, { method: 'POST' });
-    if (res.ok) { load(); return; }
-    showError('Failed to mark invoice as paid.');
-  } catch (err) {
-    showError('Failed to mark invoice as paid. Please check your connection and try again.');
-  }
-  btn.disabled = false;
-  btn.textContent = 'Mark as Paid';
 }
 
 async function archiveInvoice(archived) {

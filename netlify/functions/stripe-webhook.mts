@@ -14,7 +14,11 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   }
 
   try {
-    await markInvoicePaid(invoiceId)
+    await markInvoicePaid(invoiceId, {
+      amount: (session.amount_total ?? 0) / 100,
+      method: 'stripe',
+      stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : undefined,
+    })
   } catch (err) {
     if (!(err instanceof InvoiceAlreadyPaidError)) {
       if (err instanceof InvoiceNotFoundError) {
@@ -57,7 +61,11 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
   if (!Number.isInteger(invoiceId)) return // not one of our off-session auto-charges
 
   try {
-    await markInvoicePaid(invoiceId)
+    await markInvoicePaid(invoiceId, {
+      amount: paymentIntent.amount / 100,
+      method: 'stripe',
+      stripePaymentIntentId: paymentIntent.id,
+    })
   } catch (err) {
     if (!(err instanceof InvoiceAlreadyPaidError) && !(err instanceof InvoiceNotFoundError)) throw err
   }

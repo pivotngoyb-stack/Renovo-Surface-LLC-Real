@@ -87,10 +87,92 @@ async function load() {
 
     ${auditHtml}
 
+    <h3 style="margin:28px 0 12px;">Job Photos</h3>
+    <div id="beforePhotos"></div>
+    <div id="afterPhotos"></div>
+
     ${invoice ? `<p style="margin-top:20px;"><a href="/admin/invoice-detail.html?id=${invoice.id}" class="btn btn-primary btn-sm">View Invoice</a></p>` : ''}
 
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${woLink}" target="_blank">${woLink}</a></p>
   `;
+
+  loadPhotos();
+}
+
+const MAX_PHOTO_DIMENSION = 1600;
+
+function resizeImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > MAX_PHOTO_DIMENSION || height > MAX_PHOTO_DIMENSION) {
+        const scale = MAX_PHOTO_DIMENSION / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function triggerUpload(category) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageFile(file);
+      const res = await adminFetch(`/api/admin/work-orders/${id}/photos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, dataUrl })
+      });
+      if (res.ok) { loadPhotos(); } else { adminToast('Failed to upload photo.'); }
+    } catch (err) {
+      adminToast('Could not process that image.');
+    }
+  };
+  input.click();
+}
+
+async function deletePhoto(photoId) {
+  if (!(await adminConfirm('Delete this photo?', 'Delete'))) return;
+  const res = await adminFetch(`/api/admin/work-orders/${id}/photos/${photoId}`, { method: 'DELETE' });
+  if (res.ok) loadPhotos(); else adminToast('Failed to delete photo.');
+}
+
+function renderPhotoGrid(category, label, photos) {
+  const items = photos.filter(p => p.category === category);
+  const thumbs = items.map(p => `
+    <div style="position:relative;">
+      <img src="/api/photos/${p.token}" class="photo-thumb" alt="${label} photo">
+      <button type="button" onclick="deletePhoto(${p.id})" style="position:absolute; top:4px; right:4px; background:rgba(13,31,56,0.75); color:#fff; border:none; border-radius:50%; width:22px; height:22px; cursor:pointer; font-size:0.8rem; line-height:1;">✕</button>
+    </div>
+  `).join('');
+  return `
+    <h4 style="margin:16px 0 8px; font-size:0.9rem; color:#4A5A72;">${label} Photos</h4>
+    <div class="photo-grid">${thumbs}</div>
+    <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); margin-top:8px;" onclick="triggerUpload('${category}')">+ Upload ${label} Photo</button>
+  `;
+}
+
+async function loadPhotos() {
+  const res = await adminFetch(`/api/admin/work-orders/${id}/photos`);
+  if (!res.ok) return;
+  const { photos } = await res.json();
+  document.getElementById('beforePhotos').innerHTML = renderPhotoGrid('before', 'Before', photos);
+  document.getElementById('afterPhotos').innerHTML = renderPhotoGrid('after', 'After', photos);
 }
 
 load();

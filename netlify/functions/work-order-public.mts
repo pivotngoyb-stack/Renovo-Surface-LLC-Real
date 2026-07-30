@@ -26,7 +26,12 @@ export default async (request: Request, context: Context) => {
     const lineItems = estimate
       ? await db.select().from(schema.estimateLineItems).where(eq(schema.estimateLineItems.estimateId, estimate.id))
       : []
-    return json({ workOrder, client, signature: signature || null, lineItems })
+    const photos = await db
+      .select({ token: schema.workOrderPhotos.token, category: schema.workOrderPhotos.category, caption: schema.workOrderPhotos.caption })
+      .from(schema.workOrderPhotos)
+      .where(eq(schema.workOrderPhotos.workOrderId, workOrder.id))
+      .orderBy(schema.workOrderPhotos.sortOrder)
+    return json({ workOrder, client, signature: signature || null, lineItems, photos })
   }
 
   if (request.method === 'POST') {

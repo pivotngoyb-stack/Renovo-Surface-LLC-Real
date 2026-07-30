@@ -4,6 +4,7 @@ import type Stripe from 'stripe'
 import { db, schema } from './_shared/db.mts'
 import { getStripe, isStripeConfigured, getOrCreateStripeCustomer } from './_shared/stripe.mts'
 import { invoiceNumber } from './_shared/money.mts'
+import { getInvoiceTotals } from './_shared/invoices.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 
 const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
@@ -16,17 +17,11 @@ export default async (request: Request, context: Context) => {
   }
 
   const token = context.params.token
-  const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.token, token)).limit(1)
-  if (!invoice) return notFound()
-  if (invoice.status === 'paid') return badRequest('This invoice has already been paid')
+  const [invoiceRow] = await db.select().from(schema.invoices).where(eq(schema.invoices.token, token)).limit(1)
+  if (!invoiceRow) return notFound()
 
-  const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, invoice.clientId)).limit(1)
-  const lineItems = await db
-    .select()
-    .from(schema.invoiceLineItems)
-    .where(eq(schema.invoiceLineItems.invoiceId, invoice.id))
-    .orderBy(schema.invoiceLineItems.sortOrder)
-
+  const { invoice, client, lineItems, amountPaid, balanceDue } = await getInvoiceTotals(invoiceRow.id)
+  if (balanceDue <= 0) return badRequest('This invoice has already been paid')
   if (lineItems.length === 0) return badRequest('This invoice has no line items')
 
   let body: { saveCard?: boolean } = {}
@@ -40,39 +35,58 @@ export default async (request: Request, context: Context) => {
   // there's nothing to "save for future use" on a one-off invoice.
   const canSaveCard = Boolean(invoice.recurringContractId) && body.saveCard === true
 
+  const numberLabel = invoiceNumber(invoice.id)
+
   // Prices are never pre-registered in Stripe (they change per job). Each Stripe
   // Checkout line here is built fresh, right now, from our own database — and we
   // collapse quantity x unit price into one line-total amount with quantity 1,
   // since our quantities can be fractional (e.g. 1.5 hours) and Stripe Checkout
   // line items only accept whole-number quantities.
-  const stripeLineItems = lineItems.map((li) => {
-    const qty = Number(li.quantity)
-    const unitPrice = Number(li.unitPrice)
-    const lineTotalCents = Math.round(qty * unitPrice * 100)
-    const label = qty === 1 ? li.description : `${li.description} (Qty: ${qty})`
-    return {
-      quantity: 1,
-      price_data: {
-        currency: 'usd',
-        unit_amount: lineTotalCents,
-        product_data: { name: label },
+  //
+  // If a deposit has already been collected, we can't reproduce the itemized
+  // breakdown proportionally without risking rounding drift -- instead charge
+  // one consolidated line item for exactly the remaining balance.
+  let stripeLineItems: Stripe.Checkout.SessionCreateParams.LineItem[]
+  if (amountPaid > 0) {
+    stripeLineItems = [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(balanceDue * 100),
+          product_data: { name: `Balance Due — ${numberLabel}` },
+        },
       },
-    }
-  })
-
-  if (invoice.taxApplied && Number(invoice.taxAmount) > 0) {
-    stripeLineItems.push({
-      quantity: 1,
-      price_data: {
-        currency: 'usd',
-        unit_amount: Math.round(Number(invoice.taxAmount) * 100),
-        product_data: { name: 'Utah Sales Tax (7.25%)' },
-      },
+    ]
+  } else {
+    stripeLineItems = lineItems.map((li) => {
+      const qty = Number(li.quantity)
+      const unitPrice = Number(li.unitPrice)
+      const lineTotalCents = Math.round(qty * unitPrice * 100)
+      const label = qty === 1 ? li.description : `${li.description} (Qty: ${qty})`
+      return {
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: lineTotalCents,
+          product_data: { name: label },
+        },
+      }
     })
+
+    if (invoice.taxApplied && Number(invoice.taxAmount) > 0) {
+      stripeLineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(Number(invoice.taxAmount) * 100),
+          product_data: { name: 'Utah Sales Tax (7.25%)' },
+        },
+      })
+    }
   }
 
   const stripe = getStripe()!
-  const numberLabel = invoiceNumber(invoice.id)
 
   const metadata: Record<string, string> = {
     invoiceId: String(invoice.id),

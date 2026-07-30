@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Account | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <span style="color:#8A98AC; font-size:0.9rem;">Your Account</span>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <h1 style="font-size:1.6rem; margin-bottom:20px;">Your Documents</h1>
+    <div id="content">Loading…</div>
+  </div>
+
+<script>
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function statusPill(status) {
+  return `<span class="status-pill status-${status}">${status.replace('_', ' ')}</span>`;
+}
+async function logout() {
+  await fetch('/api/client/login', { method: 'DELETE' });
+  window.location.href = '/client/login.html';
+}
+
+const TYPE_LABELS = { estimate: 'Estimate', workOrder: 'Work Order', invoice: 'Invoice', contract: 'Recurring Contract' };
+
+async function load() {
+  const res = await fetch('/api/client/documents');
+  if (res.status === 401) { window.location.href = '/client/login.html'; return; }
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Something went wrong loading your documents.</div>'; return; }
+
+  const { documents } = await res.json();
+  const content = document.getElementById('content');
+
+  if (!documents.length) {
+    content.innerHTML = '<div class="empty-state">No documents on file yet.</div>';
+    return;
+  }
+
+  const rows = documents.map(d => `
+    <tr>
+      <td>${TYPE_LABELS[d.type] || d.type}</td>
+      <td>${d.detailUrl ? `<a href="${d.detailUrl}">${d.title}</a>` : d.title}</td>
+      <td>${statusPill(d.status)}</td>
+      <td>${new Date(d.date).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+
+  content.innerHTML = `
+    <table class="dash-table">
+      <thead><tr><th>Type</th><th>Document</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>

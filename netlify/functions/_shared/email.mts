@@ -2,10 +2,16 @@ const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
 const FROM = process.env.RESEND_FROM_EMAIL || 'Renovo Surface Solutions <notifications@renovosurface.com>'
 const ADMIN_EMAIL = process.env.ADMIN_NOTIFY_EMAIL || 'Pngoy@renovosurface.com'
 
+interface EmailAttachment {
+  filename: string
+  content: string // base64-encoded
+}
+
 interface SendEmailArgs {
   to: string
   subject: string
   html: string
+  attachments?: EmailAttachment[]
 }
 
 /**
@@ -14,7 +20,7 @@ interface SendEmailArgs {
  * Returns false only on an actual Resend API failure (not on the no-key no-op),
  * so callers that need to know can alert someone instead of failing silently.
  */
-export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<boolean> {
+export async function sendEmail({ to, subject, html, attachments }: SendEmailArgs): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn(`[email] RESEND_API_KEY not set — skipping send. Would have emailed "${subject}" to ${to}`)
@@ -28,7 +34,7 @@ export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<b
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
+      body: JSON.stringify({ from: FROM, to, subject, html, ...(attachments?.length ? { attachments } : {}) }),
     })
 
     if (!res.ok) {
@@ -54,7 +60,8 @@ function wrapper(bodyHtml: string): string {
         ${bodyHtml}
       </div>
       <div style="background:#F5F8FC; padding:16px; text-align:center; font-size:12px; color:#8A98AC;">
-        Renovo Surface Solutions LLC &middot; 30 N Orange Street, Salt Lake City, UT 84116 &middot; 801-369-2330
+        Renovo Surface Solutions LLC &middot; 30 N Orange Street, Salt Lake City, UT 84116 &middot; 801-369-2330<br>
+        <a href="${SITE_URL}/client/login.html" style="color:#8A98AC;">View all your documents in your account</a>
       </div>
     </div>
   </div>`
@@ -114,9 +121,9 @@ export async function sendWorkOrderToClient(clientEmail: string, clientName: str
   })
 }
 
-export async function sendInvoiceToClient(clientEmail: string, clientName: string, token: string, invoiceNumber: string, total: string) {
+export async function sendInvoiceToClient(clientEmail: string, clientName: string, token: string, invoiceNumber: string, total: string, pdfBytes?: Uint8Array): Promise<boolean> {
   const url = `${SITE_URL}/invoice.html?t=${token}`
-  await sendEmail({
+  return sendEmail({
     to: clientEmail,
     subject: `Invoice ${invoiceNumber} from Renovo Surface Solutions`,
     html: wrapper(`
@@ -124,6 +131,7 @@ export async function sendInvoiceToClient(clientEmail: string, clientName: strin
       <p style="color:#4A5A72; line-height:1.6;">Invoice ${invoiceNumber} is ready — total due: <strong>${total}</strong>.</p>
       ${button('View Invoice', url)}
     `),
+    attachments: pdfBytes ? [{ filename: `${invoiceNumber}.pdf`, content: Buffer.from(pdfBytes).toString('base64') }] : undefined,
   })
 }
 
@@ -143,6 +151,25 @@ export async function notifyAdminInvoicePaid(clientName: string, invoiceNumber: 
     to: ADMIN_EMAIL,
     subject: `💰 Invoice Paid — ${clientName} — ${total}`,
     html: wrapper(`<p style="color:#4A5A72;"><strong>${clientName}</strong> — invoice ${invoiceNumber} marked paid (${total}).</p>`),
+  })
+}
+
+export async function sendPartialPaymentReceipt(clientEmail: string, clientName: string, invoiceNumber: string, amountPaid: string, balanceDue: string) {
+  await sendEmail({
+    to: clientEmail,
+    subject: `Payment Received — Invoice ${invoiceNumber}`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Thanks, ${clientName}!</h2>
+      <p style="color:#4A5A72; line-height:1.6;">We've recorded a payment of <strong>${amountPaid}</strong> toward invoice ${invoiceNumber}. Remaining balance due: <strong>${balanceDue}</strong>.</p>
+    `),
+  })
+}
+
+export async function notifyAdminPartialPaymentReceived(clientName: string, invoiceNumber: string, amountPaid: string, balanceDue: string) {
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `💵 Partial Payment Received — ${clientName} — ${amountPaid}`,
+    html: wrapper(`<p style="color:#4A5A72;"><strong>${clientName}</strong> — invoice ${invoiceNumber}: payment of ${amountPaid} received, ${balanceDue} still due.</p>`),
   })
 }
 
@@ -245,6 +272,19 @@ export async function sendSubcontractorAgreementLink(subEmail: string, subName: 
       <h2 style="color:#0D1F38; margin-top:0;">Hi ${subName},</h2>
       <p style="color:#4A5A72; line-height:1.6;">Before your first job with Renovo Surface Solutions, please review and sign the subcontractor agreement below.</p>
       ${button('Review & Sign Agreement', url)}
+    `),
+  })
+}
+
+export async function sendClientLoginLink(clientEmail: string, clientName: string, magicLinkUrl: string) {
+  await sendEmail({
+    to: clientEmail,
+    subject: 'Your Renovo Surface Solutions Login Link',
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Hi ${clientName},</h2>
+      <p style="color:#4A5A72; line-height:1.6;">Click below to view all your estimates, work orders, invoices, and contracts. This link expires in 15 minutes and can only be used once.</p>
+      ${button('Log In to Your Account', magicLinkUrl)}
+      <p style="color:#8A98AC; font-size:0.85rem; margin-top:16px;">If you didn't request this, you can safely ignore this email.</p>
     `),
   })
 }
