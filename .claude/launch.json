@@ -9,8 +9,14 @@
     },
     {
       "name": "renovo-dev",
-      "runtimeExecutable": "C:\\Users\\pivot\\AppData\\Roaming\\npm\\netlify.cmd",
+      "runtimeExecutable": "netlify.cmd",
       "runtimeArgs": ["dev", "--port", "8888"],
+      "port": 8888
+    },
+    {
+      "name": "renovo-dev-offline",
+      "runtimeExecutable": "netlify.cmd",
+      "runtimeArgs": ["dev", "--offline", "--port", "8888"],
       "port": 8888
     }
   ]
