@@ -11,3 +11,8 @@ node_modules/
 # Local dev server logs
 netlify-dev-out.log
 netlify-dev-err.log
+
+# Local environment secrets — never commit real keys
+.env
+.env.*
+!.env.example

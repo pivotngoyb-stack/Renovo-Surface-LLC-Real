@@ -1,10 +1,30 @@
 /** Shared helpers for admin pages. Redirects to login on any 401. */
+
+/**
+ * The admin session now expires on inactivity rather than at a fixed hour, so
+ * working has to count as activity. Every admin API call runs through
+ * adminFetch, which nudges the session at most once a minute. Walk away and
+ * nothing nudges it, so it lapses on its own.
+ */
+let lastSessionTouch = Date.now();
+const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
+
+function touchSession() {
+  const now = Date.now();
+  if (now - lastSessionTouch < SESSION_TOUCH_INTERVAL_MS) return;
+  lastSessionTouch = now;
+  // Plain fetch, not adminFetch: a failure here must never bounce someone to
+  // the login page, and it must not recurse back into this function.
+  fetch('/api/admin/session', { method: 'POST' }).catch(() => {});
+}
+
 async function adminFetch(url, options = {}) {
   const res = await fetch(url, options);
   if (res.status === 401) {
     window.location.href = '/admin/login.html';
     throw new Error('Not authenticated');
   }
+  touchSession();
   return res;
 }
 

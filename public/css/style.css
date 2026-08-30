@@ -552,6 +552,28 @@ section { position: relative; }
 .guarantee-block { background: var(--off-white); border-radius: var(--radius); padding: 40px; text-align: center; border: 1px solid #E4EBF4; }
 @media (max-width: 860px) { .founder-block, .values-grid { grid-template-columns: 1fr; } }
 
+/* ---------------------------------------------------------------------------
+   Focus ring
+   Nothing in this stylesheet defined one, so keyboard and switch users had no
+   visible indicator anywhere on the site. Brand blue is the only value in the
+   palette that clears the WCAG 2.2 1.4.11 minimum of 3:1 against every surface
+   here -- white 4.00, off-white 3.76, navy 4.13, navy-soft 3.63 -- so a single
+   ring reads correctly on the light sections and on the dark hero, nav, mobile
+   menu and footer alike. (blue-light and amber both fail on white.)
+
+   :focus-visible, not :focus, so the ring appears for keyboard and assistive
+   navigation without outlining every mouse click. The 2px offset keeps the
+   ring on the page background rather than against a same-colour button fill.
+--------------------------------------------------------------------------- */
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* The input rules above set outline:none and lean on a border-colour change
+   alone. Equal specificity, declared later, so the ring wins on keyboard
+   focus while the border tint still shows on mouse focus. */
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
 /* misc */
 .mt-lg { margin-top: 48px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
