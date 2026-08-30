@@ -105,9 +105,86 @@ async function load() {
 
     <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${estimateLink}" target="_blank">${estimateLink}</a></p>
 
+    <h3 style="margin:28px 0 6px;">Walk-Through Photos</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
+      These appear on the client proposal as documented site conditions. They are what settles a scope
+      argument later, so photograph what the price assumes: soil load, access, anything already damaged.
+    </p>
+    <div id="estPhotos"></div>
+
     <div style="margin-top:24px;">${actions}</div>
     ${workOrderSection}
   `;
+
+  loadPhotos();
+}
+
+const MAX_PROPOSAL_PHOTOS = 12;
+
+async function loadPhotos() {
+  const box = document.getElementById('estPhotos');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/photos`);
+  if (!res.ok) { box.innerHTML = '<p style="color:#C0392B; font-size:0.85rem;">Could not load photos.</p>'; return; }
+  const { photos } = await res.json();
+
+  const thumbs = photos.map(p => `
+    <div class="photo-thumb-wrap" style="position:relative;">
+      <img src="/api/estimate-photos/${p.token}" class="photo-thumb" alt="${p.caption ? escapeAttr(p.caption) : 'Walk-through photo'}">
+      <button type="button" onclick="deletePhoto(${p.id})" title="Remove"
+        style="position:absolute; top:4px; right:4px; background:rgba(13,31,56,0.75); color:#fff; border:none; border-radius:50%; width:22px; height:22px; cursor:pointer; font-size:0.8rem; line-height:1;">&#10005;</button>
+      <input type="text" value="${p.caption ? escapeAttr(p.caption) : ''}" placeholder="Add a caption…"
+        onchange="saveCaption(${p.id}, this.value)"
+        style="width:100%; margin-top:5px; font-size:0.76rem; padding:5px 7px; border:1px solid #DCE4EF; border-radius:5px;">
+    </div>`).join('');
+
+  const atCap = photos.length >= MAX_PROPOSAL_PHOTOS;
+  box.innerHTML = `
+    ${photos.length ? `<div class="photo-grid">${thumbs}</div>` : '<p style="color:#8A98AC; font-size:0.85rem;">No photos yet.</p>'}
+    <button type="button" class="btn btn-outline btn-sm" ${atCap ? 'disabled' : ''}
+      style="color:var(--navy); border-color:var(--navy); margin-top:10px;" onclick="uploadPhoto()">+ Add Photo</button>
+    <span style="color:#8A98AC; font-size:0.78rem; margin-left:10px;">${photos.length} of ${MAX_PROPOSAL_PHOTOS}${atCap ? ' — remove one to add another' : ''}</span>`;
+}
+
+function escapeAttr(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function uploadPhoto() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  // Walk-throughs happen on a phone, so open the camera rather than the gallery.
+  input.capture = 'environment';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageFile(file);
+      const res = await adminFetch(`/api/admin/estimates/${id}/photos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl }),
+      });
+      if (res.ok) { loadPhotos(); return; }
+      const data = await res.json().catch(() => ({}));
+      adminToast(data.error || 'Failed to upload photo.');
+    } catch (err) {
+      adminToast('Could not process that image.');
+    }
+  };
+  input.click();
+}
+
+async function saveCaption(photoId, caption) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/photos/${photoId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caption }),
+  });
+  if (!res.ok) adminToast('Failed to save caption.');
+}
+
+async function deletePhoto(photoId) {
+  if (!(await adminConfirm('Remove this photo from the proposal?', 'Remove'))) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/photos/${photoId}`, { method: 'DELETE' });
+  if (res.ok) loadPhotos(); else adminToast('Failed to remove photo.');
 }
 
 async function sendEstimate() {

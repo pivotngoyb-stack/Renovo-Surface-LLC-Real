@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
@@ -30,6 +30,17 @@ export default async (request: Request, context: Context) => {
       .from(schema.estimateLineItems)
       .where(eq(schema.estimateLineItems.estimateId, estimate.id))
       .orderBy(schema.estimateLineItems.sortOrder)
+
+    // Walk-through photos. Only the token goes out: the blob key is internal
+    // and would let anyone who saw it reason about the storage layout.
+    const photos = await db
+      .select({
+        token: schema.estimatePhotos.token,
+        caption: schema.estimatePhotos.caption,
+      })
+      .from(schema.estimatePhotos)
+      .where(eq(schema.estimatePhotos.estimateId, estimate.id))
+      .orderBy(asc(schema.estimatePhotos.sortOrder), asc(schema.estimatePhotos.id))
 
     // Scope, exclusions and assumptions are derived from the services actually
     // quoted, so the proposal can never describe work that is not on the bid.
@@ -67,6 +78,11 @@ export default async (request: Request, context: Context) => {
       sites,
       portfolioDiscountPct: portfolioDiscountPct(new Set(lineItems.map(li => li.siteName).filter(Boolean)).size),
       summary,
+      // The cover page needs Renovo's particulars on every proposal, not just
+      // government ones. The government block below stays as it is: it carries
+      // the registration rows a contracting officer screens on.
+      company: COMPANY,
+      photos,
       government: isGovernment ? {
         company: COMPANY,
         registration: registrationRows(),

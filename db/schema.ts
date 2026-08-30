@@ -211,3 +211,25 @@ export const workOrderPhotos = pgTable('work_order_photos', {
   sortOrder: integer('sort_order').notNull().default(0),
   uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
 })
+
+/**
+ * Walk-through photos attached to an estimate, shown on the client proposal.
+ *
+ * Deliberately a separate table from workOrderPhotos rather than a polymorphic
+ * owner column. These are a different artifact: a walk-through photo documents
+ * the condition a price was based on, and it is published to a prospect who has
+ * not bought anything yet. Job photos are before/after evidence on work already
+ * sold. Sharing one table would have meant making work_order_id nullable on a
+ * table that already holds live rows, to save a handful of duplicated columns.
+ */
+export const estimatePhotos = pgTable('estimate_photos', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  token: text('token').notNull().unique(),
+  blobKey: text('blob_key').notNull(),
+  caption: text('caption'),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+})

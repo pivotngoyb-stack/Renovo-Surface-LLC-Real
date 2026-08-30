@@ -52,6 +52,111 @@ function esc(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * Site photographs from the walk-through.
+ *
+ * A proposal that says "heavy drywall dust throughout" is an assertion. The
+ * same proposal with four photographs of it is a record, and it is what stops
+ * a scope dispute three weeks later: the client saw the condition the price
+ * was based on before they signed.
+ *
+ * Captions are the useful part, so an uncaptioned photo still gets a number to
+ * be cited by.
+ */
+function photoSectionHtml(photos) {
+  if (!photos || !photos.length) return '';
+  return `
+    <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:12px;">
+      Recorded at the walk-through. These document the condition this price is based on.
+    </p>
+    <div class="prop-photos">
+      ${photos.map((p, i) => `
+        <figure class="prop-photo">
+          <img src="/api/estimate-photos/${esc(p.token)}" alt="${esc(p.caption || ('Site photograph ' + (i + 1)))}" loading="lazy">
+          <figcaption><span class="prop-photo-num">${i + 1}</span>${esc(p.caption || 'Site condition at walk-through')}</figcaption>
+        </figure>`).join('')}
+    </div>`;
+}
+
+/**
+ * Cover page.
+ *
+ * A national firm's proposal opens on a title page, not on a line-item table.
+ * It answers four questions before the reader turns it over: who is this for,
+ * what is it for, when was it issued, and who submitted it.
+ *
+ * Deliberately no price here. Formal proposals put pricing in the pricing
+ * section; a number on the cover invites a buyer to compare on cost before
+ * reading the scope, which is the one thing a good bid does not want.
+ *
+ * Prints as its own sheet, so the document a facility director hands to their
+ * board starts the way they expect.
+ */
+function coverPageHtml(ctx) {
+  const { company, client, estimate, issuedDate, expiresDate, government, siteLine } = ctx;
+
+  const row = (label, value) => value
+    ? `<div class="cover-row"><span class="cover-row-label">${label}</span><span class="cover-row-value">${value}</span></div>`
+    : '';
+
+  const clientLine = [
+    client && client.company ? esc(client.company) : '',
+    client && client.name ? esc(client.name) : '',
+  ].filter(Boolean);
+
+  return `
+    <div class="doc-card cover-page">
+      <div class="cover-brand">
+        <img src="images/logo.png" alt="" class="cover-logo">
+        <div>
+          <div class="cover-company">${esc(company.legalName)}</div>
+          <div class="cover-tagline">${esc(company.tagline)}</div>
+        </div>
+      </div>
+
+      <div class="cover-middle">
+        <div class="cover-kicker">Proposal for Commercial Cleaning Services</div>
+        <h1 class="cover-title">${esc(estimate.projectName || (client && client.company) || 'Service Proposal')}</h1>
+        ${siteLine ? `<div class="cover-site">${esc(siteLine)}</div>` : ''}
+      </div>
+
+      <div class="cover-blocks">
+        <div class="cover-block">
+          <h4>Prepared for</h4>
+          <p>
+            ${clientLine.length ? clientLine.join('<br>') : esc(client && client.name)}
+            ${client && client.propertyAddress ? `<br>${esc(client.propertyAddress)}` : ''}
+          </p>
+        </div>
+        <div class="cover-block">
+          <h4>Submitted by</h4>
+          <p>
+            ${esc(company.legalName)}<br>
+            ${esc(company.owner)}, ${esc(company.ownerTitle)}<br>
+            ${esc(company.addressLine)}<br>
+            ${esc(company.city)}, ${esc(company.state)} ${esc(company.zip)}<br>
+            ${esc(company.phone)} &middot; ${esc(company.email)}
+          </p>
+        </div>
+      </div>
+
+      <div class="cover-facts">
+        ${row('Proposal number', proposalNumber(estimate.id))}
+        ${row('Date issued', fmtDate(issuedDate))}
+        ${row('Valid through', fmtDate(expiresDate))}
+        ${estimate.walkthroughDate ? row('Site walk-through', fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00'))) : ''}
+        ${government && government.solicitationNumber ? row('Solicitation', esc(government.solicitationNumber)) : ''}
+        ${row('NAICS', esc(company.naics) + ' &mdash; ' + esc(company.naicsLabel))}
+        ${government && government.company && government.company.uei ? row('UEI', esc(government.company.uei)) : ''}
+        ${government && government.company && government.company.cage ? row('CAGE', esc(government.company.cage)) : ''}
+      </div>
+
+      <div class="cover-foot">
+        ${esc(company.entityType)} organised in ${esc(company.stateOfFormation)} &middot; Serving ${esc(company.serviceArea)} &middot; ${esc(company.website)}
+      </div>
+    </div>`;
+}
+
 /** One numbered section of the bid. Numbers let a client cite "exclusion 3". */
 function section(num, title, body) {
   return `<div class="prop-section">
@@ -179,7 +284,7 @@ function registrationHtml(gov) {
 }
 
 function render(data) {
-  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, expiresOn, expired } = data;
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -198,6 +303,7 @@ function render(data) {
     ? new Date(expiresOn + 'T12:00:00')
     : (estimate.validUntil ? new Date(estimate.validUntil) : addDays(estimate.createdAt, 30));
 
+  const profile = company || (government && government.company) || null;
   const scope = proposal || { sections: [], exclusions: [], assumptions: [], compliance: [] };
 
   // Sections 2 and 3 only appear on recurring or multi-site bids, so the
@@ -258,7 +364,13 @@ function render(data) {
     `;
   }
 
+  const siteLine = estimate.siteAddress || (client && client.propertyAddress) || '';
+  const coverHtml = profile
+    ? coverPageHtml({ company: profile, client, estimate, issuedDate, expiresDate, government, siteLine })
+    : '';
+
   document.getElementById('content').innerHTML = `
+    ${coverHtml}
     <div class="doc-card" style="max-width:840px;">
       <div class="est-header">
         <div>
@@ -316,6 +428,7 @@ function render(data) {
         ${estimate.siteConditions ? `<p style="color:#374151; font-size:0.88rem; margin-bottom:10px; padding:10px 12px; background:var(--off-white); border-radius:6px;"><strong>Observed at walk-through:</strong> ${esc(estimate.siteConditions)}</p>` : ''}
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.</p>
         ${bulletList(scope.assumptions)}`) : ''}
+      ${photos && photos.length ? section(nextNum(), 'Site Photographs', photoSectionHtml(photos)) : ''}
       ${scope.compliance.length ? section(nextNum(), 'Insurance, Compliance &amp; Quality Assurance', `
         ${bulletList(scope.compliance, 'is-compliance')}
         <p style="color:#4A5A72; font-size:0.86rem; margin-top:10px;">If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.</p>`) : ''}

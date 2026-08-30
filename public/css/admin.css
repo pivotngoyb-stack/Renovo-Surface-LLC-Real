@@ -486,11 +486,88 @@ body.admin-body {
   .login-card { margin: 8vh auto; padding: 28px 22px; }
 }
 
+/* ---------- Proposal site photographs ---------- */
+.prop-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.prop-photo { margin: 0; border: 1px solid #DCE4EF; border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.prop-photo img { display: block; width: 100%; height: 170px; object-fit: cover; background: var(--off-white); }
+.prop-photo figcaption {
+  padding: 8px 10px; font-size: 0.78rem; color: #4A5A72; line-height: 1.45;
+  border-top: 1px solid #EEF2F8; display: flex; gap: 7px; align-items: baseline;
+}
+.prop-photo-num {
+  flex: none; min-width: 18px; height: 18px; border-radius: 9px; background: var(--navy); color: #fff;
+  font-size: 0.68rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+
+@media (max-width: 520px) {
+  .prop-photos { grid-template-columns: 1fr; }
+}
+
+/* ---------- Proposal cover page ----------
+   A national firm's proposal opens on a title page. This one is laid out as a
+   column so the middle block floats between the brand mark and the facts,
+   which is what makes it read as a cover rather than a first page. */
+.cover-page {
+  max-width: 840px;
+  min-height: 74vh;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.cover-brand { display: flex; align-items: center; gap: 14px; }
+.cover-logo { width: 52px; height: 52px; object-fit: contain; }
+.cover-company { font-family: var(--font-head); font-weight: 800; font-size: 1.15rem; color: var(--navy); letter-spacing: -0.01em; }
+.cover-tagline { font-size: 0.82rem; color: #8A98AC; margin-top: 2px; }
+
+.cover-middle { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 18px 0; }
+.cover-kicker {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: #8A98AC; font-weight: 700; margin-bottom: 12px;
+}
+.cover-title {
+  font-family: var(--font-head); font-weight: 800; color: var(--navy);
+  font-size: clamp(1.6rem, 4vw, 2.5rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0;
+}
+.cover-site { margin-top: 10px; color: #4A5A72; font-size: 0.95rem; }
+
+.cover-blocks { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-top: 22px; border-top: 2px solid var(--navy); }
+.cover-block h4 {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+  color: #8A98AC; font-weight: 700; margin: 0 0 7px;
+}
+.cover-block p { margin: 0; font-size: 0.88rem; line-height: 1.65; color: #374151; }
+
+.cover-facts { border-top: 1px solid #EEF2F8; padding-top: 16px; display: grid; gap: 6px; }
+.cover-row { display: flex; justify-content: space-between; gap: 16px; font-size: 0.85rem; }
+.cover-row-label { color: #8A98AC; }
+.cover-row-value { color: var(--navy); font-weight: 600; text-align: right; }
+
+.cover-foot { border-top: 1px solid #EEF2F8; padding-top: 14px; font-size: 0.78rem; color: #8A98AC; line-height: 1.6; }
+
+@media (max-width: 640px) {
+  .cover-blocks { grid-template-columns: 1fr; gap: 18px; }
+  .cover-page { min-height: 0; }
+}
+
 @media print {
   body.admin-body { background: #fff; }
   .admin-nav, .mobile-menu, .no-print { display: none !important; }
   .print-only { display: block !important; }
   .doc-card { box-shadow: none; border: none; margin: 0; padding: 0; max-width: 100%; }
+
+  /* The cover is a sheet of its own, so the bound document starts the way a
+     facility director expects when they hand it to a board. */
+  .cover-page { min-height: 0; page-break-after: always; break-after: page; padding: 0 0 24px; }
+
+  /* Photographs are the evidence for the site conditions, so they print, and
+     a figure never splits across a page break. */
+  .prop-photos { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .prop-photo { break-inside: avoid; border: 1px solid #999; }
+  .prop-photo img { height: 150px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .prop-photo-num { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .cover-middle { padding: 40px 0; }
+  .cover-title { font-size: 2rem; }
+  .cover-blocks, .cover-facts, .cover-foot, .cover-brand { break-inside: avoid; }
   .service-terms-scroll { max-height: none; overflow: visible; border: 1px solid #ccc; }
   .standard-terms-block, .payment-terms-box, .estimate-terms-box, .doc-terms, .service-terms-scroll { break-inside: avoid; }
   a[href]::after { content: none !important; }
