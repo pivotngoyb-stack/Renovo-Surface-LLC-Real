@@ -40,6 +40,19 @@ export const UNIVERSAL_ASSUMPTIONS: string[] = [
   'Work is performed during normal business hours unless an after-hours rate is shown in the pricing table.',
 ]
 
+/**
+ * Added only when the bid covers a healthcare setting. A clinic's compliance
+ * officer screens for this language before they read the price, and applying
+ * it to a gas station bid would read as boilerplate.
+ */
+export const HEALTHCARE_STATEMENTS: string[] = [
+  'Renovo personnel assigned to healthcare facilities receive HIPAA awareness training and operate under a signed confidentiality agreement. Protected health information encountered incidentally is never accessed, photographed, removed, or discussed.',
+  'A Business Associate Agreement will be executed prior to service where the covered entity determines one is required.',
+  'Crews follow facility infection-control protocol, including any isolation, precaution, or restricted-area signage in force at the time of service.',
+  'Regulated medical waste and sharps are never handled. Containers are worked around and any breach is reported to facility staff immediately.',
+  'Personnel are background-checked and badged, and sign in through the facility\u2019s own visitor process on every visit.',
+]
+
 /** Shown on every proposal. Commercial buyers screen on this before price. */
 export const COMPLIANCE_STATEMENTS: string[] = [
   'Renovo Surface Solutions LLC carries commercial general liability insurance. A certificate of insurance naming the client as additional insured is available on request before work begins.',
@@ -267,6 +280,118 @@ export const SERVICE_SCOPE: Record<string, ServiceScope> = {
     ],
   },
 
+  canopyWashing: {
+    label: 'Canopy & Column Washing',
+    scope: [
+      'Canopy underside and deck degreased to remove accumulated petroleum film and road grime.',
+      'Fascia panels washed on all elevations and rinsed to a uniform finish.',
+      'All support columns cleaned from canopy line to base, including bollard sleeves where fitted.',
+      'Light lenses and sign faces wiped where reachable from the lift.',
+      'Wash water contained and vacuum-recovered; nothing discharged to a storm drain.',
+      'Before and after photo documentation supplied.',
+    ],
+    exclusions: [
+      'Electrical work of any kind, including lamp or ballast replacement inside canopy light fixtures.',
+      'Repainting, refinishing, or repair of fascia panels, columns, or column wraps.',
+      'Removal of oxidation, chalking, or fading in the fascia finish itself, which is coating failure rather than soil.',
+      'Structural inspection or certification of the canopy.',
+      'Work during fuel delivery or while any island beneath the work area is in service.',
+    ],
+    assumptions: [
+      'The fuel islands beneath the work area can be coned off and taken out of service for the duration.',
+      'Ground beneath the canopy is level and rated for lift operation.',
+      'Overhead clearance permits a lift; otherwise the work is re-quoted with alternative access.',
+    ],
+  },
+
+  fuelIsland: {
+    label: 'Fuel Island Service',
+    scope: [
+      'Islands, curbs and pump surrounds degreased and hot-water washed.',
+      'Dispenser faces, nozzles holsters and card readers wiped down.',
+      'Trash receptacle surrounds and squeegee stations cleaned and restocked from client stock.',
+      'Concrete pad beneath and between islands degreased.',
+      'Wash water contained and vacuum-recovered for lawful disposal.',
+    ],
+    exclusions: [
+      'Any work on the dispensers themselves beyond exterior wiping. Renovo does not open, service, or calibrate fuel equipment.',
+      'Removal of permanent staining where petroleum has penetrated the concrete. This is documented at pre-inspection.',
+      'Handling, transfer, or disposal of fuel, and any response to an active leak or release.',
+      'Line striping, bollard painting, or concrete repair.',
+    ],
+    assumptions: [
+      'Islands are taken out of service in sections during the work window.',
+      'No active fuel release or contamination event is present; if one is found, work stops and the operator is notified immediately.',
+      'A lawful disposal point for recovered wash water is available.',
+    ],
+  },
+
+  carpetExtraction: {
+    label: 'Commercial Carpet Cleaning',
+    scope: [
+      'Carpet vacuumed and traffic lanes pre-treated before extraction.',
+      'Carpet agitated and cleaned by the method quoted, then extracted.',
+      'Spots and stains treated individually where treatable.',
+      'Furniture under 50 lbs moved and replaced; protectors placed under legs as needed.',
+      'Air movers placed in high-traffic areas to shorten dry time.',
+    ],
+    exclusions: [
+      'Guaranteed removal of permanent staining, bleach spots, dye transfer, urine damage, or wear patterns worn into the pile.',
+      'Repair, re-stretching, seam work, or replacement of carpet.',
+      'Moving of furniture, equipment, or filing over 50 lbs, unless quoted as a separate line.',
+      'Colour restoration or dyeing.',
+    ],
+    assumptions: [
+      'Dry time of 4-8 hours is acceptable; airflow and HVAC availability affect this materially.',
+      'Areas are cleared of personal belongings and floor clutter before crew arrival.',
+      'Carpet is a commercial-grade synthetic suitable for the method quoted; wool and natural fibres are re-quoted.',
+    ],
+  },
+
+  tileGrout: {
+    label: 'Tile & Grout Cleaning',
+    scope: [
+      'Grout lines cleaned with pressurised hot water and simultaneous extraction.',
+      'Tile surface degreased and residue haze removed.',
+      'Edges, corners and cove base detailed by hand.',
+      'Floor neutralised and dried on completion.',
+      'Penetrating grout sealer applied where quoted.',
+    ],
+    exclusions: [
+      'Regrouting, grout colour-sealing, tile replacement, or repair of cracked or loose tile.',
+      'Guaranteed uniform grout colour. Cleaning reveals the true colour, which varies where grout has been patched or previously sealed.',
+      'Removal of permanent staining that has penetrated unsealed grout.',
+      'Subfloor moisture remediation.',
+    ],
+    assumptions: [
+      'The area can be taken out of service during cleaning and for the sealer cure where sealing is included.',
+      'A floor drain or approved disposal point is available for extracted water.',
+      'Existing grout is sound; loose or missing grout is reported rather than cleaned over.',
+    ],
+  },
+
+  ventCleaning: {
+    label: 'Vent & Diffuser Cleaning',
+    scope: [
+      'Supply and return registers and diffusers removed where accessible.',
+      'Grilles washed, dried and refitted.',
+      'Ceiling and wall collar around each opening wiped down.',
+      'Visible dust removed from the first accessible section of duct behind each opening.',
+      'Filters replaced from client-supplied stock where requested.',
+    ],
+    exclusions: [
+      'Full duct-system cleaning. This is surface and register cleaning only, not NADCA whole-system remediation.',
+      'HVAC mechanical work of any kind: coils, blowers, dampers, or controls.',
+      'Mould remediation or air quality testing.',
+      'Openings that cannot be reached safely from a standard ladder or lift.',
+      'Filter supply, unless quoted as a separate line.',
+    ],
+    assumptions: [
+      'HVAC is shut down during the work for the areas being serviced.',
+      'Register locations are accessible without moving fixed equipment or stock.',
+    ],
+  },
+
   /* ---------- construction cleanup: before, between, after ---------- */
 
   constructionRough: {
@@ -399,5 +524,11 @@ export function buildProposalScope(serviceTypes: (string | null | undefined)[]):
     assumptions.push(line)
   }
 
-  return { sections, exclusions, assumptions, compliance: COMPLIANCE_STATEMENTS }
+  // Healthcare language is additive and only when it applies.
+  const healthcare = keys.some(k => k === 'disinfection' || k === 'ventCleaning')
+  const compliance = healthcare
+    ? [...COMPLIANCE_STATEMENTS, ...HEALTHCARE_STATEMENTS]
+    : COMPLIANCE_STATEMENTS
+
+  return { sections, exclusions, assumptions, compliance }
 }

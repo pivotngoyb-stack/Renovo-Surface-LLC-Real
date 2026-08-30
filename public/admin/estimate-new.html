@@ -146,7 +146,7 @@ const LINE_FREQUENCIES = [
 // Utah taxes cleaning services (59-12-103). Gutter and graffiti work are
 // cleaning; concrete sealing is a coating applied to real property, which is
 // treated differently -- left off by default, and the checkbox stays editable.
-const TAX_DEFAULT_ON = { janitorial: true, floorCare: true, windowCleaning: true, disinfection: true, gutterCleaning: true, graffitiRemoval: true, constructionRough: true, constructionProgress: true, constructionFinal: true, constructionTouchup: true };
+const TAX_DEFAULT_ON = { janitorial: true, floorCare: true, windowCleaning: true, disinfection: true, gutterCleaning: true, graffitiRemoval: true, constructionRough: true, constructionProgress: true, constructionFinal: true, constructionTouchup: true, canopyWashing: true, fuelIsland: true, carpetExtraction: true, tileGrout: true, ventCleaning: true };
 let taxDefaultSet = false;
 
 const SERVICES = [
@@ -164,6 +164,11 @@ const SERVICES = [
   { key: 'constructionProgress', label: 'Construction — Progress', icon: '🧹' },
   { key: 'constructionFinal', label: 'Construction — Final', icon: '🏗️' },
   { key: 'constructionTouchup', label: 'Construction — Touch-Up', icon: '📋' },
+  { key: 'canopyWashing', label: 'Canopy & Columns', icon: '⛽' },
+  { key: 'fuelIsland', label: 'Fuel Island Service', icon: '🛢️' },
+  { key: 'carpetExtraction', label: 'Carpet Extraction', icon: '🧽' },
+  { key: 'tileGrout', label: 'Tile & Grout', icon: '◻️' },
+  { key: 'ventCleaning', label: 'Vent & Diffuser Cleaning', icon: '🌀' },
 ];
 
 const PW_DESCRIPTIONS = {
@@ -374,6 +379,55 @@ const FIELD_BUILDERS = {
     ]))}
     ${fieldGroup('Drive Distance (miles)', '<input type="number" id="cs_miles" min="0" value="5">')}
   `,
+  canopyWashing: () => `
+    ${fieldGroup('Canopy Deck Area (sqft)', '<input type="number" id="cw_sqft" min="0" value="4000">')}
+    ${fieldGroup('Number of Columns', '<input type="number" id="cw_columns" min="0" value="8">')}
+    ${fieldGroup('Soil Level', selectHtml('cw_soil', [
+      { v: '1.0', l: 'Light — dust and road film' }, { v: '1.25', l: 'Moderate (+25%)' }, { v: '1.55', l: 'Heavy petroleum film (+55%)' },
+    ]))}
+    ${fieldGroup('Canopy Height', selectHtml('cw_height', [
+      { v: '1.0', l: 'Standard (14–16 ft)' }, { v: '1.2', l: 'Tall (18–22 ft, +20%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="cw_miles" min="0" value="10">')}
+  `,
+  fuelIsland: () => `
+    ${fieldGroup('Number of Fuel Islands', '<input type="number" id="fi_islands" min="1" value="6">')}
+    ${fieldGroup('Number of Pumps', '<input type="number" id="fi_pumps" min="1" value="12">')}
+    ${fieldGroup('Fuel Spill Treatment', selectHtml('fi_spill', [
+      { v: 'no', l: 'Not required' }, { v: 'yes', l: 'Yes — absorbent and degreaser treatment' },
+    ]))}
+    ${fieldGroup('Pump Base Restoration', selectHtml('fi_base', [
+      { v: 'no', l: 'Not included' }, { v: 'yes', l: 'Yes — scrub and brighten pump bases' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="fi_miles" min="0" value="10">')}
+  `,
+  carpetExtraction: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="ce_sqft" min="0" value="5000">')}
+    ${fieldGroup('Method', selectHtml('ce_method', [
+      { v: '1.0', l: 'Hot water extraction (deep clean)' }, { v: '0.6', l: 'Bonnet / interim (−40%)' }, { v: '0.75', l: 'Encapsulation (−25%)' },
+    ]))}
+    ${fieldGroup('Soil Level', selectHtml('ce_soil', [
+      { v: '1.0', l: 'Light' }, { v: '1.25', l: 'Moderate (+25%)' }, { v: '1.6', l: 'Heavy / restorative (+60%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="ce_miles" min="0" value="10">')}
+  `,
+  tileGrout: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="tg_sqft" min="0" value="1200">')}
+    ${fieldGroup('Grout Condition', selectHtml('tg_condition', [
+      { v: '1.0', l: 'Light soil' }, { v: '1.3', l: 'Moderate staining (+30%)' }, { v: '1.7', l: 'Heavy / neglected (+70%)' },
+    ]))}
+    ${fieldGroup('Grout Sealing', selectHtml('tg_seal', [
+      { v: 'no', l: 'Clean only' }, { v: 'yes', l: 'Yes — penetrating grout sealer after cleaning' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="tg_miles" min="0" value="10">')}
+  `,
+  ventCleaning: () => `
+    ${fieldGroup('Number of Vents / Diffusers', '<input type="number" id="vc_vents" min="1" value="40">')}
+    ${fieldGroup('Vent Type', selectHtml('vc_type', [
+      { v: '1.0', l: 'Supply / return diffusers' }, { v: '1.2', l: 'Exhaust and kitchen vents (+20%)' }, { v: '1.5', l: 'Medical or clean-room rated (+50%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="vc_miles" min="0" value="10">')}
+  `,
   constructionRough: () => `
     ${fieldGroup('Square Footage', '<input type="number" id="xr_sqft" min="0" value="10000">')}
     ${fieldGroup('Building Type', selectHtml('xr_building', CONSTRUCTION_BUILDING_TYPES))}
@@ -470,6 +524,13 @@ const MIN_BILLABLE_HOURS = {
   constructionProgress: 2,
   constructionFinal: 4,
   constructionTouchup: 3,
+  // Canopy work needs a lift on site; nobody mobilises one for two hours.
+  canopyWashing: 4,
+  fuelIsland: 3,
+  carpetExtraction: 2,
+  // Tile and grout is the slowest floor service there is.
+  tileGrout: 3,
+  ventCleaning: 2,
 };
 
 function billableHours(service, duration) {
@@ -639,6 +700,97 @@ const CALCULATORS = {
     const fuelCost = miles * 2 * 0.65;
     const final = priced + productCost + fuelCost;
     const description = `Commercial concrete sealing using ${sealerName.toLowerCase()} sealer, ${coats} coat${coats > 1 ? 's' : ''}. Surface cleaned and fully dried before application, then barricaded through cure.`;
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  canopyWashing: () => {
+    const sqft = num('cw_sqft');
+    const columns = num('cw_columns');
+    const soil = num('cw_soil') || 1;
+    const height = num('cw_height') || 1;
+    const miles = num('cw_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~400 sqft per crew-hour. Canopy decks are overhead work from a lift,
+    // which is roughly half the speed of the same area at ground level, and
+    // the underside holds a petroleum film that flatwork does not.
+    const duration = Math.max(sqft / 400, 2) + columns * 0.25;
+    const laborComponent = billableHours('canopyWashing', duration) * hourlyRate;
+    const priced = laborComponent * soil * height;
+    const productCost = sqft * 0.02 + columns * 1.5;
+    // Lift transport is a real cost even when the drive is short.
+    const fuelCost = miles * 2 * 0.65 + 25;
+    const final = priced + productCost + fuelCost;
+    const description = 'Canopy deck, fascia and column washing. Underside degreased to remove petroleum film and road grime, fascia panels washed, and all support columns cleaned top to base. Wash water contained and recovered.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  fuelIsland: () => {
+    const islands = Math.max(num('fi_islands'), 1);
+    const pumps = Math.max(num('fi_pumps'), 1);
+    const spill = val('fi_spill') === 'yes';
+    const base = val('fi_base') === 'yes';
+    const miles = num('fi_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~35 minutes per island for degrease, agitate and rinse; pump bases add
+    // roughly 25 minutes each because they are hand-detailed around the sump.
+    const duration = islands * 0.6 + (base ? pumps * 0.4 : 0);
+    const laborComponent = billableHours('fuelIsland', duration) * hourlyRate;
+    const spillAdd = spill ? 120 : 0;
+    const productCost = islands * 8 + (spill ? 45 : 0) + (base ? pumps * 2 : 0);
+    const fuelCost = miles * 2 * 0.65;
+    const final = laborComponent + spillAdd + productCost + fuelCost;
+    const description = 'Fuel island service. Islands and pump surrounds degreased and hot-water washed, dispenser faces wiped, and curbs detailed.'
+      + (base ? ' Pump bases scrubbed and brightened.' : '')
+      + (spill ? ' Fuel spill treatment applied with absorbent and degreaser.' : '')
+      + ' Wash water contained and recovered — no storm drain discharge.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  carpetExtraction: () => {
+    const sqft = num('ce_sqft');
+    const method = num('ce_method') || 1;
+    const soil = num('ce_soil') || 1;
+    const miles = num('ce_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~1,200 sqft per crew-hour for hot water extraction; interim methods are
+    // faster, which is what the method multiplier below reduces.
+    const duration = Math.max(sqft / 1200, 1) * method * soil;
+    const laborComponent = billableHours('carpetExtraction', duration) * hourlyRate;
+    const priced = laborComponent;
+    const productCost = sqft * 0.015 * soil;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Commercial carpet cleaning. Traffic lanes pre-treated, carpet agitated and extracted, and spots addressed individually. Furniture under 50 lbs moved and replaced. Dry time 4–8 hours depending on airflow.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  tileGrout: () => {
+    const sqft = num('tg_sqft');
+    const condition = num('tg_condition') || 1;
+    const seal = val('tg_seal') === 'yes';
+    const miles = num('tg_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~250 sqft per crew-hour. Grout lines are cleaned under pressure and
+    // extracted line by line, which makes this the slowest floor service.
+    const duration = Math.max(sqft / 250, 2) * condition;
+    const laborComponent = billableHours('tileGrout', duration) * hourlyRate;
+    const sealAdd = seal ? Math.max(sqft / 400, 1) * hourlyRate : 0;
+    const productCost = sqft * 0.04 + (seal ? sqft * 0.06 : 0);
+    const fuelCost = miles * 2 * 0.65;
+    const final = laborComponent + sealAdd + productCost + fuelCost;
+    const description = 'Tile and grout deep cleaning. Grout lines cleaned with pressurised hot water and simultaneous extraction, tile surface degreased, and haze removed.'
+      + (seal ? ' Penetrating grout sealer applied on completion to resist future staining.' : '');
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  ventCleaning: () => {
+    const vents = Math.max(num('vc_vents'), 1);
+    const type = num('vc_type') || 1;
+    const miles = num('vc_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~12 minutes per diffuser: remove, wash, wipe the collar, refit.
+    const duration = vents * 0.2;
+    const laborComponent = billableHours('ventCleaning', duration) * hourlyRate;
+    const priced = laborComponent * type;
+    const productCost = vents * 1.5;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Vent and diffuser cleaning. Registers and diffusers removed where accessible, washed, and refitted; surrounding ceiling collar wiped. Visible dust removed from the first accessible section of duct.';
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
   },
   constructionRough: () => {

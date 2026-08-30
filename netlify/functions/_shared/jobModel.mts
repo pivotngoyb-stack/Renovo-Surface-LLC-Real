@@ -28,6 +28,8 @@ const TRIGGER_FRACTION_BY_SERVICE: Record<string, number> = {
   pressureWashing: 0.7,
   dumpsterPad: 0.7,
   graffitiRemoval: 0.2,
+  canopyWashing: 0.6,
+  fuelIsland: 0.65,
 }
 
 /** Max techs that can productively work a job at once, capped by equipment.
@@ -53,6 +55,12 @@ const MAX_PARALLEL: Record<string, number> = {
   constructionProgress: 3,
   constructionFinal: 8,
   constructionTouchup: 4,
+  // One lift, one operator, one ground hand. A fourth body has nowhere to go.
+  canopyWashing: 3,
+  fuelIsland: 2,
+  carpetExtraction: 2,
+  tileGrout: 2,
+  ventCleaning: 3,
 }
 
 /** Target on-site window before we add a second tech. */
@@ -78,6 +86,11 @@ const CHEM_COST_PER_GAL: Record<string, number> = {
   'Glass cleaner concentrate': 14,
   'Adhesive / label remover': 34,
   'Neutral pH floor cleaner': 18,
+  'Carpet pre-spray': 22,
+  'Carpet extraction detergent': 20,
+  'Tile & grout cleaner (alkaline)': 24,
+  'Penetrating grout sealer': 42,
+  'Oil absorbent (granular)': 15,
 }
 
 /* ---------- types ---------- */
@@ -174,6 +187,11 @@ const SERVICE_LABELS: Record<string, string> = {
   constructionProgress: 'Construction Cleanup — Progress',
   constructionFinal: 'Construction Cleanup — Final',
   constructionTouchup: 'Construction Cleanup — Touch-Up',
+  canopyWashing: 'Canopy & Column Washing',
+  fuelIsland: 'Fuel Island Service',
+  carpetExtraction: 'Carpet Cleaning',
+  tileGrout: 'Tile & Grout Cleaning',
+  ventCleaning: 'Vent & Diffuser Cleaning',
 }
 
 /* ---------- chemical models ---------- */
@@ -365,6 +383,62 @@ function chemicalsFor(service: string, inputs: Record<string, string>): Chemical
       return [chem('Glass cleaner', 'Squeegee solution', '1 oz per 3 gal bucket', buckets * 3, (buckets * 1) / 128, 0)]
     }
 
+    case 'canopyWashing': {
+      const sqft = n(inputs.cw_sqft)
+      const columns = n(inputs.cw_columns)
+      if (sqft <= 0) return []
+      const mixed = sqft / 220 // overhead work uses more solution than flatwork
+      return [
+        chem('Butyl/citrus degreaser', 'Cut petroleum film from the canopy underside', '1:4 concentrate to water', mixed, mixed / 5, 10,
+          'Overhead application means it comes back down. Full face protection, and never work under an unmasked island.'),
+        chem('Heavy-duty all-purpose cleaner', `Fascia panels and ${columns} columns`, '1:20 concentrate to water', columns * 0.5, (columns * 0.5) / 20, 0),
+      ]
+    }
+
+    case 'fuelIsland': {
+      const islands = Math.max(n(inputs.fi_islands), 1)
+      const out: ChemicalNeed[] = [
+        chem('Butyl/citrus degreaser', `Island and pump surround degreasing -- ${islands} island(s)`, '1:4 concentrate to water', islands * 3, (islands * 3) / 5, 15,
+          'Fuel-contaminated wash water is process wastewater. Contain and recover every drop.'),
+      ]
+      if (inputs.fi_spill === 'yes') {
+        out.push(chem('Oil absorbent (granular)', 'Fuel spill treatment and pickup', 'Applied dry', 1, 1, 0,
+          'Used absorbent is contaminated waste. Bag it and dispose lawfully -- it does not go in the site dumpster.'))
+      }
+      return out
+    }
+
+    case 'carpetExtraction': {
+      const sqft = n(inputs.ce_sqft)
+      if (sqft <= 0) return []
+      const soil = n(inputs.ce_soil, 1)
+      return [
+        chem('Carpet pre-spray', 'Traffic-lane pre-treatment before extraction', '1:32 concentrate to water', (sqft / 1000) * soil, ((sqft / 1000) * soil) / 32, 10,
+          'Pre-spray must not dry on the fibre. Work in sections small enough to extract before it flashes off.'),
+        chem('Carpet extraction detergent', 'In-tank cleaning solution', '1:64 concentrate to water', sqft / 800, (sqft / 800) / 64, 0),
+      ]
+    }
+
+    case 'tileGrout': {
+      const sqft = n(inputs.tg_sqft)
+      if (sqft <= 0) return []
+      const out: ChemicalNeed[] = [
+        chem('Tile & grout cleaner (alkaline)', 'Break down grease and soil in the grout line', '1:8 concentrate to water', sqft / 300, (sqft / 300) / 8, 10),
+      ]
+      if (inputs.tg_seal === 'yes') {
+        out.push(chem('Penetrating grout sealer', 'Resist future staining in cleaned grout', 'Ready to use', sqft / 350, sqft / 350, 60,
+          'Grout must be fully dry before sealing. Sealing damp grout traps moisture and clouds the line permanently.'))
+      }
+      return out
+    }
+
+    case 'ventCleaning': {
+      const vents = Math.max(n(inputs.vc_vents), 1)
+      return [
+        chem('Heavy-duty all-purpose cleaner', `Wash ${vents} grille(s) and wipe collars`, '1:20 concentrate to water', vents * 0.08, (vents * 0.08) / 20, 0),
+      ]
+    }
+
     case 'constructionRough': {
       const sqft = n(inputs.xr_sqft)
       if (sqft <= 0) return []
@@ -531,6 +605,40 @@ const EQUIPMENT: Record<string, string[]> = {
     'Concrete moisture meter',
     'Barricades, cones and caution tape for the cure window',
   ],
+  canopyWashing: [
+    'Scissor or boom lift rated for the canopy height',
+    `Hot-water pressure washer (${MACHINE_GPM} GPM / 3,500+ PSI)`,
+    'Downstream injector and extension wand',
+    'Wash-water containment mats and wet vacuum',
+    'Cones and barrier tape to close the islands beneath',
+  ],
+  fuelIsland: [
+    `Hot-water pressure washer (${MACHINE_GPM} GPM / 3,500+ PSI)`,
+    'Surface cleaner and detail wand',
+    'Storm drain covers and containment berm',
+    'Wet vacuum for recovery',
+    'Absorbent granules and contaminated-waste bags',
+  ],
+  carpetExtraction: [
+    'Truck-mount or portable hot-water extractor',
+    'Rotary or cylindrical agitation machine',
+    'Pre-spray applicator',
+    'Air movers',
+    'Furniture blocks and corner guards',
+  ],
+  tileGrout: [
+    'Pressurised spinner tool with simultaneous extraction',
+    'Hot-water extractor',
+    'Grout brushes and hand detail tools',
+    'Sealer applicator with fine tip',
+    'Wet-floor signage',
+  ],
+  ventCleaning: [
+    'Step ladder or scissor lift by ceiling height',
+    'HEPA vacuum with brush attachments',
+    'Grille wash tubs and drying racks',
+    'Drop cloths for floor and furniture protection',
+  ],
   constructionRough: [
     'HEPA-filtered vacuums (silica-rated)',
     'Flat-bed carts and debris barrels',
@@ -576,6 +684,11 @@ const PPE: Record<string, string[]> = {
   disinfection: ['Respirator per product label', 'Chemical-splash goggles', 'Nitrile gloves'],
   gutterCleaning: ['Fall-protection harness and anchor above 6 ft', 'Cut-resistant gloves (screws and sheet-metal edges)', 'Safety glasses', 'Hard hat'],
   concreteSealing: ['Organic-vapor respirator (solvent-borne sealer)', 'Chemical-splash goggles', 'Nitrile gloves', 'Non-slip boots'],
+  canopyWashing: ['Fall-protection harness in the lift', 'Full face shield (overhead chemical)', 'Chemical-resistant gloves', 'Hard hat', 'Waterproof boots'],
+  fuelIsland: ['Chemical-splash goggles', 'Nitrile gloves', 'Waterproof boots', 'Hi-vis vest (live forecourt)'],
+  carpetExtraction: ['Nitrile gloves', 'Safety glasses for chemical decanting', 'Non-slip footwear'],
+  tileGrout: ['Chemical-splash goggles', 'Chemical-resistant gloves', 'Non-slip boots', 'Knee pads'],
+  ventCleaning: ['N95 respirator (settled dust)', 'Safety glasses', 'Nitrile gloves'],
   constructionRough: ['N95 or P100 respirator (respirable silica)', 'Safety glasses', 'Cut-resistant gloves', 'Steel-toe boots', 'Hard hat and hi-vis vest (active site)'],
   constructionProgress: ['N95 respirator', 'Safety glasses', 'Cut-resistant gloves', 'Steel-toe boots', 'Hard hat and hi-vis vest (active site)'],
   constructionFinal: ['N95 respirator (residual dust)', 'Safety glasses', 'Nitrile gloves', 'Non-slip footwear', 'Knee pads'],
@@ -633,6 +746,45 @@ function complianceFor(service: string, inputs: Record<string, string>): Complia
     ]
   }
 
+  if (service === 'canopyWashing' || service === 'fuelIsland') {
+    return [
+      {
+        level: 'critical',
+        requirement: 'Contain and recover ALL wash water -- no storm drain discharge',
+        detail:
+          'Fuel-contaminated runoff is process wastewater under the Clean Water Act. Section 301 prohibits discharging it to a storm drain and penalties reach $50,000 per day. Cover every inlet, berm the area, vacuum-recover, and dispose to sanitary sewer with the operator\u2019s written permission.',
+      },
+      {
+        level: 'critical',
+        requirement: 'Islands out of service before work begins -- never work over a live dispenser',
+        detail: 'Cone and tape the affected islands and confirm shutdown with the site manager. No work proceeds during a fuel delivery.',
+      },
+      ...(service === 'canopyWashing' ? [{
+        level: 'critical' as const,
+        requirement: 'Fall protection in the lift, every time it leaves the ground',
+        detail: 'Harness clipped to the manufacturer anchor. Check ground bearing and overhead clearance before elevating.',
+      }] : []),
+      { level: 'standard' as const, requirement: 'No electrical work inside canopy light fixtures', detail: 'Wash around them. Lamp and ballast work is a licensed trade.' },
+      { level: 'standard' as const, requirement: 'SDS on site for every chemical carried', detail: 'Fuel retailers audit this on arrival.' },
+    ]
+  }
+
+  if (service === 'tileGrout' || service === 'carpetExtraction') {
+    return [
+      { level: 'critical', requirement: 'Extracted water to a sanitary drain, never outside', detail: 'Recovered solution carries detergent and soil. A mop sink or approved drain only.' },
+      { level: 'standard', requirement: 'Wet-floor signage and access control until dry', detail: 'Carpet takes 4-8 hours; sealed grout needs its full cure. Slip claims start here.' },
+      { level: 'standard', requirement: 'Test an inconspicuous area first', detail: 'Confirm colourfastness on carpet and that the cleaner does not etch the tile finish.' },
+    ]
+  }
+
+  if (service === 'ventCleaning') {
+    return [
+      { level: 'critical', requirement: 'HVAC shut down for the zone being serviced', detail: 'Removing a live register pulls loosened dust straight into the occupied space and the return.' },
+      { level: 'standard', requirement: 'Protect floors and furniture below every opening', detail: 'What comes off a return grille is years of settled dust.' },
+      { level: 'standard', requirement: 'Report any mould or moisture rather than cleaning it', detail: 'Visible growth is a remediation scope Renovo does not hold.' },
+    ]
+  }
+
   if (service === 'constructionRough' || service === 'constructionProgress' || service === 'constructionFinal' || service === 'constructionTouchup') {
     const active = service === 'constructionRough' || service === 'constructionProgress'
     return [
@@ -676,6 +828,12 @@ function weatherFor(services: string[]): string[] {
   }
   if (services.includes('windowCleaning')) out.push('Avoid direct sun on glass -- solution flashes off and streaks before the squeegee lands.')
   if (services.includes('floorCare')) out.push('High humidity extends finish cure time; plan longer between coats.')
+  if (services.includes('canopyWashing')) {
+    out.push('No lift work in wind above ~20 mph. A canopy deck at 20 feet is the worst place on the site to be caught by a gust.')
+  }
+  if (services.includes('carpetExtraction')) {
+    out.push('Humidity drives dry time. Without HVAC or air movers, 4-8 hours becomes overnight and the client finds damp carpet in the morning.')
+  }
   if (services.some(s => s.startsWith('construction'))) {
     out.push('Unconditioned building: in winter, water left on concrete freezes and in summer it flashes off before it can be mopped. Confirm permanent HVAC is running before the final clean.')
     out.push('Site power and lighting must be live for a final clean. Temporary lighting hides dust that the owner walkthrough will not.')
