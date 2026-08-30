@@ -486,6 +486,20 @@ body.admin-body {
   .login-card { margin: 8vh auto; padding: 28px 22px; }
 }
 
+/* ---------- Job profitability ---------- */
+.prof-scroll { overflow-x: auto; }
+.prof-caveat {
+  border: 1.5px solid #F0C36D; background: #FFFBF2; border-radius: var(--radius);
+  padding: 13px 16px; font-size: 0.84rem; color: #7A5A00; line-height: 1.6; margin-top: 14px;
+}
+.conf-pill {
+  display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 3px 8px;
+  border-radius: 10px; white-space: nowrap; cursor: help;
+}
+.conf-full { background: #E8F5EC; color: #1B7A3C; }
+.conf-partial { background: #FFF4DC; color: #8A6400; }
+.conf-none { background: #F3F5F9; color: #6B7A90; }
+
 /* ---------- Existing client lookup ---------- */
 .ac-wrap { position: relative; }
 .ac-list {

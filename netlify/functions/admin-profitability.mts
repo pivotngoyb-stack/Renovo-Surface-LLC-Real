@@ -1,0 +1,210 @@
+import { eq, inArray, sql } from 'drizzle-orm'
+import type { Context } from '@netlify/functions'
+import { db, schema } from './_shared/db.mts'
+import { isAuthenticated } from './_shared/auth.mts'
+import { json, unauthorized } from './_shared/http.mts'
+import { withErrorHandling } from './_shared/errorHandler.mts'
+import { jobEconomics, type StoredLineItem, type CostConfidence } from './_shared/jobEconomics.mts'
+
+const round2 = (x: number) => Math.round(x * 100) / 100
+const n = (v: unknown) => {
+  const x = Number(v)
+  return Number.isFinite(x) ? x : 0
+}
+
+/**
+ * What each sold job actually earned.
+ *
+ * Renovo could see a margin while writing a quote and nowhere afterwards.
+ * Everything downstream -- work orders, invoices, the dashboard -- carries a
+ * price and no cost, so the only question the system could answer was "how much
+ * did I bill", never "which of this work was worth doing".
+ *
+ * Three revenue figures are reported per job rather than one, because they
+ * disagree and the disagreement is the useful part:
+ *
+ *   quoted    what the estimate said
+ *   invoiced  what was actually billed, once an invoice exists
+ *   collected what the client has actually paid
+ *
+ * Margin is measured against quoted revenue, since that is what the cost model
+ * was built against. A job billed for less than it was quoted is a scope
+ * problem, and it should be visible as a gap rather than folded into a margin.
+ */
+export default withErrorHandling('admin-profitability', async (request: Request, _context: Context) => {
+  if (!isAuthenticated(request)) return unauthorized()
+
+  /* Sold work only: a draft estimate is a hope, not a job. */
+  const jobs = await db
+    .select({
+      estimateId: schema.estimates.id,
+      approvedAt: schema.estimates.approvedAt,
+      createdAt: schema.estimates.createdAt,
+      clientId: schema.clients.id,
+      clientName: schema.clients.name,
+      company: schema.clients.company,
+      workOrderId: schema.workOrders.id,
+      workOrderStatus: schema.workOrders.status,
+      completedAt: schema.workOrders.completedAt,
+    })
+    .from(schema.estimates)
+    .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
+    .leftJoin(schema.workOrders, eq(schema.workOrders.estimateId, schema.estimates.id))
+    .where(sql`${schema.estimates.status} = 'approved' and ${schema.estimates.archived} = false`)
+
+  if (!jobs.length) {
+    return json({ jobs: [], byService: [], byClient: [], totals: emptyTotals() })
+  }
+
+  const estimateIds = jobs.map(j => j.estimateId)
+
+  const allLines = await db
+    .select()
+    .from(schema.estimateLineItems)
+    .where(inArray(schema.estimateLineItems.estimateId, estimateIds))
+    .orderBy(schema.estimateLineItems.sortOrder)
+
+  const linesByEstimate = new Map<number, StoredLineItem[]>()
+  allLines.forEach(li => {
+    const list = linesByEstimate.get(li.estimateId) || []
+    list.push(li as StoredLineItem)
+    linesByEstimate.set(li.estimateId, list)
+  })
+
+  /* Invoiced and collected, per work order. */
+  const workOrderIds = jobs.map(j => j.workOrderId).filter((x): x is number => x != null)
+
+  const invoiceRows = workOrderIds.length
+    ? await db
+        .select({
+          invoiceId: schema.invoices.id,
+          workOrderId: schema.invoices.workOrderId,
+          status: schema.invoices.status,
+          taxAmount: schema.invoices.taxAmount,
+        })
+        .from(schema.invoices)
+        .where(inArray(schema.invoices.workOrderId, workOrderIds))
+    : []
+
+  const invoiceIds = invoiceRows.map(r => r.invoiceId)
+
+  const invoiceTotals = invoiceIds.length
+    ? await db
+        .select({
+          invoiceId: schema.invoiceLineItems.invoiceId,
+          total: sql<string>`sum(${schema.invoiceLineItems.quantity} * ${schema.invoiceLineItems.unitPrice})`,
+        })
+        .from(schema.invoiceLineItems)
+        .where(inArray(schema.invoiceLineItems.invoiceId, invoiceIds))
+        .groupBy(schema.invoiceLineItems.invoiceId)
+    : []
+
+  const paymentTotals = invoiceIds.length
+    ? await db
+        .select({
+          invoiceId: schema.invoicePayments.invoiceId,
+          total: sql<string>`sum(${schema.invoicePayments.amount})`,
+        })
+        .from(schema.invoicePayments)
+        .where(inArray(schema.invoicePayments.invoiceId, invoiceIds))
+        .groupBy(schema.invoicePayments.invoiceId)
+    : []
+
+  const invoicedBy = new Map(invoiceTotals.map(r => [r.invoiceId, n(r.total)]))
+  const collectedBy = new Map(paymentTotals.map(r => [r.invoiceId, n(r.total)]))
+
+  const invoiceByWorkOrder = new Map<number, { invoiced: number; collected: number; status: string }>()
+  invoiceRows.forEach(r => {
+    if (r.workOrderId == null) return
+    const prev = invoiceByWorkOrder.get(r.workOrderId) || { invoiced: 0, collected: 0, status: r.status }
+    invoiceByWorkOrder.set(r.workOrderId, {
+      invoiced: round2(prev.invoiced + (invoicedBy.get(r.invoiceId) || 0) + n(r.taxAmount)),
+      collected: round2(prev.collected + (collectedBy.get(r.invoiceId) || 0)),
+      status: r.status,
+    })
+  })
+
+  /* Per job, plus the rollups. */
+  const byService = new Map<string, { serviceType: string; jobs: number; revenue: number; cost: number; profit: number; hours: number }>()
+  const byClient = new Map<number, { clientId: number; clientName: string; company: string | null; jobs: number; revenue: number; cost: number; profit: number }>()
+
+  const rows = jobs.map(j => {
+    const econ = jobEconomics(linesByEstimate.get(j.estimateId) || [])
+    const billing = j.workOrderId != null ? invoiceByWorkOrder.get(j.workOrderId) : undefined
+
+    econ.lines.forEach(l => {
+      const key = l.serviceType || 'other'
+      const acc = byService.get(key) || { serviceType: key, jobs: 0, revenue: 0, cost: 0, profit: 0, hours: 0 }
+      acc.revenue = round2(acc.revenue + l.revenue)
+      acc.cost = round2(acc.cost + l.loadedCost)
+      acc.profit = round2(acc.profit + l.profit)
+      acc.hours = round2(acc.hours + l.laborHours)
+      acc.jobs += 1
+      byService.set(key, acc)
+    })
+
+    if (j.clientId != null) {
+      const acc = byClient.get(j.clientId)
+        || { clientId: j.clientId, clientName: j.clientName || 'Unknown', company: j.company, jobs: 0, revenue: 0, cost: 0, profit: 0 }
+      acc.revenue = round2(acc.revenue + econ.revenue)
+      acc.cost = round2(acc.cost + econ.loadedCost)
+      acc.profit = round2(acc.profit + econ.profit)
+      acc.jobs += 1
+      byClient.set(j.clientId, acc)
+    }
+
+    return {
+      estimateId: j.estimateId,
+      workOrderId: j.workOrderId,
+      clientName: j.clientName,
+      company: j.company,
+      approvedAt: j.approvedAt || j.createdAt,
+      completedAt: j.completedAt,
+      workOrderStatus: j.workOrderStatus,
+      invoiceStatus: billing?.status || null,
+      quoted: econ.revenue,
+      invoiced: billing ? billing.invoiced : null,
+      collected: billing ? billing.collected : null,
+      loadedCost: econ.loadedCost,
+      profit: econ.profit,
+      marginPct: econ.marginPct,
+      laborHours: econ.laborHours,
+      subcontractorCost: econ.subcontractorCost,
+      confidence: econ.confidence,
+      uncostedRevenue: econ.uncostedRevenue,
+    }
+  })
+
+  const withMargin = <T extends { revenue: number; profit: number }>(x: T) => ({
+    ...x,
+    marginPct: x.revenue > 0 ? Math.round((x.profit / x.revenue) * 1000) / 10 : 0,
+  })
+
+  const totals = rows.reduce((t, r) => ({
+    jobs: t.jobs + 1,
+    quoted: round2(t.quoted + r.quoted),
+    invoiced: round2(t.invoiced + (r.invoiced || 0)),
+    collected: round2(t.collected + (r.collected || 0)),
+    loadedCost: round2(t.loadedCost + r.loadedCost),
+    profit: round2(t.profit + r.profit),
+    laborHours: round2(t.laborHours + r.laborHours),
+    uncostedRevenue: round2(t.uncostedRevenue + r.uncostedRevenue),
+    marginPct: 0,
+  }), emptyTotals())
+  totals.marginPct = totals.quoted > 0 ? Math.round((totals.profit / totals.quoted) * 1000) / 10 : 0
+
+  return json({
+    jobs: rows.sort((a, b) => a.marginPct - b.marginPct),
+    byService: [...byService.values()].map(withMargin).sort((a, b) => a.marginPct - b.marginPct),
+    byClient: [...byClient.values()].map(withMargin).sort((a, b) => b.revenue - a.revenue),
+    totals,
+  })
+})
+
+function emptyTotals() {
+  return { jobs: 0, quoted: 0, invoiced: 0, collected: 0, loadedCost: 0, profit: 0, laborHours: 0, uncostedRevenue: 0, marginPct: 0 }
+}
+
+export const config = {
+  path: '/api/admin/profitability',
+}

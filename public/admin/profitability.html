@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Profitability | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/schedule.html">Schedule</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
+        <a href="/admin/profitability.html">Profit</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <a href="/admin/invoice-new.html">+ New Invoice</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <h1 style="font-size:1.4rem; margin-bottom:4px;">Job Profitability</h1>
+    <p style="color:#8A98AC; font-size:0.86rem; margin-bottom:22px; max-width:760px;">
+      Sold work only, costed from the wage, chemical, equipment and subcontract figures recorded when each
+      job was quoted &mdash; not today's settings, so a job priced last spring stays scored the way it was sold.
+      Least profitable first, because that is the end of the list worth reading.
+    </p>
+    <div id="content">Loading&hellip;</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const SERVICE_LABELS = {
+  pressureWashing: 'Pressure Washing', windowCleaning: 'Window Cleaning', janitorial: 'Janitorial',
+  floorCare: 'Floor Care', dumpsterPad: 'Dumpster Pad', lotSweeping: 'Lot Sweeping',
+  disinfection: 'Disinfection', gutterCleaning: 'Gutter Cleaning', concreteSealing: 'Concrete Sealing',
+  graffitiRemoval: 'Graffiti Removal', constructionRough: 'Construction — Rough',
+  constructionProgress: 'Construction — Progress', constructionFinal: 'Construction — Final',
+  constructionTouchup: 'Construction — Touch-Up', canopyWashing: 'Canopy Washing',
+  fuelIsland: 'Fuel Island', carpetExtraction: 'Carpet Cleaning', tileGrout: 'Tile & Grout',
+  ventCleaning: 'Vent Cleaning', other: 'Other / hand-entered',
+};
+
+const esc = v => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const pct = v => `${Number(v).toFixed(1)}%`;
+
+/* Colour reads the health of the number, not just its sign: a 12% job is not
+   a loss but it will not survive a callback either. */
+function marginColor(m) {
+  if (m < 0) return '#C0392B';
+  if (m < 20) return '#966A00';
+  return '#1B7A3C';
+}
+
+/*
+ * How much of a figure is actually costed.
+ *
+ * Reporting a 100% margin on a hand-typed line because no cost was recorded
+ * would be worse than reporting nothing: it would look like the best job on
+ * the board. Every row says what it knows.
+ */
+const CONFIDENCE = {
+  full: { label: 'Costed', cls: 'conf-full', title: 'Priced by the calculator with the wage and overhead settings stored alongside it.' },
+  partial: { label: 'Estimated', cls: 'conf-partial', title: 'Quoted before burden settings were recorded. Costed from the flat wage figure stored at the time.' },
+  none: { label: 'No cost data', cls: 'conf-none', title: 'Entered by hand, so no cost was recorded. Shown as revenue only — the margin is not real.' },
+};
+
+function confidencePill(c) {
+  const meta = CONFIDENCE[c] || CONFIDENCE.none;
+  return `<span class="conf-pill ${meta.cls}" title="${esc(meta.title)}">${meta.label}</span>`;
+}
+
+async function load() {
+  const content = document.getElementById('content');
+  let data;
+  try {
+    const res = await adminFetch('/api/admin/profitability');
+    if (!res.ok) { content.innerHTML = '<div class="empty-state">Could not load the report.</div>'; return; }
+    data = await res.json();
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state">Could not load the report. Check your connection and try again.</div>';
+    return;
+  }
+
+  if (!data.jobs.length) {
+    content.innerHTML = '<div class="empty-state">No sold jobs yet. Approved estimates appear here once a client accepts.</div>';
+    return;
+  }
+
+  const t = data.totals;
+  const card = (label, value, color) => `
+    <div class="doc-card" style="margin:0; padding:20px;">
+      <div style="font-size:0.78rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">${label}</div>
+      <div style="font-size:1.6rem; font-family:var(--font-head); font-weight:800; color:${color || 'var(--navy)'};">${value}</div>
+    </div>`;
+
+  const uncostedWarning = t.uncostedRevenue > 0 ? `
+    <div class="prof-caveat">
+      <strong>${money(t.uncostedRevenue)}</strong> of this revenue sits on hand-entered lines with no recorded cost.
+      Those lines count as pure profit here because nothing else is known about them, so the overall margin
+      above is optimistic by an unknown amount. Price through the calculator to fix it going forward.
+    </div>` : '';
+
+  const jobRows = data.jobs.map(j => {
+    const billedGap = j.invoiced != null && Math.abs(j.invoiced - j.quoted) > 0.5;
+    return `
+    <tr onclick="window.location.href='/admin/estimate-detail.html?id=${j.estimateId}'" style="cursor:pointer;">
+      <td>
+        <div style="font-weight:600; color:var(--navy);">${esc(j.company || j.clientName || 'Unknown')}</div>
+        <div style="font-size:0.78rem; color:#8A98AC;">Estimate #${j.estimateId}${j.completedAt ? ' · completed' : j.workOrderStatus === 'signed' ? ' · signed' : ' · awaiting signature'}</div>
+      </td>
+      <td>${confidencePill(j.confidence)}</td>
+      <td style="text-align:right;">${money(j.quoted)}</td>
+      <td style="text-align:right;">
+        ${j.invoiced == null ? '<span style="color:#8A98AC;">not invoiced</span>' : money(j.invoiced)}
+        ${billedGap ? `<div style="font-size:0.74rem; color:#966A00;">${j.invoiced < j.quoted ? '−' : '+'}${money(Math.abs(j.invoiced - j.quoted)).replace('$','$')} vs quote</div>` : ''}
+      </td>
+      <td style="text-align:right;">
+        ${j.collected == null ? '<span style="color:#8A98AC;">—</span>' : money(j.collected)}
+        ${j.invoiceStatus === 'paid' && j.collected === 0 ? '<div style="font-size:0.74rem; color:#8A98AC;">marked paid, no payment recorded</div>' : ''}
+      </td>
+      <td style="text-align:right;">${j.loadedCost > 0 ? money(j.loadedCost) : '<span style="color:#8A98AC;">—</span>'}</td>
+      <td style="text-align:right; font-weight:700; color:${marginColor(j.marginPct)};">
+        ${money(j.profit)}
+        <div style="font-size:0.78rem; font-weight:600;">${pct(j.marginPct)}</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const serviceRows = data.byService.map(s => `
+    <tr>
+      <td>${esc(SERVICE_LABELS[s.serviceType] || s.serviceType)}</td>
+      <td style="text-align:right;">${s.jobs}</td>
+      <td style="text-align:right;">${s.hours > 0 ? s.hours.toFixed(1) : '—'}</td>
+      <td style="text-align:right;">${money(s.revenue)}</td>
+      <td style="text-align:right;">${money(s.cost)}</td>
+      <td style="text-align:right; font-weight:700; color:${marginColor(s.marginPct)};">${money(s.profit)} <span style="font-weight:600;">(${pct(s.marginPct)})</span></td>
+    </tr>`).join('');
+
+  const clientRows = data.byClient.map(c => `
+    <tr>
+      <td>${esc(c.company || c.clientName)}</td>
+      <td style="text-align:right;">${c.jobs}</td>
+      <td style="text-align:right;">${money(c.revenue)}</td>
+      <td style="text-align:right;">${money(c.cost)}</td>
+      <td style="text-align:right; font-weight:700; color:${marginColor(c.marginPct)};">${money(c.profit)} <span style="font-weight:600;">(${pct(c.marginPct)})</span></td>
+    </tr>`).join('');
+
+  content.innerHTML = `
+    <div class="summary-grid" style="margin-bottom:8px;">
+      ${card('Sold Work', money(t.quoted))}
+      ${card('Modelled Cost', money(t.loadedCost))}
+      ${card('Profit', money(t.profit), marginColor(t.marginPct))}
+      ${card('Margin', pct(t.marginPct), marginColor(t.marginPct))}
+    </div>
+    ${uncostedWarning}
+
+    <h2 style="font-size:1.1rem; margin:28px 0 12px;">Every sold job, worst margin first</h2>
+    <div class="prof-scroll">
+      <table class="dash-table">
+        <thead><tr>
+          <th>Client</th><th>Cost basis</th>
+          <th style="text-align:right;">Quoted</th><th style="text-align:right;">Invoiced</th>
+          <th style="text-align:right;">Collected</th><th style="text-align:right;">Cost</th>
+          <th style="text-align:right;">Profit</th>
+        </tr></thead>
+        <tbody>${jobRows}</tbody>
+      </table>
+    </div>
+
+    <h2 style="font-size:1.1rem; margin:32px 0 12px;">By service</h2>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-top:-6px; margin-bottom:12px;">
+      Which work is worth chasing more of, and which is busy rather than profitable.
+    </p>
+    <div class="prof-scroll">
+      <table class="dash-table">
+        <thead><tr>
+          <th>Service</th><th style="text-align:right;">Lines</th><th style="text-align:right;">Hours</th>
+          <th style="text-align:right;">Revenue</th><th style="text-align:right;">Cost</th><th style="text-align:right;">Profit</th>
+        </tr></thead>
+        <tbody>${serviceRows}</tbody>
+      </table>
+    </div>
+
+    <h2 style="font-size:1.1rem; margin:32px 0 12px;">By client</h2>
+    <div class="prof-scroll">
+      <table class="dash-table">
+        <thead><tr>
+          <th>Client</th><th style="text-align:right;">Jobs</th>
+          <th style="text-align:right;">Revenue</th><th style="text-align:right;">Cost</th><th style="text-align:right;">Profit</th>
+        </tr></thead>
+        <tbody>${clientRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>
