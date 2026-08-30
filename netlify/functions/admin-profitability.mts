@@ -5,6 +5,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { jobEconomics, type StoredLineItem, type CostConfidence } from './_shared/jobEconomics.mts'
+import { contractEconomics, contractVerdict } from './_shared/contractEconomics.mts'
 
 const round2 = (x: number) => Math.round(x * 100) / 100
 const n = (v: unknown) => {
@@ -149,6 +150,24 @@ export default withErrorHandling('admin-profitability', async (request: Request,
     const econ = jobEconomics(linesByEstimate.get(j.estimateId) || [], j.actualHours, j.actualMaterialsCost)
     const billing = j.workOrderId != null ? invoiceByWorkOrder.get(j.workOrderId) : undefined
 
+    /*
+     * A standing agreement is a different question from a one-off job. It
+     * costs something to win before it earns anything, and only repays that
+     * over a run of visits, so the number that matters is not this visit
+     * margin -- it is how long the client has to stay for the contract to
+     * have been worth signing.
+     */
+    let contractRow = null
+    if (econ.isRecurring && econ.visitsPerYear > 0) {
+      // Only the recurring lines. A one-off deep clean sold alongside a
+      // weekly contract is not part of the per-visit economics.
+      const rec = econ.lines.filter(l => l.recurring)
+      const revPerVisit = round2(rec.reduce((t, l) => t + l.revenue, 0))
+      const costPerVisit = round2(rec.reduce((t, l) => t + l.loadedCost, 0))
+      const ce = contractEconomics(revPerVisit, costPerVisit, econ.visitsPerYear)
+      contractRow = { ...ce, verdict: contractVerdict(ce) }
+    }
+
     econ.lines.forEach(l => {
       const key = l.serviceType || 'other'
       const acc = byService.get(key) || { serviceType: key, jobs: 0, revenue: 0, cost: 0, profit: 0, hours: 0 }
@@ -193,6 +212,12 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       actualMaterials: econ.actualMaterials,
       actualCrewSize: j.actualCrewSize,
       subcontractorCost: econ.subcontractorCost,
+      isRecurring: econ.isRecurring,
+      annualRevenue: econ.annualRevenue,
+      annualProfit: econ.annualProfit,
+      annualMarginPct: econ.annualMarginPct,
+      visitsPerYear: econ.visitsPerYear,
+      contract: contractRow,
       confidence: econ.confidence,
       uncostedRevenue: econ.uncostedRevenue,
     }

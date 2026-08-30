@@ -22,6 +22,7 @@
 import { burdenedRate, jobCost, DEFAULT_BURDEN, type BurdenInputs } from './laborBurden.mts'
 import { equipmentCostFor } from './equipment.mts'
 import { subcontractResult, DEFAULT_COORDINATION_PCT } from './subcontract.mts'
+import { frequencyOf } from './serviceSchedule.mts'
 
 export interface StoredLineItem {
   id?: number
@@ -36,6 +37,7 @@ export interface StoredLineItem {
   subcontractorCost?: string | number | null
   subcontractCoordinationPct?: string | number | null
   isOptional?: boolean | null
+  frequency?: string | null
 }
 
 const n = (v: unknown, fallback = 0): number => {
@@ -69,6 +71,14 @@ export interface LineEconomics {
   profit: number
   marginPct: number
   subcontracted: boolean
+  /** How many times a year this line is delivered. 1 for one-off work. */
+  visitsPerYear: number
+  /** True when this line is a standing commitment rather than a single job. */
+  recurring: boolean
+  /** revenue x visitsPerYear. For one-off work this equals revenue. */
+  annualRevenue: number
+  annualCost: number
+  annualProfit: number
   confidence: CostConfidence
   /** Why the confidence is not full, for the report to show rather than hide. */
   note?: string
@@ -111,6 +121,30 @@ function burdenFor(inputs: Record<string, unknown> | null): { burden: Partial<Bu
   return { burden: {}, legacy: true }
 }
 
+/**
+ * Annualise a per-visit line.
+ *
+ * A recurring line's stored price is what one visit costs the client, not what
+ * the contract is worth. Reporting a weekly janitorial line as its $987 visit
+ * price makes a $51,000 commitment look like a small job, and it sorts next to
+ * one on any list ordered by value.
+ *
+ * Both figures are kept. Per-visit is what the crew and the invoice deal with;
+ * annual is what the business is actually committed to.
+ */
+function annualise(l: Omit<LineEconomics, 'visitsPerYear' | 'recurring' | 'annualRevenue' | 'annualCost' | 'annualProfit'>, frequency: string | null | undefined): LineEconomics {
+  const f = frequencyOf(frequency)
+  const visits = f.recurring ? f.visitsPerYear : 1
+  return {
+    ...l,
+    visitsPerYear: visits,
+    recurring: f.recurring,
+    annualRevenue: round2(l.revenue * visits),
+    annualCost: round2(l.loadedCost * visits),
+    annualProfit: round2(l.profit * visits),
+  }
+}
+
 /** Reconstruct one line's economics from what was stored. */
 export function lineEconomics(li: StoredLineItem): LineEconomics {
   const revenue = round2(n(li.quantity, 1) * n(li.unitPrice))
@@ -137,7 +171,7 @@ export function lineEconomics(li: StoredLineItem): LineEconomics {
       subCost: n(li.subcontractorCost),
       coordinationPct: n(li.subcontractCoordinationPct, DEFAULT_COORDINATION_PCT),
     })
-    return {
+    return annualise({
       ...base,
       laborHours: 0,
       burdenedRate: 0,
@@ -151,14 +185,14 @@ export function lineEconomics(li: StoredLineItem): LineEconomics {
       marginPct: r.marginPct,
       confidence: r.subCost > 0 ? 'full' : 'none',
       note: r.subCost > 0 ? undefined : 'Marked subcontracted with no cost recorded.',
-    }
+    }, li.frequency)
   }
 
   const hours = n(li.estimatedDurationHours)
 
   /* Hand-typed line: a price and nothing else. Say so rather than guessing. */
   if (!li.serviceType || hours <= 0) {
-    return {
+    return annualise({
       ...base,
       laborHours: 0,
       burdenedRate: 0,
@@ -172,7 +206,7 @@ export function lineEconomics(li: StoredLineItem): LineEconomics {
       marginPct: revenue > 0 ? 100 : 0,
       confidence: 'none',
       note: 'Entered by hand, so no cost was recorded. Counted as revenue only.',
-    }
+    }, li.frequency)
   }
 
   const { burden, legacy } = burdenFor(inputs)
@@ -180,7 +214,7 @@ export function lineEconomics(li: StoredLineItem): LineEconomics {
   const equipment = equipmentCostFor(li.serviceType, hours).total
   const cost = jobCost(revenue, hours, materials + equipment, 0, burden)
 
-  return {
+  return annualise({
     ...base,
     laborHours: hours,
     burdenedRate: cost.burdenedRate,
@@ -196,7 +230,7 @@ export function lineEconomics(li: StoredLineItem): LineEconomics {
     note: legacy
       ? 'Quoted before burden settings were recorded; costed from the flat wage figure stored at the time.'
       : undefined,
-  }
+  }, li.frequency)
 }
 
 export interface JobEconomics {
@@ -221,6 +255,15 @@ export interface JobEconomics {
   confidence: CostConfidence
   /** Revenue on lines with no recorded cost, so the margin can be read honestly. */
   uncostedRevenue: number
+  /** True when any line is a standing commitment. */
+  isRecurring: boolean
+  /** What a full year of this agreement is worth, one-off lines counted once. */
+  annualRevenue: number
+  annualCost: number
+  annualProfit: number
+  annualMarginPct: number
+  /** Visits per year on the recurring lines, for a break-even calculation. */
+  visitsPerYear: number
 }
 
 /**
@@ -317,5 +360,16 @@ export function jobEconomics(
     lines,
     confidence: material.length ? confidence : 'none',
     uncostedRevenue,
+    isRecurring: lines.some(l => l.recurring),
+    annualRevenue: sum(l => l.annualRevenue),
+    annualCost: sum(l => l.annualCost),
+    annualProfit: sum(l => l.annualProfit),
+    annualMarginPct: (() => {
+      const r = sum(l => l.annualRevenue)
+      return r > 0 ? Math.round((sum(l => l.annualProfit) / r) * 1000) / 10 : 0
+    })(),
+    // The busiest recurring line sets the visit cadence: a contract with a
+    // weekly clean and a quarterly deep clean is a weekly contract.
+    visitsPerYear: lines.filter(l => l.recurring).reduce((max, l) => Math.max(max, l.visitsPerYear), 0),
   }
 }

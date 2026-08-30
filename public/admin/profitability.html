@@ -114,6 +114,80 @@ function materialsNote(j) {
     + 'chemicals ' + ratio + '× quoted</div>';
 }
 
+/*
+ * Recurring contracts, read as contracts rather than as visits.
+ *
+ * A weekly janitorial line shows $987 in the job table because that is what
+ * one visit is worth. The commitment is $51,000 a year, and the question that
+ * matters is how many months the client has to stay before the cost of
+ * winning them is repaid. Sorted by that, longest first.
+ */
+const VERDICT_STYLE = {
+  good: { bg: '#E8F5EC', color: '#1B7A3C' },
+  watch: { bg: '#FFF4DC', color: '#8A6400' },
+  bad: { bg: '#FDECEA', color: '#C0392B' },
+};
+
+function contractSection(jobs) {
+  const rows = jobs.filter(j => j.contract);
+  if (!rows.length) return '';
+
+  rows.sort((a, b) => {
+    // Contracts that never repay sort first, then slowest payback.
+    const am = a.contract.breakEvenMonths;
+    const bm = b.contract.breakEvenMonths;
+    if (am == null && bm == null) return 0;
+    if (am == null) return -1;
+    if (bm == null) return 1;
+    return bm - am;
+  });
+
+  const body = rows.map(j => {
+    const c = j.contract;
+    const st = VERDICT_STYLE[c.verdict.level] || VERDICT_STYLE.watch;
+    return `
+    <tr onclick="window.location.href='/admin/estimate-detail.html?id=${j.estimateId}'" style="cursor:pointer;">
+      <td>
+        <div style="font-weight:600; color:var(--navy);">${esc(j.company || j.clientName)}</div>
+        <div style="font-size:0.78rem; color:#8A98AC;">${c.visitsPerYear} visits a year</div>
+      </td>
+      <td style="text-align:right;">${money(c.revenuePerVisit)}
+        <div style="font-size:0.72rem; color:#8A98AC;">${money(c.profitPerVisit)} profit</div></td>
+      <td style="text-align:right; font-weight:600;">${money(c.annualRevenue)}</td>
+      <td style="text-align:right;">${money(c.acquisitionCost)}
+        <div style="font-size:0.72rem; color:#8A98AC;">bid ${money(c.bidCost)} + onboarding ${money(c.onboardingCost)}</div></td>
+      <td style="text-align:right;">
+        ${c.breakEvenMonths == null ? '<span style="color:#C0392B;">never</span>' : c.breakEvenMonths + ' mo'}
+      </td>
+      <td style="text-align:right;">
+        <div style="font-weight:700; color:${marginColor(c.steadyMarginPct)};">${pct(c.steadyMarginPct)}</div>
+        <div style="font-size:0.72rem; color:#8A98AC;">${pct(c.firstYearMarginPct)} first year</div>
+      </td>
+      <td style="font-size:0.78rem; color:${st.color}; background:${st.bg}; border-radius:6px; padding:6px 9px; max-width:280px;">${esc(c.verdict.note)}</td>
+    </tr>`;
+  }).join('');
+
+  const annual = rows.reduce((t, j) => t + j.contract.annualRevenue, 0);
+
+  return `
+    <h2 style="font-size:1.1rem; margin:32px 0 6px;">Recurring contracts</h2>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:760px;">
+      ${money(annual)} a year under contract. A standing agreement costs something to win before it earns
+      anything, so the number that matters is not the visit margin &mdash; it is how long the client has to stay
+      for the contract to have been worth signing. Slowest to repay first.
+    </p>
+    <div class="prof-scroll">
+      <table class="dash-table">
+        <thead><tr>
+          <th>Client</th><th style="text-align:right;">Per visit</th><th style="text-align:right;">Per year</th>
+          <th style="text-align:right;">Cost to win</th><th style="text-align:right;">Repays in</th>
+          <th style="text-align:right;">Margin</th><th>Read</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
 function confidencePill(c) {
   const meta = CONFIDENCE[c] || CONFIDENCE.none;
   return `<span class="conf-pill ${meta.cls}" title="${esc(meta.title)}">${meta.label}</span>`;
@@ -143,6 +217,17 @@ async function load() {
       <div style="font-size:1.6rem; font-family:var(--font-head); font-weight:800; color:${color || 'var(--navy)'};">${value}</div>
     </div>`;
 
+  // Sold Work adds one visit of each contract to the full price of each
+  // one-off job. That is the right basis for a margin -- it is what the cost
+  // model was built against -- but it is not what the business is committed
+  // to, and the two get confused if only one is shown.
+  const annualUnderContract = data.jobs.reduce((t2, j) => t2 + (j.contract ? j.contract.annualRevenue : 0), 0);
+  const recurringNote = annualUnderContract > 0 ? `
+    <p style="color:#8A98AC; font-size:0.82rem; margin:10px 0 0;">
+      Sold Work counts one visit of each recurring contract, since that is the unit the cost model prices.
+      Across a full year those contracts are worth <strong>${money(annualUnderContract)}</strong> &mdash; broken down below.
+    </p>` : '';
+
   const uncostedWarning = t.uncostedRevenue > 0 ? `
     <div class="prof-caveat">
       <strong>${money(t.uncostedRevenue)}</strong> of this revenue sits on hand-entered lines with no recorded cost.
@@ -170,7 +255,12 @@ async function load() {
       </td>
       <td>${confidencePill(j.confidence)}</td>
       <td style="text-align:right;">${hoursCell(j)}</td>
-      <td style="text-align:right;">${money(j.quoted)}</td>
+      <td style="text-align:right;">
+        ${money(j.quoted)}
+        ${j.isRecurring
+          ? `<div style="font-size:0.72rem; color:#8A98AC;">per visit &middot; ${money(j.annualRevenue)}/yr</div>`
+          : ''}
+      </td>
       <td style="text-align:right;">
         ${j.invoiced == null ? '<span style="color:#8A98AC;">not invoiced</span>' : money(j.invoiced)}
         ${billedGap ? `<div style="font-size:0.74rem; color:#966A00;">${j.invoiced < j.quoted ? '−' : '+'}${money(Math.abs(j.invoiced - j.quoted)).replace('$','$')} vs quote</div>` : ''}
@@ -216,6 +306,7 @@ async function load() {
       ${card('Profit', money(t.profit), marginColor(t.marginPct))}
       ${card('Margin', pct(t.marginPct), marginColor(t.marginPct))}
     </div>
+    ${recurringNote}
     ${uncostedWarning}
     ${dupeWarning}
 
@@ -231,6 +322,8 @@ async function load() {
         <tbody>${jobRows}</tbody>
       </table>
     </div>
+
+    ${contractSection(data.jobs)}
 
     <h2 style="font-size:1.1rem; margin:32px 0 12px;">By service</h2>
     <p style="color:#8A98AC; font-size:0.82rem; margin-top:-6px; margin-bottom:12px;">
