@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your Estimate | Renovo Surface Solutions</title>
+<title>Your Proposal | Renovo Surface Solutions</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="images/logo.png">
 <link rel="stylesheet" href="css/style.css">
@@ -11,7 +11,7 @@
 </head>
 <body class="admin-body">
   <div id="content">
-    <div class="state-banner"><div class="icon">⏳</div><p>Loading your estimate…</p></div>
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading your proposal…</p></div>
   </div>
 
 <script>
@@ -21,12 +21,17 @@ function money(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Matches the invoice convention (INV-1000+id) so document numbers read as a set. */
+function proposalNumber(id) {
+  return 'EST-' + (1000 + Number(id));
+}
+
 async function load() {
-  if (!token) { showError('Missing estimate link.'); return; }
+  if (!token) { showError('Missing proposal link.'); return; }
   const res = await fetch(`/api/estimate/${token}`);
-  if (!res.ok) { showError('This estimate could not be found.'); return; }
-  const { estimate, client, lineItems } = await res.json();
-  render(estimate, client, lineItems);
+  if (!res.ok) { showError('This proposal could not be found.'); return; }
+  const data = await res.json();
+  render(data);
 }
 
 function showError(msg) {
@@ -43,33 +48,100 @@ function fmtDate(d) {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-function render(estimate, client, lineItems) {
-  const subtotal = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** One numbered section of the bid. Numbers let a client cite "exclusion 3". */
+function section(num, title, body) {
+  return `<div class="prop-section">
+    <h3><span class="prop-num">${num}</span>${title}</h3>
+    ${body}
+  </div>`;
+}
+
+function bulletList(items, extraClass) {
+  return `<ul class="prop-list${extraClass ? ' ' + extraClass : ''}">${items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+}
+
+function itemRows(items) {
+  return items.map(li => `
+    <tr>
+      <td>${esc(li.description)}</td>
+      <td>${esc(li.quantity)}</td>
+      <td>${esc(li.unit || 'job')}</td>
+      <td>${money(li.unitPrice)}</td>
+      <td style="text-align:right;">${money(Number(li.quantity) * Number(li.unitPrice))}</td>
+    </tr>`).join('');
+}
+
+function render(data) {
+  const { estimate, client, lineItems, proposal, expiresOn, expired } = data;
+
+  // Optional lines are alternates the client may accept or decline. They are
+  // deliberately kept out of the headline total so the base price stays
+  // directly comparable against a competing bid.
+  const baseItems = lineItems.filter(li => !li.isOptional);
+  const optionalItems = lineItems.filter(li => li.isOptional);
+
+  const lineTotal = (li) => Number(li.quantity) * Number(li.unitPrice);
+  const subtotal = baseItems.reduce((sum, li) => sum + lineTotal(li), 0);
+  const optionalTotal = optionalItems.reduce((sum, li) => sum + lineTotal(li), 0);
   const taxAmount = estimate.taxApplied ? Number(estimate.taxAmount) : 0;
   const total = subtotal + taxAmount;
 
   const issuedDate = new Date(estimate.createdAt);
-  const expiresDate = estimate.validUntil ? new Date(estimate.validUntil) : addDays(estimate.createdAt, 30);
+  const expiresDate = expiresOn
+    ? new Date(expiresOn + 'T12:00:00')
+    : (estimate.validUntil ? new Date(estimate.validUntil) : addDays(estimate.createdAt, 30));
 
-  const itemsHtml = lineItems.map((li, idx) => `
-    <tr style="background:${idx % 2 === 0 ? '#fff' : 'var(--off-white)'};">
-      <td>${li.description}</td>
-      <td>${li.quantity}</td>
-      <td>${li.unit || 'ea'}</td>
-      <td>${money(li.unitPrice)}</td>
-      <td style="text-align:right;">${money(li.quantity * li.unitPrice)}</td>
-    </tr>
-  `).join('');
+  const scope = proposal || { sections: [], exclusions: [], assumptions: [], compliance: [] };
 
+  /* ---------- 1. Scope of work ---------- */
+  const scopeBody = scope.sections.length
+    ? scope.sections.map(sec => `
+        <div class="prop-scope-group">
+          <h4>${esc(sec.label)}</h4>
+          ${bulletList(sec.scope)}
+        </div>`).join('')
+    : `<p style="color:#4A5A72;">Scope as described in the line items below.</p>`;
+
+  /* ---------- 2. Pricing ---------- */
+  const optionalBlock = optionalItems.length ? `
+    <div class="prop-optional-head">Optional — Not Included in the Total Above</div>
+    <p class="prop-optional-note">Priced for your consideration. Tell us which, if any, you want and we will add them to the work order. Declining them does not change the price above.</p>
+    <div class="prop-scroll"><table class="doc-items-table est-items-table prop-items-optional">
+      <thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>
+      <tbody>${itemRows(optionalItems)}</tbody>
+    </table></div>
+    <div class="prop-totals"><div class="prop-totals-line">If all options accepted, add: <strong>${money(optionalTotal)}</strong></div></div>
+  ` : '';
+
+  const pricingBody = `
+    <div class="prop-scroll"><table class="doc-items-table est-items-table">
+      <thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>
+      <tbody>${itemRows(baseItems)}</tbody>
+    </table></div>
+    <div class="prop-totals">
+      <div class="prop-totals-line">Subtotal: ${money(subtotal)}</div>
+      ${estimate.taxApplied ? `<div class="prop-totals-line">Utah Sales Tax (7.25%): ${money(taxAmount)}</div>` : ''}
+      <div class="prop-grand">TOTAL: ${money(total)}</div>
+    </div>
+    ${optionalBlock}
+  `;
+
+  /* ---------- action state ---------- */
   let actionsHtml = '';
   if (estimate.status === 'approved') {
-    actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p><strong>Your estimate has been approved.</strong> We will contact you within 2 hours to confirm your service date. Thank you for choosing Renovo Surface Solutions.</p></div>`;
+    actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p><strong>This proposal has been accepted.</strong> We will contact you within 2 hours to confirm your service date. Thank you for choosing Renovo Surface Solutions.</p></div>`;
+  } else if (expired) {
+    actionsHtml = `<div class="state-banner"><p><strong>This proposal expired on ${fmtDate(expiresDate)}.</strong> Pricing moves with material and fuel costs, so we would rather re-quote than hold you to an old number. Call <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a> and we will send you an updated proposal.</p></div>`;
   } else if (estimate.status === 'declined') {
-    actionsHtml = `<div class="state-banner"><p>You requested changes on this estimate. We'll follow up with you directly.</p></div>`;
+    actionsHtml = `<div class="state-banner"><p>You requested changes on this proposal. We'll follow up with you directly.</p></div>`;
   } else {
     actionsHtml = `
       <div class="doc-actions no-print">
-        <button class="btn btn-primary" onclick="respond('approve')">Approve This Estimate</button>
+        <button class="btn btn-primary" onclick="respond('approve')">Accept This Proposal</button>
         <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;" onclick="respond('decline')">Request Changes</button>
       </div>
       <p class="no-print" style="text-align:center; color:#4A5A72; font-size:0.85rem; margin-top:14px;">Questions? Call <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a></p>
@@ -78,15 +150,18 @@ function render(estimate, client, lineItems) {
   }
 
   document.getElementById('content').innerHTML = `
-    <div class="doc-card" style="max-width:800px;">
+    <div class="doc-card" style="max-width:840px;">
       <div class="est-header">
         <div>
           <div class="est-company-name">Renovo Surface Solutions LLC</div>
           <div style="margin-top:10px;">
-            <span class="est-label">ESTIMATE</span>
-            <span style="color:#8A98AC; font-size:0.9rem; margin-left:8px;">#${estimate.id}</span>
+            <span class="est-label">PROPOSAL</span>
+            <span style="color:#8A98AC; font-size:0.9rem; margin-left:8px;">${proposalNumber(estimate.id)}</span>
           </div>
-          <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">Date Issued: ${fmtDate(issuedDate)}<br>Expires: ${fmtDate(expiresDate)}</p>
+          <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">
+            Date Issued: ${fmtDate(issuedDate)}<br>
+            Valid Through: ${fmtDate(expiresDate)}
+          </p>
         </div>
         <div class="est-company-info">
           801-369-2330<br>
@@ -96,35 +171,62 @@ function render(estimate, client, lineItems) {
         </div>
       </div>
 
-      <div class="est-prepared-for">
-        <h4>Prepared For</h4>
-        <p>
-          <strong>${client?.name || ''}</strong>${client?.company ? ` — ${client.company}` : ''}<br>
-          ${client?.propertyAddress ? `${client.propertyAddress}<br>` : ''}
-          ${client?.phone ? `${client.phone}<br>` : ''}
-          ${client?.email || ''}
-        </p>
+      <div class="prop-meta">
+        <div class="prop-meta-block">
+          <h4>Submitted To</h4>
+          <p>
+            <strong>${esc(client?.name)}</strong>${client?.company ? ` — ${esc(client.company)}` : ''}<br>
+            ${client?.propertyAddress ? `${esc(client.propertyAddress)}<br>` : ''}
+            ${client?.phone ? `${esc(client.phone)}<br>` : ''}
+            ${esc(client?.email)}
+          </p>
+        </div>
+        <div class="prop-meta-block">
+          <h4>Project</h4>
+          <p>
+            <strong>${esc(estimate.projectName || 'Service Proposal')}</strong><br>
+            ${estimate.siteAddress ? `${esc(estimate.siteAddress)}<br>` : (client?.propertyAddress ? `${esc(client.propertyAddress)}<br>` : '')}
+            Proposal ${proposalNumber(estimate.id)}
+            ${estimate.walkthroughDate ? `<br>Site walk completed ${fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00'))}` : ''}
+          </p>
+        </div>
       </div>
 
-      <table class="doc-items-table est-items-table">
-        <thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>
-        <tbody>${itemsHtml}</tbody>
-      </table>
+      ${section('1.', 'Scope of Work', scopeBody)}
+      ${section('2.', 'Pricing', pricingBody)}
+      ${scope.exclusions.length ? section('3.', 'Exclusions', `
+        <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">The following are not included in the pricing above. Any of them can be quoted separately on request.</p>
+        ${bulletList(scope.exclusions, 'is-exclusion')}`) : ''}
+      ${(scope.assumptions.length || estimate.siteConditions) ? section('4.', 'Assumptions &amp; Site Conditions', `
+        ${estimate.siteConditions ? `<p style="color:#374151; font-size:0.88rem; margin-bottom:10px; padding:10px 12px; background:var(--off-white); border-radius:6px;"><strong>Observed at walk-through:</strong> ${esc(estimate.siteConditions)}</p>` : ''}
+        <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.</p>
+        ${bulletList(scope.assumptions)}`) : ''}
+      ${scope.compliance.length ? section('5.', 'Insurance, Compliance &amp; Quality Assurance', `
+        ${bulletList(scope.compliance, 'is-compliance')}
+        <p style="color:#4A5A72; font-size:0.86rem; margin-top:10px;">If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.</p>`) : ''}
 
-      <div style="text-align:right; margin-top:16px;">
-        <p style="color:#4A5A72;">Subtotal: ${money(subtotal)}</p>
-        ${estimate.taxApplied ? `<p style="color:#4A5A72;">Utah Sales Tax (7.25%): ${money(taxAmount)}</p>` : ''}
-        <div class="doc-total">TOTAL: ${money(total)}</div>
+      ${section('6.', 'Terms &amp; Acceptance', `
+        <div class="prop-accept">
+          <p style="color:#374151; font-size:0.88rem; line-height:1.7;">
+            This proposal is valid through <strong>${fmtDate(expiresDate)}</strong>. Pricing is based on the scope, exclusions and assumptions stated above.
+            Accepting this proposal authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described.
+            <strong>A signed work order is required before any work begins</strong> — acceptance here is not itself a work order.
+            Payment terms, cancellation terms and the full service agreement are presented with the work order for signature.
+          </p>
+          ${estimate.notes ? `<p style="color:#4A5A72; font-size:0.88rem; margin-top:12px;"><strong>Notes:</strong> ${esc(estimate.notes)}</p>` : ''}
+          <div class="prop-accept-grid">
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">Authorized Signature</div></div>
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">Date</div></div>
+          </div>
+          <div class="prop-accept-grid" style="margin-top:20px;">
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">Print Name &amp; Title</div></div>
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">PO / Reference</div></div>
+          </div>
+        </div>`)}
+
+      <div class="print-btn-row no-print" style="margin-top:24px;">
+        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">Print this proposal</button>
       </div>
-
-      ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;">${estimate.notes}</p>` : ''}
-
-      <div class="estimate-terms-box">
-        <h4>Estimate Terms</h4>
-        <p>This estimate is valid for 30 days from the date issued. Prices are based on information provided at time of estimate. Final pricing may vary if actual site conditions differ materially. A signed work order is required before any service begins. Approving this estimate does not constitute a signed work order.</p>
-      </div>
-
-      <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Estimate</button></div>
 
       ${actionsHtml}
     </div>
@@ -140,8 +242,12 @@ async function respond(action) {
   if (res.ok) {
     load();
   } else {
-    document.getElementById('respondError').textContent = 'Something went wrong. Please call 801-369-2330.';
-    document.getElementById('respondError').classList.add('show');
+    const data = await res.json().catch(() => ({}));
+    const el = document.getElementById('respondError');
+    if (el) {
+      el.textContent = data.error || 'Something went wrong. Please call 801-369-2330.';
+      el.classList.add('show');
+    }
   }
 }
 

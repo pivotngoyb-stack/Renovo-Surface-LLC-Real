@@ -2,6 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
+import { defaultValidUntil } from './_shared/expiry.mts'
 import { json, unauthorized, badRequest } from './_shared/http.mts'
 
 interface LineItemInput {
@@ -26,6 +27,10 @@ interface CreateEstimateBody {
   }
   notes?: string
   validUntil?: string
+  projectName?: string
+  siteAddress?: string
+  walkthroughDate?: string
+  siteConditions?: string
   lineItems: LineItemInput[]
   taxApplied?: boolean
   taxAmount?: number | string
@@ -103,7 +108,13 @@ export default async (request: Request) => {
         clientId,
         token: generateToken(),
         notes: body.notes,
-        validUntil: body.validUntil,
+        projectName: body.projectName,
+        siteAddress: body.siteAddress,
+        walkthroughDate: body.walkthroughDate,
+        siteConditions: body.siteConditions,
+        // Default to a 30-day window. Left blank, an estimate previously had
+        // no expiry at all and stayed approvable at stale pricing forever.
+        validUntil: body.validUntil || defaultValidUntil(),
         status: 'draft',
         taxApplied: Boolean(body.taxApplied),
         taxAmount: String(body.taxAmount ?? 0),
@@ -117,6 +128,8 @@ export default async (request: Request) => {
         quantity: String(item.quantity ?? 1),
         unitPrice: String(item.unitPrice),
         sortOrder: idx,
+        unit: item.unit || 'job',
+        isOptional: Boolean(item.isOptional),
         serviceType: item.serviceType,
         calculatorInputs: item.calculatorInputs,
         basePrice: item.basePrice != null ? String(item.basePrice) : null,

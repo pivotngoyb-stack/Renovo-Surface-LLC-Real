@@ -28,6 +28,13 @@ export const estimates = pgTable('estimates', {
   token: text('token').notNull().unique(),
   status: estimateStatusEnum('status').notNull().default('draft'),
   notes: text('notes'),
+  // The job's own name and address. On construction work the general
+  // contractor is the client, but the site is what the proposal is about.
+  projectName: text('project_name'),
+  siteAddress: text('site_address'),
+  // Evidence the price is grounded in an actual site visit.
+  walkthroughDate: date('walkthrough_date'),
+  siteConditions: text('site_conditions'),
   validUntil: date('valid_until'),
   viewedAt: timestamp('viewed_at'),
   approvedAt: timestamp('approved_at'),
@@ -44,7 +51,12 @@ export const estimateLineItems = pgTable('estimate_line_items', {
   description: text('description').notNull(),
   quantity: numeric('quantity').notNull().default('1'),
   unitPrice: numeric('unit_price').notNull(),
+  // Unit of measure for this line: job, visit, sqft, hour, each.
+  unit: text('unit').notNull().default('job'),
   sortOrder: integer('sort_order').notNull().default(0),
+  // An alternate the client may accept or decline. Excluded from the base
+  // total so the headline price stays comparable against competing bids.
+  isOptional: boolean('is_optional').notNull().default(false),
   serviceType: text('service_type'),
   calculatorInputs: text('calculator_inputs'),
   basePrice: numeric('base_price'),
@@ -59,6 +71,16 @@ export const workOrders = pgTable('work_orders', {
   token: text('token').notNull().unique(),
   termsText: text('terms_text').notNull(),
   status: workOrderStatusEnum('status').notNull().default('pending'),
+  // When the crew is booked to be on site. Nullable: a work order exists from
+  // the moment an estimate is approved, which is usually before it is booked.
+  scheduledDate: date('scheduled_date'),
+  // Local start time as 'HH:MM'. Kept separate from the date so an unscheduled
+  // or all-day job does not have to invent a time, and so after-hours work
+  // (floor care especially) can carry a real start without timezone guesswork.
+  scheduledStart: text('scheduled_start'),
+  // When the work was actually finished. This is what makes a service history
+  // real rather than a list of documents.
+  completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

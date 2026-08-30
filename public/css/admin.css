@@ -31,6 +31,10 @@ body.admin-body {
   font: inherit; color: var(--ink);
 }
 .field-group input:focus, .field-group select:focus, .field-group textarea:focus { outline: none; border-color: var(--blue); }
+/* admin.css loads after style.css, so the rule above would otherwise cancel
+   the global focus ring for every admin field. Restore it here at matching
+   specificity. See the focus-ring note in style.css for the contrast working. */
+.field-group input:focus-visible, .field-group select:focus-visible, .field-group textarea:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
 .error-text { color: #C0392B; font-size: 0.85rem; margin-top: 10px; display: none; }
 .error-text.show { display: block; }
 
@@ -48,6 +52,7 @@ body.admin-body {
 .status-declined { background: #FCE4E4; color: #B23A3A; }
 .status-pending { background: #FFF3D6; color: #966A00; }
 .status-signed { background: #E1F7E8; color: #1B7A3C; }
+.status-completed { background: #E1F7E8; color: #1B7A3C; }
 .status-unpaid { background: #FCE4E4; color: #B23A3A; }
 .status-partially_paid { background: #FFF3D6; color: #966A00; }
 .status-paid { background: #E1F7E8; color: #1B7A3C; }
@@ -59,7 +64,11 @@ body.admin-body {
 .photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); display: block; }
 .empty-state { text-align: center; padding: 60px 20px; color: #8A98AC; }
 
-.line-item-row { display: grid; grid-template-columns: 1fr 90px 120px 36px; gap: 10px; margin-bottom: 10px; align-items: center; }
+/* desc | qty | unit | price | optional | remove */
+.line-item-row { display: grid; grid-template-columns: 1fr 72px 84px 110px 52px 30px; gap: 8px; margin-bottom: 10px; align-items: center; }
+.line-item-row select.li-unit { padding: 10px 6px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); font: inherit; font-size: 0.82rem; }
+.li-opt-wrap { display: flex; align-items: center; gap: 4px; font-size: 0.72rem; color: #966A00; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+@media (max-width: 720px) { .line-item-row { grid-template-columns: 1fr 1fr; } .line-item-row .li-desc { grid-column: 1 / -1; } }
 .line-item-row input { padding: 10px 12px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); font: inherit; }
 .remove-line-btn { color: #C0392B; font-size: 1.2rem; text-align: center; cursor: pointer; }
 .totals-row { text-align: right; font-family: var(--font-head); font-weight: 800; font-size: 1.2rem; color: var(--navy); margin-top: 16px; }
@@ -178,12 +187,213 @@ body.admin-body {
 .sign-line { border-bottom: 1px solid #000; height: 40px; }
 .sign-line-label { font-size: 0.8rem; color: #4A5A72; margin-top: 4px; }
 
+/* ---------------------------------------------------------------------------
+   Job Plan — internal crew ticket
+   Styled as a field job ticket rather than a dashboard: a tech reads this on a
+   phone in a forecourt at 6am, or prints it and clips it to a visor. Its job is
+   to say what to load, how long it takes, and what will fine or hurt you.
+   Quantities are set in mono so gallons and minutes align in a scannable
+   column. The diagonal hazard edge is the safety-placard language this
+   actually replaces, so it is reserved for the fine-or-injury items only.
+--------------------------------------------------------------------------- */
+.jp {
+  --jp-ink: #0D1F38;
+  --jp-steel: #4A5A72;
+  --jp-rule: #DCE4F0;
+  --jp-blue: #1B7FE8;
+  --jp-hazard: #E8A317;
+  --jp-stop: #C0392B;
+  --jp-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  border: 1px solid var(--jp-rule);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.jp-head { background: var(--jp-ink); color: #fff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.jp-head-title { font-family: var(--font-head); font-weight: 800; font-size: 0.9rem; letter-spacing: 0.14em; text-transform: uppercase; }
+.jp-head-services { font-size: 0.82rem; color: #9FB6D4; }
+
+/* Band = one ruled section of the ticket. */
+.jp-band { padding: 16px 18px; border-top: 1px solid var(--jp-rule); }
+.jp-band:first-of-type { border-top: 0; }
+.jp-eyebrow { font-family: var(--font-head); font-weight: 800; font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--jp-steel); margin-bottom: 12px; }
+
+/* Spec row: the three numbers a dispatcher needs before anything else. */
+.jp-spec { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; }
+.jp-spec-label { font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--jp-steel); }
+.jp-spec-value { font-family: var(--jp-mono); font-size: 1.6rem; font-weight: 600; color: var(--jp-ink); line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.jp-spec-unit { font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; color: var(--jp-steel); }
+.jp-spec-note { font-size: 0.78rem; color: var(--jp-steel); margin-top: 4px; }
+
+/* Numbered because the phases genuinely are a sequence the crew works through. */
+.jp-seq { list-style: none; margin: 0; padding: 0; }
+.jp-seq-item { display: grid; grid-template-columns: 26px 1fr auto; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px dotted var(--jp-rule); }
+.jp-seq-item:last-child { border-bottom: 0; }
+.jp-seq-num { font-family: var(--jp-mono); font-size: 0.75rem; color: var(--jp-blue); font-weight: 600; }
+.jp-seq-label { color: var(--jp-ink); font-size: 0.88rem; }
+.jp-seq-dur { font-family: var(--jp-mono); font-size: 0.82rem; color: var(--jp-steel); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Load list. Wrapped so a long dilution string scrolls the table, never the page. */
+.jp-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.jp-load { width: 100%; border-collapse: collapse; min-width: 420px; }
+.jp-load th { text-align: left; font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--jp-steel); font-weight: 700; padding: 0 10px 8px 0; border-bottom: 1px solid var(--jp-rule); }
+.jp-load td { padding: 10px 10px 10px 0; border-bottom: 1px solid #F0F4FA; vertical-align: top; font-size: 0.86rem; color: var(--jp-ink); }
+.jp-load tr:last-child td { border-bottom: 0; }
+.jp-load-purpose { color: var(--jp-steel); font-size: 0.78rem; margin-top: 2px; }
+.jp-load-purpose.is-caution { color: var(--jp-stop); }
+.jp-rationale { margin-top: 12px; }
+.jp-qty { font-family: var(--jp-mono); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jp-qty-sub { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.75rem; color: var(--jp-steel); }
+
+/* SIGNATURE: diagonal placard stripe. Critical items only — if everything is
+   striped, nothing is. Amber is caution; red is a hard stop. */
+.jp-hazard { position: relative; padding: 12px 14px 12px 26px; margin-bottom: 10px; background: #FFFBF2; border: 1px solid #F2DFB4; border-radius: 0 6px 6px 0; }
+.jp-hazard::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
+  background: repeating-linear-gradient(135deg, var(--jp-hazard) 0 6px, var(--jp-ink) 6px 12px);
+}
+.jp-hazard.is-stop { background: #FDF4F3; border-color: #EFC9C4; }
+.jp-hazard.is-stop::before { background: repeating-linear-gradient(135deg, var(--jp-stop) 0 6px, var(--jp-ink) 6px 12px); }
+.jp-hazard-title { font-weight: 700; color: var(--jp-ink); font-size: 0.88rem; }
+.jp-hazard-detail { color: var(--jp-steel); font-size: 0.81rem; margin-top: 3px; }
+
+.jp-note { padding: 8px 0 8px 14px; border-left: 2px solid var(--jp-rule); margin-bottom: 8px; }
+.jp-note-title { font-weight: 600; color: var(--jp-ink); font-size: 0.85rem; }
+.jp-note-detail { color: var(--jp-steel); font-size: 0.79rem; margin-top: 2px; }
+
+.jp-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.jp-list { margin: 0; padding-left: 16px; color: var(--jp-ink); font-size: 0.85rem; line-height: 1.75; }
+.jp-list li::marker { color: var(--jp-blue); }
+
+/* Margin check: reads green when the plan fits the quote, red when it doesn't. */
+.jp-ledger { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.jp-ledger-line { font-size: 0.84rem; color: var(--jp-steel); }
+.jp-ledger-verdict { font-family: var(--jp-mono); font-weight: 700; color: #1B7A3C; white-space: nowrap; }
+.jp-ledger-verdict.is-over { color: var(--jp-stop); }
+
+.jp-flags { margin-bottom: 14px; }
+.jp-flag { display: flex; gap: 8px; padding: 9px 12px; background: #FDF4F3; border-left: 3px solid var(--jp-stop); color: #8C2D22; font-size: 0.84rem; border-radius: 0 5px 5px 0; margin-bottom: 6px; }
+.jp-flag::before { content: "!"; font-family: var(--jp-mono); font-weight: 700; flex-shrink: 0; }
+
+.jp-tag { font-family: var(--font-head); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; background: var(--jp-hazard); color: var(--jp-ink); padding: 3px 8px; border-radius: 3px; }
+.jp-actions { padding: 14px 18px; border-top: 1px solid var(--jp-rule); background: #FAFCFF; }
+
+
+/* ---------------------------------------------------------------------------
+   Schedule
+   A month grid of booked jobs. Cells are sized by content rather than forced
+   square: an empty week should not take the same vertical space as a full one.
+--------------------------------------------------------------------------- */
+.sched-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.sched-month { font-family: var(--font-head); font-weight: 800; font-size: 1.25rem; color: #0D1F38; }
+.sched-nav { display: flex; gap: 8px; align-items: center; }
+.sched-nav button { background: #fff; border: 1px solid #DCE4EF; border-radius: 7px; padding: 7px 13px; cursor: pointer; color: #0D1F38; font-weight: 600; font-size: 0.85rem; }
+.sched-nav button:hover { border-color: var(--blue); color: var(--blue); }
+
+.sched-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: #E4EAF3; border: 1px solid #E4EAF3; border-radius: 10px; overflow: hidden; }
+.sched-dow { background: #F7F9FC; padding: 9px 6px; text-align: center; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5A72; font-weight: 700; }
+.sched-day { background: #fff; min-height: 96px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.sched-day.is-outside { background: #FBFCFE; }
+.sched-daynum { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; color: #8A98AC; font-variant-numeric: tabular-nums; }
+.sched-day.is-outside .sched-daynum { color: #C3CDDC; }
+.sched-day.is-today { background: #F2F7FD; }
+.sched-day.is-today .sched-daynum { color: var(--blue); font-weight: 700; }
+
+.sched-chip { display: block; text-decoration: none; border-radius: 5px; padding: 4px 6px; font-size: 0.74rem; line-height: 1.3; border-left: 3px solid #8A98AC; background: #F4F7FB; color: #0D1F38; }
+.sched-chip:hover { background: #E8EFF9; }
+.sched-chip.is-pending { border-left-color: #E8A317; }
+.sched-chip.is-signed { border-left-color: var(--blue); }
+.sched-chip.is-completed { border-left-color: #1B7A3C; background: #F1F8F3; }
+.sched-chip-time { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; color: #4A5A72; }
+.sched-chip-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Desktop shows the month grid; the media query swaps to this agenda on phones.
+   Hidden here rather than inline on the element, because an inline style would
+   outrank the media query and leave phones with a blank page. */
+.sched-agenda { display: none; }
+
+.sched-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; font-size: 0.78rem; color: #4A5A72; }
+.sched-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+.sched-unbooked { margin-top: 32px; }
+.sched-unbooked-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid #EEF2F8; }
+
+
+/* Work order scheduling panel */
+.wo-schedule { border: 1px solid #E4EAF3; border-radius: 10px; padding: 16px 18px; background: #fff; margin-bottom: 20px; }
+.wo-schedule-row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.wo-schedule-row .field-group input { min-width: 160px; }
+.wo-schedule-state { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid #EEF2F8; }
+.wo-done { color: #1B7A3C; font-weight: 700; font-size: 0.88rem; }
+
+
+/* ---------------------------------------------------------------------------
+   Proposal document
+   The client-facing estimate reads as a commercial bid: numbered sections,
+   scope before price, exclusions in writing, and an acceptance block. A
+   facility manager comparing three bids should be able to find any of those
+   in one pass.
+--------------------------------------------------------------------------- */
+.prop-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.prop-meta-block { background: var(--off-white); border-radius: var(--radius-sm); padding: 16px 18px; }
+.prop-meta-block h4 { font-family: var(--font-head); font-size: 0.72rem; letter-spacing: 0.08em; color: #8A98AC; text-transform: uppercase; margin-bottom: 8px; }
+.prop-meta-block p { color: #374151; line-height: 1.65; font-size: 0.9rem; }
+
+.prop-section { margin-top: 30px; }
+.prop-section > h3 {
+  font-family: var(--font-head); font-size: 0.82rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--navy); padding-bottom: 8px; border-bottom: 2px solid var(--navy); margin-bottom: 14px;
+}
+/* Numbered because a bid is navigated by reference: "your exclusion 4.2". */
+.prop-section > h3 .prop-num { color: var(--blue); margin-right: 8px; }
+
+.prop-scope-group { margin-bottom: 18px; }
+.prop-scope-group h4 { font-family: var(--font-head); font-size: 0.95rem; color: var(--navy); margin-bottom: 8px; }
+.prop-list { margin: 0; padding-left: 20px; color: #374151; font-size: 0.88rem; line-height: 1.75; }
+.prop-list li { margin-bottom: 3px; }
+.prop-list.is-exclusion li::marker { color: #C0392B; }
+.prop-list.is-compliance li::marker { color: #1B7A3C; }
+
+.prop-optional-head { margin-top: 22px; font-family: var(--font-head); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: #966A00; }
+.prop-optional-note { font-size: 0.82rem; color: #8A98AC; margin-bottom: 8px; }
+.prop-items-optional tbody tr { background: #FFFDF5; }
+
+/* A 5-column pricing table will not fit a phone. Scroll the table inside its
+   own box rather than letting the whole proposal scroll sideways. */
+.prop-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.prop-scroll .doc-items-table { min-width: 460px; }
+
+.prop-totals { margin-top: 18px; text-align: right; }
+.prop-totals-line { color: #4A5A72; font-size: 0.92rem; margin-bottom: 4px; }
+.prop-grand { font-family: var(--font-head); font-weight: 800; font-size: 1.5rem; color: var(--navy); border-top: 2px solid var(--navy); padding-top: 10px; margin-top: 8px; display: inline-block; min-width: 260px; }
+
+.prop-accept { margin-top: 12px; border: 1px solid #DCE4EF; border-radius: var(--radius-sm); padding: 20px; background: #fff; }
+.prop-accept-grid { display: grid; grid-template-columns: 1fr 180px; gap: 30px; margin-top: 26px; }
+.prop-sign-line { border-bottom: 1px solid var(--navy); height: 34px; }
+.prop-sign-label { font-size: 0.74rem; color: #8A98AC; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.05em; }
+
 @media (max-width: 720px) {
   .admin-nav .container { flex-wrap: nowrap; }
   .admin-nav > .container > div { overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 16px !important; padding-bottom: 2px; }
   .admin-nav a, .admin-nav button { white-space: nowrap; flex-shrink: 0; }
 
   .admin-wrap { padding: 24px 16px 60px; }
+
+  /* Job Plan on a phone: this is the primary reading context for a tech in
+     the field, so tighten the frame rather than letting the ticket squeeze. */
+  .jp-band { padding: 14px 13px; }
+  .jp-head { padding: 12px 13px; }
+  .jp-actions { padding: 12px 13px; }
+  .jp-spec { gap: 14px; }
+  .jp-spec-value { font-size: 1.35rem; }
+  .jp-seq-item { grid-template-columns: 22px 1fr auto; gap: 8px; }
+
+  .prop-meta { grid-template-columns: 1fr; }
+  .prop-accept-grid { grid-template-columns: 1fr; gap: 18px; }
+
+  .sched-grid { display: none; }
+  .sched-agenda { display: block; }
 
   .dash-header { gap: 10px; }
   .dash-header > div { display: flex; flex-wrap: wrap; gap: 8px !important; width: 100%; }
@@ -216,4 +426,15 @@ body.admin-body {
   .service-terms-scroll { max-height: none; overflow: visible; border: 1px solid #ccc; }
   .standard-terms-block, .payment-terms-box, .estimate-terms-box, .doc-terms, .service-terms-scroll { break-inside: avoid; }
   a[href]::after { content: none !important; }
+
+  /* Crew Pack: this gets printed and clipped to a visor, so keep the hazard
+     stripe (it is the point) and stop bands splitting across pages. */
+  .jp { border: 1px solid #999; border-radius: 0; }
+  .jp-head { background: #fff !important; color: #000 !important; border-bottom: 2px solid #000; }
+  .jp-head-services { color: #333 !important; }
+  .jp-band, .jp-hazard, .jp-seq-item, .jp-load tr { break-inside: avoid; }
+  .jp-hazard { border: 1px solid #666; }
+  .jp-hazard::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .jp-tag { border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .jp-actions { display: none; }
 }

@@ -15,6 +15,7 @@
       <img src="../images/logo.png" alt="Renovo">
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/schedule.html">Schedule</a>
         <a href="/admin/contracts.html">Contracts</a>
         <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
@@ -37,13 +38,23 @@
       <div class="field-group"><label>Company</label><input type="text" id="clientCompany"></div>
       <div class="field-group"><label>Property Address</label><input type="text" id="clientAddress"></div>
 
+      <h3 style="margin: 28px 0 12px;">Project</h3>
+      <p style="color:#8A98AC; font-size:0.82rem; margin-top:-6px; margin-bottom:12px;">On construction and multi-site work the client and the jobsite are not the same thing. This is what prints on the proposal.</p>
+      <div class="field-group"><label>Project / Job Name</label><input type="text" id="projectName" placeholder="e.g. Research Park Tower — 3-Story Office Shell &amp; TI"></div>
+      <div class="field-group"><label>Jobsite Address</label><input type="text" id="siteAddress" placeholder="Leave blank to use the client address"></div>
+      <div style="display:grid; grid-template-columns:200px 1fr; gap:0 16px;">
+        <div class="field-group"><label>Walk-Through Date</label><input type="date" id="walkthroughDate"></div>
+        <div class="field-group"><label>Site Conditions Observed</label><input type="text" id="siteConditions" placeholder="e.g. Heavy drywall dust throughout, elevator available, water on 1st floor only"></div>
+      </div>
+
       <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
       <div class="calc-box">
         <button type="button" class="calc-toggle" onclick="toggleCalculator()">
-          <span id="calcToggleLabel">Show Calculator</span>
-          <span id="calcToggleIcon">▾</span>
+          <span id="calcToggleLabel">Hide Calculator</span>
+          <span id="calcToggleIcon">▴</span>
         </button>
-        <div id="calcBody" class="calc-body">
+        <!-- Open by default: pricing is the job, not an optional extra panel. -->
+        <div id="calcBody" class="calc-body open">
           <p style="color:#4A5A72; font-size:0.85rem; margin-bottom:14px;">Pick a service, fill in the job details, and add the priced line item straight to this estimate.</p>
 
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px; max-width:520px;">
@@ -79,6 +90,7 @@
       <div id="lineItems"></div>
       <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="addLineItem()">+ Add Line Item</button>
       <div class="totals-row" id="subtotalRow">Subtotal: <span id="subtotalDisplay">$0.00</span></div>
+      <div class="totals-row" id="optionalRow" style="display:none; font-size:0.95rem; color:#966A00;">Optional add-ons (not in total): <span id="optionalDisplay">$0.00</span></div>
 
       <div class="consent-row" id="taxRow" style="margin-top:14px;">
         <input type="checkbox" id="applyTax" onchange="updateTotal()">
@@ -102,7 +114,10 @@
 /* ---------- Smart Pricing Calculator ---------- */
 
 const TAX_RATE = 0.0725;
-const TAX_DEFAULT_ON = { janitorial: true, floorCare: true, windowCleaning: true, disinfection: true };
+// Utah taxes cleaning services (59-12-103). Gutter and graffiti work are
+// cleaning; concrete sealing is a coating applied to real property, which is
+// treated differently -- left off by default, and the checkbox stays editable.
+const TAX_DEFAULT_ON = { janitorial: true, floorCare: true, windowCleaning: true, disinfection: true, gutterCleaning: true, graffitiRemoval: true, constructionRough: true, constructionProgress: true, constructionFinal: true, constructionTouchup: true };
 let taxDefaultSet = false;
 
 const SERVICES = [
@@ -113,12 +128,55 @@ const SERVICES = [
   { key: 'dumpsterPad', label: 'Dumpster Pad', icon: '🗑️' },
   { key: 'lotSweeping', label: 'Lot Sweeping', icon: '🅿️' },
   { key: 'disinfection', label: 'Disinfection', icon: '🛡️' },
+  { key: 'gutterCleaning', label: 'Gutter Cleaning', icon: '🪜' },
+  { key: 'concreteSealing', label: 'Concrete Sealing', icon: '🧱' },
+  { key: 'graffitiRemoval', label: 'Graffiti Removal', icon: '🎨' },
+  { key: 'constructionRough', label: 'Construction — Rough', icon: '🚧' },
+  { key: 'constructionProgress', label: 'Construction — Progress', icon: '🧹' },
+  { key: 'constructionFinal', label: 'Construction — Final', icon: '🏗️' },
+  { key: 'constructionTouchup', label: 'Construction — Touch-Up', icon: '📋' },
 ];
 
 const PW_DESCRIPTIONS = {
   'Commercial Gas Station': 'Professional hot-water pressure washing of gas station forecourt including pump islands, canopy columns, and concrete surface. Industrial-grade petroleum degreaser applied. Before and after photo documentation included.',
   'Commercial Parking Lot': 'Commercial parking lot surface restoration using industrial hot-water pressure washing and 28-inch surface cleaner. Oil stain treatment, tire mark removal, and debris clearing included.',
   'Residential House Wash': 'Professional exterior house washing including siding, trim, and entryway surfaces. Appropriate PSI and soft wash technique selected for surface material.',
+};
+
+/*
+ * Construction cleaning is quoted per square foot in this trade, but every
+ * price here is driven by Your Hourly Rate. So we model production rate
+ * (sqft cleaned per crew-hour) and let the hourly rate set the price, then
+ * show the resulting $/sqft against the market band as a sanity check.
+ *
+ * Published 2026 commercial bands: rough $0.10-0.40, final $0.30-0.75
+ * (medical to $1.00), touch-up $0.10-0.20 per square foot.
+ */
+/*
+ * Vertical access. Every floor above grade means debris carried to a lift or
+ * stair, equipment re-staged, and crew walking. Scenario 1 was a 3-story job
+ * priced as if it were flat, which understated it.
+ */
+const CONSTRUCTION_STORIES = [
+  { v: '1.0', l: '1 story / ground level' },
+  { v: '1.12', l: '2 stories (+12%)' },
+  { v: '1.22', l: '3 stories (+22%)' },
+  { v: '1.35', l: '4+ stories or lift-dependent (+35%)' },
+];
+
+const CONSTRUCTION_BUILDING_TYPES = [
+  { v: '0.85', l: 'Warehouse / Industrial (open span)' },
+  { v: '1.0', l: 'Office / Retail' },
+  { v: '1.1', l: 'Multi-Family / Residential Build' },
+  { v: '1.15', l: 'Restaurant / Food Service' },
+  { v: '1.35', l: 'Medical / Dental / Lab' },
+];
+
+/** Published market $/sqft band per phase, for the quote sanity check. */
+const CONSTRUCTION_MARKET_BAND = {
+  constructionRough: { low: 0.10, high: 0.40, label: 'rough clean' },
+  constructionFinal: { low: 0.30, high: 0.75, label: 'final clean' },
+  constructionTouchup: { low: 0.10, high: 0.20, label: 'touch-up clean' },
 };
 
 let activeService = null;
@@ -171,6 +229,8 @@ const FIELD_BUILDERS = {
       { v: 'Commercial Parking Lot', l: 'Commercial Parking Lot' },
       { v: 'Commercial Building Exterior', l: 'Commercial Building Exterior' },
       { v: 'Commercial Sidewalk', l: 'Commercial Sidewalk' },
+      { v: 'Loading Dock', l: 'Loading Dock' },
+      { v: 'Parking Garage', l: 'Parking Garage' },
       { v: 'Commercial Drive-Through', l: 'Commercial Drive-Through' },
     ]))}
     ${fieldGroup('Square Footage', '<input type="number" id="pw_sqft" min="0" value="1000">')}
@@ -192,6 +252,11 @@ const FIELD_BUILDERS = {
     ${fieldGroup('Number of Panes', '<input type="number" id="wc_panes" min="0" value="20">')}
     ${fieldGroup('Sides', selectHtml('wc_sides', [
       { v: 'both', l: 'Both Interior and Exterior' }, { v: 'exterior', l: 'Exterior Only (−35%)' },
+    ]))}
+    ${fieldGroup('Post-Construction Glass', selectHtml('wc_postcon', [
+      { v: '1.0', l: 'No — routine cleaning' },
+      { v: '1.45', l: 'Yes — labels, stickers, overspray (+45%)' },
+      { v: '1.8', l: 'Yes — plus mortar, grout haze or concrete splatter (+80%)' },
     ]))}
     ${fieldGroup('Hard Water Buildup', selectHtml('wc_hardwater', [
       { v: 'none', l: 'None' }, { v: 'light', l: 'Light (+$3/pane)' }, { v: 'severe', l: 'Severe (+$5/pane)' },
@@ -247,10 +312,134 @@ const FIELD_BUILDERS = {
       { v: 'onetime', l: 'One-Time' }, { v: 'monthly', l: 'Monthly' }, { v: 'weekly', l: 'Weekly' },
     ]))}
   `,
+  gutterCleaning: () => `
+    ${fieldGroup('Linear Feet of Gutter', '<input type="number" id="gc_linearFeet" min="0" value="200">')}
+    ${fieldGroup('Building Height', selectHtml('gc_stories', [
+      { v: '1.0', l: '1 Story (ladder)' }, { v: '1.3', l: '2 Stories (+30% access)' }, { v: '1.6', l: '3+ Stories / Lift (+60%)' },
+    ]))}
+    ${fieldGroup('Debris Load', selectHtml('gc_debris', [
+      { v: '1.0', l: 'Light (leaves)' }, { v: '1.25', l: 'Moderate (+25%)' }, { v: '1.6', l: 'Heavy / Packed (+60%)' },
+    ]))}
+    ${fieldGroup('Downspout Flush', selectHtml('gc_downspouts', [
+      { v: 'no', l: 'No' }, { v: 'yes', l: 'Yes (+$4/downspout est.)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="gc_miles" min="0" value="5">')}
+  `,
+  concreteSealing: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="cs_sqft" min="0" value="2000">')}
+    ${fieldGroup('Sealer Type', selectHtml('cs_sealerType', [
+      { v: '200|Silane-Siloxane Penetrating', l: 'Silane-Siloxane Penetrating (~200 sqft/gal)' },
+      { v: '250|Acrylic Topical', l: 'Acrylic Topical (~250 sqft/gal)' },
+    ]))}
+    ${fieldGroup('Coats', selectHtml('cs_coats', [
+      { v: '1', l: '1 Coat' }, { v: '2', l: '2 Coats (recommended)' },
+    ]))}
+    ${fieldGroup('Surface Porosity', selectHtml('cs_porosity', [
+      { v: '1.0', l: 'Smooth / Dense' }, { v: '1.15', l: 'Average Broom Finish (+15%)' }, { v: '1.3', l: 'Porous / Weathered (+30%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="cs_miles" min="0" value="5">')}
+  `,
+  constructionRough: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="xr_sqft" min="0" value="10000">')}
+    ${fieldGroup('Building Type', selectHtml('xr_building', CONSTRUCTION_BUILDING_TYPES))}
+    ${fieldGroup('Building Height', selectHtml('xr_stories', CONSTRUCTION_STORIES))}
+    ${fieldGroup('Debris Load', selectHtml('xr_debris', [
+      { v: '1.0', l: 'Light — swept by trades' }, { v: '1.3', l: 'Moderate (+30%)' }, { v: '1.7', l: 'Heavy / full gut (+70%)' },
+    ]))}
+    ${fieldGroup('Debris Haul-Off', selectHtml('xr_haul', [
+      { v: 'none', l: 'GC provides dumpster' }, { v: 'one', l: 'We haul 1 load (+$450)' }, { v: 'two', l: 'We haul 2 loads (+$900)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="xr_miles" min="0" value="10">')}
+  `,
+  constructionProgress: () => `
+    ${fieldGroup('Active Square Footage', '<input type="number" id="xp_sqft" min="0" value="10000">')}
+    ${fieldGroup('Building Type', selectHtml('xp_building', CONSTRUCTION_BUILDING_TYPES))}
+    ${fieldGroup('Building Height', selectHtml('xp_stories', CONSTRUCTION_STORIES))}
+    ${fieldGroup('Visit Frequency', selectHtml('xp_frequency', [
+      { v: '1.0', l: 'Weekly' }, { v: '0.95', l: '3x per week (−5%/visit)' }, { v: '0.9', l: 'Daily (−10%/visit)' },
+    ]))}
+    ${fieldGroup('Site Restrooms Serviced', '<input type="number" id="xp_restrooms" min="0" value="2">')}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="xp_miles" min="0" value="10">')}
+  `,
+  constructionFinal: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="xf_sqft" min="0" value="10000">')}
+    ${fieldGroup('Building Type', selectHtml('xf_building', CONSTRUCTION_BUILDING_TYPES))}
+    ${fieldGroup('Building Height', selectHtml('xf_stories', CONSTRUCTION_STORIES))}
+    ${fieldGroup('Restrooms (full detail)', '<input type="number" id="xf_restrooms" min="0" value="4">')}
+    ${fieldGroup('Glass / Storefront', selectHtml('xf_glass', [
+      { v: '1.0', l: 'Standard windows' }, { v: '1.25', l: 'Extensive storefront (+25%)' }, { v: '1.5', l: 'Full curtain wall (+50%)' },
+    ]))}
+    ${fieldGroup('High Work', selectHtml('xf_height', [
+      { v: '1.0', l: 'Standard reach' }, { v: '1.3', l: 'Lift or scaffold required (+30%)' },
+    ]))}
+    ${fieldGroup('Schedule', selectHtml('xf_schedule', [
+      { v: '1.0', l: 'Normal hours' }, { v: '1.25', l: 'Compressed / phased (+25%)' }, { v: '1.35', l: 'Nights or weekend (+35%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="xf_miles" min="0" value="10">')}
+  `,
+  constructionTouchup: () => `
+    ${fieldGroup('Square Footage', '<input type="number" id="xt_sqft" min="0" value="10000">')}
+    ${fieldGroup('Building Type', selectHtml('xt_building', CONSTRUCTION_BUILDING_TYPES))}
+    ${fieldGroup('Building Height', selectHtml('xt_stories', CONSTRUCTION_STORIES))}
+    ${fieldGroup('Punch Severity', selectHtml('xt_scope', [
+      { v: '1.0', l: 'Light — glass and dust only' }, { v: '1.2', l: 'Standard punch (+20%)' }, { v: '1.45', l: 'Heavy re-clean after trades returned (+45%)' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="xt_miles" min="0" value="10">')}
+  `,
+  graffitiRemoval: () => `
+    ${fieldGroup('Tagged Area (sqft)', '<input type="number" id="gr_sqft" min="0" value="50">')}
+    ${fieldGroup('Surface', selectHtml('gr_surface', [
+      { v: '1.0', l: 'Smooth / Painted / Metal' }, { v: '1.5', l: 'Brick or Block (+50%)' }, { v: '1.8', l: 'Porous Stone / Bare Concrete (+80%)' },
+    ]))}
+    ${fieldGroup('Severity', selectHtml('gr_severity', [
+      { v: '1.0', l: 'Single Tag / Light' }, { v: '1.4', l: 'Multiple or Layered (+40%)' }, { v: '1.8', l: 'Extensive Coverage (+80%)' },
+    ]))}
+    ${fieldGroup('Anti-Graffiti Coating After', selectHtml('gr_sealAfter', [
+      { v: 'no', l: 'No' }, { v: 'yes', l: 'Yes — apply sacrificial coating' },
+    ]))}
+    ${fieldGroup('Drive Distance (miles)', '<input type="number" id="gr_miles" min="0" value="5">')}
+  `,
 };
 
 function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
 function num(id) { return Number(val(id)) || 0; }
+
+/*
+ * Minimum billable hours per service.
+ *
+ * These replace the old Math.max(total, floor) clamps. Clamping the FINAL price
+ * swallowed every option on small jobs -- a 1-dumpster pad billed exactly $175
+ * whether it was Normal or Severe, with or without odor treatment, because all
+ * 12 input combinations landed under the $175 floor. Flooring billable TIME
+ * instead keeps the same protection (never roll a truck for a $79 job) while
+ * condition multipliers, add-ons, product and fuel all stack on top, so every
+ * input moves the displayed price. Scales automatically with Your Hourly Rate.
+ *
+ * Values chosen so a baseline job still lands on its previous floor at $65/hr.
+ */
+const MIN_BILLABLE_HOURS = {
+  pressureWashing: 2.5,
+  windowCleaning: 1.25,
+  janitorial: 1.5,
+  floorCare: 6,
+  dumpsterPad: 2.25,
+  lotSweeping: 1,
+  disinfection: 1.5,
+  gutterCleaning: 1.5,
+  concreteSealing: 2,
+  graffitiRemoval: 2,
+  // Construction phases are mobilization-heavy: a crew, a truck and a dumpster
+  // do not roll for less than a half day.
+  constructionRough: 4,
+  // A recurring site visit is shorter than a phase clean but still a mobilization.
+  constructionProgress: 2,
+  constructionFinal: 4,
+  constructionTouchup: 3,
+};
+
+function billableHours(service, duration) {
+  return Math.max(duration, MIN_BILLABLE_HOURS[service] || 0);
+}
 
 const CALCULATORS = {
   pressureWashing: () => {
@@ -262,12 +451,12 @@ const CALCULATORS = {
     const schedule = num('pw_schedule') || 1;
     const hourlyRate = num('hourlyRate');
     const duration = Math.max(sqft / 1000, 1);
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('pressureWashing', duration) * hourlyRate;
     const tripFee = miles > 25 ? 50 : 0;
     const priced = laborComponent * contamination * stories * schedule;
     const productCost = sqft * 0.01 * contamination;
     const fuelCost = miles * 2 * 0.65;
-    const final = Math.max(priced + productCost + fuelCost + tripFee, 175);
+    const final = priced + tripFee + productCost + fuelCost;
     const description = PW_DESCRIPTIONS[jobType] || `Professional hot-water pressure washing service for ${jobType.toLowerCase()}. Appropriate PSI and technique selected for surface material. Before and after photo documentation included.`;
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
   },
@@ -276,17 +465,20 @@ const CALCULATORS = {
     const panes = num('wc_panes');
     const sides = val('wc_sides');
     const hardwater = val('wc_hardwater');
+    const postcon = num('wc_postcon') || 1;
     const miles = num('wc_miles');
     const hourlyRate = num('hourlyRate');
     const duration = Math.max(panes / 40, 0.5);
-    const laborComponent = duration * hourlyRate;
-    const sidesAdjusted = laborComponent * (sides === 'exterior' ? 0.65 : 1);
+    const laborComponent = billableHours('windowCleaning', duration) * hourlyRate;
+    // Post-construction glass is a different job: scraping labels and overspray
+    // is slow, and doing it wrong scratches the pane.
+    const sidesAdjusted = laborComponent * (sides === 'exterior' ? 0.65 : 1) * postcon;
     const hwRate = hardwater === 'light' ? 3 : hardwater === 'severe' ? 5 : 0;
     const hwAdd = panes * hwRate;
     const tripFee = miles > 25 ? 50 : 0;
     const productCost = panes * 0.15;
     const fuelCost = miles * 2 * 0.65;
-    const final = Math.max(sidesAdjusted + hwAdd + productCost + fuelCost + tripFee, 89);
+    const final = sidesAdjusted + hwAdd + tripFee + productCost + fuelCost;
     const description = jobType === 'Residential'
       ? 'Professional residential window cleaning, interior and exterior, including screens and sills wiped down. Streak-free squeegee technique.'
       : 'Professional commercial window cleaning including frame and sill wiping. Streak-free squeegee technique. Utah hard water spot treatment applied where needed.';
@@ -299,12 +491,14 @@ const CALCULATORS = {
     const frequency = num('jan_frequency') || 1;
     const hourlyRate = num('hourlyRate');
     const duration = sqft / 1500 + restrooms * 0.25;
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('janitorial', duration) * hourlyRate;
     const priced = laborComponent * facility;
     const restroomAdd = restrooms * 30;
     const productCost = sqft * 0.015 + restrooms * 3;
     const fuelCost = 5;
-    const final = Math.max((priced + restroomAdd) * frequency, 99);
+    // Product + fuel were previously computed and shown as costs, but left out
+    // of the price entirely -- janitorial was the only service that ate them.
+    const final = (priced + restroomAdd) * frequency + productCost + fuelCost;
     const description = 'Recurring professional janitorial service including restroom sanitization, floor sweeping and mopping, surface disinfection, trash removal and liner replacement, and interior glass cleaning.';
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'visit', qty: 1 };
   },
@@ -316,11 +510,11 @@ const CALCULATORS = {
     const hourlyRate = num('hourlyRate');
     const intensityFactor = rate / 0.35;
     const duration = Math.max((sqft / 500) * intensityFactor, 1);
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('floorCare', duration) * hourlyRate;
     const priced = laborComponent * condition;
     const productCost = sqft * rate * 0.12;
     const fuelCost = 10;
-    const final = Math.max(priced + productCost + fuelCost, 400);
+    const final = priced + productCost + fuelCost;
     const description = svcName === 'Full Strip & Wax'
       ? 'Professional commercial VCT floor strip and wax service. Complete removal of existing wax layers, scrub and neutralize, professional-grade finish applied in multiple coats. After-hours scheduling to avoid business disruption.'
       : `Professional commercial floor care service: ${svcName}. Surface prepped and treated with professional-grade products for a durable, high-quality finish.`;
@@ -333,13 +527,13 @@ const CALCULATORS = {
     const frequency = val('dp_frequency');
     const hourlyRate = num('hourlyRate');
     const duration = count * 0.75;
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('dumpsterPad', duration) * hourlyRate;
     const priced = laborComponent * condition;
     const odorAdd = odor === 'yes' ? 35 : 0;
     const freqMult = frequency === 'monthly' ? 0.95 : 1;
     const productCost = count * 15 + (odor === 'yes' ? 10 : 0);
     const fuelCost = 15;
-    const final = Math.max((priced + odorAdd + productCost + fuelCost) * freqMult, 175);
+    const final = (priced + odorAdd) * freqMult + productCost + fuelCost;
     const description = 'Industrial hot-water dumpster pad deep cleaning and deodorizing. Grease and biological contamination removed. Commercial odor neutralizer applied.';
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
   },
@@ -348,11 +542,11 @@ const CALCULATORS = {
     const frequency = num('ls_frequency') || 1;
     const hourlyRate = num('hourlyRate');
     const duration = Math.max(spaces / 200, 0.5);
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('lotSweeping', duration) * hourlyRate;
     const priced = laborComponent * frequency;
     const productCost = 0;
     const fuelCost = 20;
-    const final = Math.max(priced + productCost + fuelCost, 89);
+    const final = priced + productCost + fuelCost;
     const description = 'Commercial parking lot sweeping including drive aisles, parking stalls, and perimeter curbs. Debris and trash removal included.';
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
   },
@@ -361,12 +555,167 @@ const CALCULATORS = {
     const sqft = num('di_sqft');
     const hourlyRate = num('hourlyRate');
     const duration = Math.max(sqft / 2000, 0.5);
-    const laborComponent = duration * hourlyRate;
+    const laborComponent = billableHours('disinfection', duration) * hourlyRate;
     const priced = laborComponent * facility;
     const productCost = sqft * 0.02;
     const fuelCost = 10;
-    const final = Math.max(priced + productCost + fuelCost, 150);
+    const final = priced + productCost + fuelCost;
     const description = 'EPA List N registered electrostatic disinfection treatment. Eliminates 99.9% of pathogens including SARS-CoV-2, influenza, and norovirus. All hard surfaces treated. 30-minute re-entry period required after treatment.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  gutterCleaning: () => {
+    const linearFeet = num('gc_linearFeet');
+    const stories = num('gc_stories') || 1;
+    const debris = num('gc_debris') || 1;
+    const miles = num('gc_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~95 linear ft/hr with good access. Height extends DURATION rather than
+    // just price -- ladder repositioning and fall-protection setup at every
+    // access point is real time on the clock, not a margin decision.
+    const duration = Math.max(linearFeet / 95, 0.5) * stories;
+    const laborComponent = billableHours('gutterCleaning', duration) * hourlyRate;
+    const priced = laborComponent * debris;
+    // Downspouts run roughly one per 35 linear feet of gutter.
+    const downspoutAdd = val('gc_downspouts') === 'yes' ? Math.ceil(linearFeet / 35) * 4 : 0;
+    const productCost = 0;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + downspoutAdd + productCost + fuelCost;
+    const description = 'Commercial gutter and downspout cleaning. Debris removed by hand and bagged, gutter runs flushed, and downspouts checked for free flow. Fall-protection compliant access at every height.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  concreteSealing: () => {
+    const sqft = num('cs_sqft');
+    const [coverageStr, sealerName] = (val('cs_sealerType') || '200|Silane-Siloxane Penetrating').split('|');
+    const coverage = Number(coverageStr) || 200;
+    const coats = num('cs_coats') || 1;
+    const porosity = num('cs_porosity') || 1;
+    const miles = num('cs_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~1,200 sqft/hr per coat with a low-pressure sprayer and back-roller.
+    const duration = Math.max((sqft / 1200) * coats, 1);
+    const laborComponent = billableHours('concreteSealing', duration) * hourlyRate;
+    const priced = laborComponent * porosity;
+    // Porous slabs drink noticeably more sealer than the label rate. The first
+    // coat soaks in; later coats sit on partly sealed concrete and cover much
+    // further, so charging every coat at the bare-slab rate badly overstates
+    // material on 2-coat work. Second and later coats are counted at 70%.
+    const gallons = (sqft / coverage) * porosity * (1 + 0.7 * (coats - 1));
+    const productCost = gallons * 35;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = `Commercial concrete sealing using ${sealerName.toLowerCase()} sealer, ${coats} coat${coats > 1 ? 's' : ''}. Surface cleaned and fully dried before application, then barricaded through cure.`;
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
+  },
+  constructionRough: () => {
+    const sqft = num('xr_sqft');
+    const building = num('xr_building') || 1;
+    const debris = num('xr_debris') || 1;
+    const stories = num('xr_stories') || 1;
+    const miles = num('xr_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~400 sqft per crew-hour. Debris haul-out and broom work is faster than
+    // detail cleaning, but slower than a routine sweep: everything is heavy,
+    // awkward, and has to be carried out of the building.
+    const duration = Math.max(sqft / 400, 1) * debris;
+    const laborComponent = billableHours('constructionRough', duration) * hourlyRate;
+    const priced = laborComponent * building * stories;
+    const haul = val('xr_haul');
+    const haulAdd = haul === 'one' ? 450 : haul === 'two' ? 900 : 0;
+    // Contractor bags, broom/blade consumables, filters for the HEPA vacs.
+    const productCost = sqft * 0.012;
+    const fuelCost = miles * 2 * 0.65 + (haulAdd ? 40 : 0);
+    const final = priced + haulAdd + productCost + fuelCost;
+    const description = 'Post-construction ROUGH CLEAN (Phase 1). Removal of construction debris, packaging, and offcuts from all interior areas. Floors swept or HEPA-vacuumed, large surfaces knocked down, and site left broom-clean and ready for finish trades.'
+      + (haulAdd ? ' Includes debris haul-off and disposal.' : ' Debris staged to GC-provided dumpster.');
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1, sqftBasis: sqft };
+  },
+  constructionProgress: () => {
+    const sqft = num('xp_sqft');
+    const building = num('xp_building') || 1;
+    const frequency = num('xp_frequency') || 1;
+    const stories = num('xp_stories') || 1;
+    const restrooms = num('xp_restrooms');
+    const miles = num('xp_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~3,500 sqft per crew-hour. A progress clean does NOT clean the whole
+    // floor plate every visit -- it keeps egress and active work areas clear
+    // and consolidates debris. Rating it like a real clean produced 38-hour
+    // weekly visits on a 45,000 sqft site, which is nonsense.
+    const duration = Math.max(sqft / 3500, 1) + restrooms * 0.25;
+    const laborComponent = billableHours('constructionProgress', duration) * hourlyRate;
+    // More frequent visits cost less each: less accumulation, same mobilization.
+    const priced = laborComponent * building * stories * frequency;
+    const productCost = sqft * 0.004 + restrooms * 3;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Construction PROGRESS CLEAN (ongoing, between trades). Recurring site cleanup while construction is active: debris and packaging collected from work areas, egress paths and stairs kept clear and swept, container area consolidated, and site restrooms serviced. Priced per visit at the frequency shown.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'visit', qty: 1, sqftBasis: sqft };
+  },
+  constructionFinal: () => {
+    const sqft = num('xf_sqft');
+    const building = num('xf_building') || 1;
+    const glass = num('xf_glass') || 1;
+    const stories = num('xf_stories') || 1;
+    const restrooms = num('xf_restrooms');
+    const height = num('xf_height') || 1;
+    const schedule = num('xf_schedule') || 1;
+    const miles = num('xf_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~175 sqft per crew-hour. This is the detail phase -- every surface,
+    // fixture, frame, track and pane -- which is why it runs 2-3x the rate of a
+    // rough clean. Rated against the published $0.30-0.75/sqft band.
+    // Restrooms are the slowest room in a final clean: fixtures, grout, mirrors,
+    // partitions, and stocking. Roughly 45 minutes each on top of the area rate.
+    const duration = Math.max(sqft / 175, 2) + restrooms * 0.75;
+    const laborComponent = billableHours('constructionFinal', duration) * hourlyRate;
+    const priced = laborComponent * building * stories * glass * height * schedule;
+    const productCost = sqft * 0.03 + restrooms * 12;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Post-construction FINAL CLEAN (Phase 2). Detail clean of all interior surfaces: fixtures, casework, doors, frames, hardware, switch plates, vents, window interiors, tracks and sills. Floors vacuumed, damp-mopped or machine-scrubbed per finish. Restrooms sanitized and stocked. Delivered inspection-ready for owner walkthrough.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1, sqftBasis: sqft };
+  },
+  constructionTouchup: () => {
+    const sqft = num('xt_sqft');
+    const building = num('xt_building') || 1;
+    const scope = num('xt_scope') || 1;
+    const stories = num('xt_stories') || 1;
+    const miles = num('xt_miles');
+    const hourlyRate = num('hourlyRate');
+    // ~450 sqft per crew-hour: re-clean of whatever the punch list disturbed.
+    const duration = Math.max(sqft / 450, 1) * scope;
+    const laborComponent = billableHours('constructionTouchup', duration) * hourlyRate;
+    const priced = laborComponent * building * stories;
+    const productCost = sqft * 0.008;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Post-construction TOUCH-UP CLEAN (Phase 3). Re-clean following punch-list corrections and trade re-entry. Glass and mirrors de-smudged, horizontal surfaces re-dusted, floors spot-cleaned, restrooms refreshed. Scheduled immediately before owner walkthrough or certificate of occupancy inspection.';
+    return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1, sqftBasis: sqft };
+  },
+  graffitiRemoval: () => {
+    const sqft = num('gr_sqft');
+    const surface = num('gr_surface') || 1;
+    const severity = num('gr_severity') || 1;
+    const sealAfter = val('gr_sealAfter') === 'yes';
+    const miles = num('gr_miles');
+    const hourlyRate = num('hourlyRate');
+    // Slow, detail-bound work: ~40 sqft/hr on smooth surfaces, and far slower
+    // on masonry where a poultice has to draw the stain back out of the pores.
+    const duration = Math.max(sqft / 40, 1) * surface;
+    const laborComponent = billableHours('graffitiRemoval', duration) * hourlyRate;
+    const priced = laborComponent * severity;
+    const removerGallons = Math.max(sqft / 150, 0.25) * severity;
+    // Porous stone and bare concrete need a poultice to draw pigment back out
+    // of the pores. The job plan lists it, so the estimate has to charge for
+    // it -- otherwise every porous job trips the margin warning over what is
+    // really just a missing line here.
+    const poulticeGallons = surface >= 1.8 ? sqft / 100 : 0;
+    const sealGallons = sealAfter ? sqft / 200 : 0;
+    const productCost = removerGallons * 60 + poulticeGallons * 30 + sealGallons * 55;
+    const fuelCost = miles * 2 * 0.65;
+    const final = priced + productCost + fuelCost;
+    const description = 'Commercial graffiti removal. Test patch performed first, then a surface-appropriate remover applied and rinsed at controlled pressure to avoid etching. Wash water contained and recovered.'
+      + (sealAfter ? ' Sacrificial anti-graffiti coating applied on completion.' : '');
     return { basePrice: laborComponent, finalPrice: final, duration, productCost, fuelCost, description, unit: 'job', qty: 1 };
   },
 };
@@ -387,16 +736,57 @@ function recalculate() {
   const profit = result.finalPrice - totalRealCost;
   const profitColor = profit < 0 ? '#C0392B' : '#1B7A3C';
   const effectiveRate = result.finalPrice / result.duration;
+
+  // Everything that isn't a pass-through cost: labor after every multiplier,
+  // plus service add-ons. These three lines always sum to the blue price.
+  const serviceCharge = result.finalPrice - result.productCost - result.fuelCost;
+  const minHours = MIN_BILLABLE_HOURS[activeService] || 0;
+  const minApplied = result.duration < minHours - 0.001;
+
   document.getElementById('calcBreakdown').innerHTML = `
-    <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
-    <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
+    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-bottom:2px;">What makes up this price</div>
+    <div><span>Service Labor &amp; Add-ons</span><strong>${money(serviceCharge)}</strong></div>
     <div><span>Chemical/Product Cost</span><strong>${money(result.productCost)}</strong></div>
     <div><span>Fuel Cost</span><strong>${money(result.fuelCost)}</strong></div>
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Recommended Price</span><strong>${money(result.finalPrice)}</strong></div>
+    ${minApplied ? `<div style="grid-column:1 / -1; color:#8A98AC; font-size:0.8rem;">Billed at the ${minHours}-hour minimum for this service (actual time on job ${result.duration.toFixed(1)} hrs).</div>` : ''}
+
+    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">Your margin</div>
+    <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
+    <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
     <div><span>Wage Cost (@ ${money(wageCost)}/hr)</span><strong>${money(wageTotal)}</strong></div>
+    <div><span>Chemical + Fuel Cost</span><strong>${money(result.productCost + result.fuelCost)}</strong></div>
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Est. Profit After All Costs</span><strong style="color:${profitColor};">${money(profit)}</strong></div>
   `;
   if (profit < 0) {
     document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#C0392B; font-weight:700; margin-top:4px;">⚠️ Your wage cost is higher than your hourly rate on this job — raise your hourly rate above ${money(wageCost)}/hr to stay profitable.</div>`;
+  }
+
+  // Construction is bid per square foot in this trade, so show the $/sqft our
+  // hourly model produced against the published band for that phase. A quote
+  // under the band wins work at a loss; over it loses the bid outright.
+  const band = CONSTRUCTION_MARKET_BAND[activeService];
+  if (band && result.sqftBasis > 0) {
+    const perSqft = result.finalPrice / result.sqftBasis;
+    const under = perSqft < band.low;
+    const over = perSqft > band.high;
+    const verdict = under
+      ? { color: '#C0392B', text: 'BELOW market — you are likely leaving money on the table or under-scoping the crew.' }
+      : over
+        ? { color: '#E8A317', text: 'ABOVE market — defensible on a hard spec or tight schedule, but expect to justify it.' }
+        : { color: '#1B7A3C', text: 'Within the published band for this phase.' };
+    document.getElementById('calcBreakdown').innerHTML += `
+      <div style="grid-column:1 / -1; margin-top:12px; padding-top:10px; border-top:1px solid #EEF2F8;">
+        <div style="display:flex; justify-content:space-between; gap:10px;">
+          <span>This quote, per square foot</span>
+          <strong style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;">${perSqft.toFixed(3)}/sqft</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:10px; color:#8A98AC;">
+          <span>Published 2026 band, ${band.label}</span>
+          <span style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;">${band.low.toFixed(2)} – ${band.high.toFixed(2)}/sqft</span>
+        </div>
+        <div style="color:${verdict.color}; font-size:0.82rem; margin-top:5px;">${verdict.text}</div>
+      </div>`;
   }
 
   const lowRange = result.finalPrice * 0.85;
@@ -408,6 +798,7 @@ function addCalculatorLineItem() {
   if (!activeService || !lastCalcResult) return;
   const r = lastCalcResult;
   const meta = {
+    unit: r.unit,
     serviceType: activeService,
     calculatorInputs: JSON.stringify(collectInputs(activeService)),
     basePrice: r.basePrice,
@@ -449,10 +840,20 @@ function addLineItem(desc = '', qty = 1, price = '', meta = null) {
   row.className = 'line-item-row';
   row.id = `li-${id}`;
   if (meta) row.dataset.meta = JSON.stringify(meta);
+  // Unit comes from the calculator ('job', 'visit'); hand-typed lines default
+  // to 'job'. Optional lines are alternates the client can decline, and are
+  // kept out of the headline total so the base bid stays comparable.
+  const unit = (meta && meta.unit) || 'job';
   row.innerHTML = `
     <input type="text" placeholder="Description" class="li-desc" value="${desc.replace(/"/g, '&quot;')}">
     <input type="number" placeholder="Qty" class="li-qty" value="${qty}" min="0" step="0.1" oninput="updateTotal()">
+    <select class="li-unit" title="Unit of measure">
+      ${['job','visit','sqft','hour','each','month'].map(u => `<option value="${u}"${u === unit ? ' selected' : ''}>${u}</option>`).join('')}
+    </select>
     <input type="number" placeholder="Unit Price" class="li-price" value="${price}" min="0" step="0.01" oninput="updateTotal()">
+    <label class="li-opt-wrap" title="Optional — excluded from the total, shown to the client as an alternate">
+      <input type="checkbox" class="li-optional" onchange="updateTotal()"> opt
+    </label>
     <span class="remove-line-btn" onclick="document.getElementById('li-${id}').remove(); updateTotal();">✕</span>
   `;
   document.getElementById('lineItems').appendChild(row);
@@ -460,19 +861,28 @@ function addLineItem(desc = '', qty = 1, price = '', meta = null) {
 }
 
 function updateTotal() {
-  let subtotal = 0;
-  document.querySelectorAll('.line-item-row').forEach(row => {
-    const qty = parseFloat(row.querySelector('.li-qty').value) || 0;
-    const price = parseFloat(row.querySelector('.li-price').value) || 0;
-    subtotal += qty * price;
-  });
-  document.getElementById('subtotalDisplay').textContent = money(subtotal);
+  // Optional lines are alternates: they are quoted but not part of the price
+  // the client is being asked to accept, so they must not inflate the total.
+  const rows = [...document.querySelectorAll('.line-item-row')];
+  const sumOf = (opt) => rows
+    .filter(r => r.querySelector('.li-optional').checked === opt)
+    .reduce((sum, r) => sum + Number(r.querySelector('.li-qty').value || 0) * Number(r.querySelector('.li-price').value || 0), 0);
 
+  const subtotal = sumOf(false);
+  const optionalTotal = sumOf(true);
   const applyTax = document.getElementById('applyTax').checked;
   const taxAmount = applyTax ? subtotal * TAX_RATE : 0;
-  document.getElementById('taxRowDisplay').style.display = applyTax ? 'block' : 'none';
+
+  document.getElementById('subtotalDisplay').textContent = money(subtotal);
   document.getElementById('taxDisplay').textContent = money(taxAmount);
+  document.getElementById('taxRowDisplay').style.display = applyTax ? 'block' : 'none';
   document.getElementById('totalDisplay').textContent = money(subtotal + taxAmount);
+
+  const optRow = document.getElementById('optionalRow');
+  if (optRow) {
+    optRow.style.display = optionalTotal > 0 ? 'block' : 'none';
+    document.getElementById('optionalDisplay').textContent = money(optionalTotal);
+  }
 }
 
 addLineItem();
@@ -485,10 +895,14 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
 
   const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => {
     const meta = row.dataset.meta ? JSON.parse(row.dataset.meta) : {};
+    // The row's own select wins: the user may have changed it after adding.
+    delete meta.unit;
     return {
       description: row.querySelector('.li-desc').value,
       quantity: row.querySelector('.li-qty').value || 1,
       unitPrice: row.querySelector('.li-price').value || 0,
+      unit: row.querySelector('.li-unit').value,
+      isOptional: row.querySelector('.li-optional').checked,
       ...meta,
     };
   }).filter(li => li.description.trim());
@@ -518,6 +932,10 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
           company: document.getElementById('clientCompany').value,
           propertyAddress: document.getElementById('clientAddress').value
         },
+        projectName: document.getElementById('projectName').value || undefined,
+        siteAddress: document.getElementById('siteAddress').value || undefined,
+        walkthroughDate: document.getElementById('walkthroughDate').value || undefined,
+        siteConditions: document.getElementById('siteConditions').value || undefined,
         validUntil: document.getElementById('validUntil').value || undefined,
         notes: document.getElementById('notes').value,
         lineItems,

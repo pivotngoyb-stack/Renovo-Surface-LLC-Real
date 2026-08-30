@@ -15,6 +15,7 @@
       <img src="../images/logo.png" alt="Renovo">
       <div style="display:flex; gap:24px; align-items:center;">
         <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/schedule.html">Schedule</a>
         <a href="/admin/contracts.html">Contracts</a>
         <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
@@ -67,6 +68,33 @@ async function load() {
     auditHtml = `<div class="empty-state" style="padding:24px;">Not signed yet.</div>`;
   }
 
+  const done = !!workOrder.completedAt;
+  const scheduleHtml = `
+    <div class="wo-schedule">
+      <div class="jp-eyebrow" style="margin-bottom:10px;">Scheduling</div>
+      <div class="wo-schedule-row">
+        <div class="field-group" style="margin:0;">
+          <label for="schedDate">Service date</label>
+          <input type="date" id="schedDate" value="${workOrder.scheduledDate || ''}">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label for="schedStart">Start time</label>
+          <input type="time" id="schedStart" value="${workOrder.scheduledStart || ''}">
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="schedSaveBtn" onclick="saveSchedule()">Save date</button>
+      </div>
+      <div class="wo-schedule-state">
+        ${done
+          ? `<span class="wo-done">Completed ${new Date(workOrder.completedAt).toLocaleDateString()}</span>
+             <button type="button" class="btn btn-sm" style="color:#4A5A72;" onclick="setCompleted(false)">Reopen</button>`
+          : workOrder.scheduledDate
+            ? `<span style="color:#4A5A72; font-size:0.85rem;">Booked, not yet marked done.</span>
+               <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="setCompleted(true)">Mark completed</button>`
+            : `<span style="color:#8A98AC; font-size:0.85rem;">No service date set — this job will not appear on the schedule.</span>`}
+      </div>
+      <p class="error-text" id="schedError"></p>
+    </div>`;
+
   document.getElementById('content').innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
       <div>
@@ -75,6 +103,8 @@ async function load() {
       </div>
       ${statusPill(workOrder.status)}
     </div>
+
+    ${scheduleHtml}
 
     <table class="dash-table">
       <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
@@ -91,12 +121,173 @@ async function load() {
     <div id="beforePhotos"></div>
     <div id="afterPhotos"></div>
 
+    <div id="jobPlan" style="margin-top:28px;">Loading job plan…</div>
+
     ${invoice ? `<p style="margin-top:20px;"><a href="/admin/invoice-detail.html?id=${invoice.id}" class="btn btn-primary btn-sm">View Invoice</a></p>` : ''}
 
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${woLink}" target="_blank">${woLink}</a></p>
   `;
 
   loadPhotos();
+  loadJobPlan();
+}
+
+/* ---------- Scheduling ---------- */
+
+async function patchWorkOrder(body, btn) {
+  const err = document.getElementById('schedError');
+  err.classList.remove('show');
+  const label = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const res = await adminFetch(`/api/admin/work-orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Could not save.');
+    }
+    load();
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.add('show');
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+function saveSchedule() {
+  // Empty date clears the booking; the server drops any orphaned start time.
+  patchWorkOrder({
+    scheduledDate: document.getElementById('schedDate').value || null,
+    scheduledStart: document.getElementById('schedStart').value || null,
+  }, document.getElementById('schedSaveBtn'));
+}
+
+function setCompleted(completed) {
+  patchWorkOrder({ completed }, null);
+}
+
+/* ---------- Job Plan (internal crew pack) ---------- */
+
+async function loadJobPlan() {
+  const res = await adminFetch(`/api/admin/work-orders/${id}/job-plan`);
+  const target = document.getElementById('jobPlan');
+  if (!res.ok) { target.innerHTML = '<div class="empty-state" style="padding:20px;">Could not build a job plan for this work order.</div>'; return; }
+  const { plan } = await res.json();
+  target.innerHTML = renderJobPlan(plan);
+}
+
+function planBand(eyebrow, body) {
+  return `<div class="jp-band"><div class="jp-eyebrow">${eyebrow}</div>${body}</div>`;
+}
+
+function planSpec(label, value, unit, note) {
+  return `<div>
+    <div class="jp-spec-label">${label}</div>
+    <div class="jp-spec-value">${value}${unit ? ` <span class="jp-spec-unit">${unit}</span>` : ''}</div>
+    ${note ? `<div class="jp-spec-note">${note}</div>` : ''}
+  </div>`;
+}
+
+function renderJobPlan(plan) {
+  if (!plan.services.length) {
+    return `<div class="empty-state" style="padding:20px;">Nothing to plan yet. Price this job through the estimate calculator and the crew plan builds itself — hand-typed line items carry no job details to work from.</div>`;
+  }
+
+  // Read-this-first band. Anything that changes how the day is scheduled or
+  // what it costs belongs at the top, above the numbers.
+  const flags = plan.warnings.length
+    ? `<div class="jp-band jp-flags">${plan.warnings.map(w => `<div class="jp-flag">${w}</div>`).join('')}</div>`
+    : '';
+
+  const specs = planBand('Dispatch', `<div class="jp-spec">
+    ${planSpec('Crew', plan.crew.techs, `tech${plan.crew.techs === 1 ? '' : 's'}`, `${plan.crew.hoursEach} hrs each · ${plan.laborHours} labor hrs total`)}
+    ${planSpec('On site', plan.onSiteHours, 'hrs', 'Door to door, including dwell')}
+    ${planSpec('Water', plan.water.gallons.toLocaleString(), 'gal', plan.water.note)}
+  </div>
+  <div class="jp-spec-note jp-rationale">${plan.crew.rationale}</div>`);
+
+  // Compliance first among the detail bands: it is the only part of this ticket
+  // where getting it wrong costs a fine or an injury rather than an hour.
+  const compliance = plan.compliance.length ? planBand('Before water hits the ground', plan.compliance.map(c => {
+    if (c.level !== 'critical') {
+      return `<div class="jp-note"><div class="jp-note-title">${c.requirement}</div><div class="jp-note-detail">${c.detail}</div></div>`;
+    }
+    // Absolute prohibitions get the red stripe; other criticals get amber.
+    const isStop = /no storm drain|no exceptions/i.test(c.requirement);
+    return `<div class="jp-hazard${isStop ? ' is-stop' : ''}">
+      <div class="jp-hazard-title">${c.requirement}</div>
+      <div class="jp-hazard-detail">${c.detail}</div>
+    </div>`;
+  }).join('')) : '';
+
+  // Numbered because these genuinely run in order -- you cannot rinse before
+  // the chemical dwells. The numbers carry information, they are not decoration.
+  const sequence = planBand('Sequence', `<ol class="jp-seq">
+    ${plan.phases.map((p, i) => `<li class="jp-seq-item">
+      <span class="jp-seq-num">${String(i + 1).padStart(2, '0')}</span>
+      <span class="jp-seq-label">${p.label}</span>
+      <span class="jp-seq-dur">${p.minutes} min</span>
+    </li>`).join('')}
+  </ol>`);
+
+  const load = plan.chemicals.length ? planBand('Load list', `<div class="jp-scroll"><table class="jp-load">
+    <thead><tr><th>Product</th><th>Mix at</th><th>Take</th><th>Dwell</th></tr></thead>
+    <tbody>${plan.chemicals.map(c => `<tr>
+      <td>
+        <strong>${c.product}</strong>
+        <div class="jp-load-purpose">${c.purpose}</div>
+        ${c.caution ? `<div class="jp-load-purpose is-caution">${c.caution}</div>` : ''}
+      </td>
+      <td>${c.dilution}</td>
+      <td class="jp-qty">${c.concentrateGallons} gal${
+        // Ready-to-use products aren't diluted, so "makes N gal" would just
+        // restate the purchase figure. Only show it on a real dilution.
+        c.mixedGallons > c.concentrateGallons * 1.1
+          ? `<span class="jp-qty-sub">makes ${c.mixedGallons} gal</span>` : ''
+      }</td>
+      <td class="jp-qty">${c.dwellMinutes ? c.dwellMinutes + ' min' : '—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`) : '';
+
+  const ledger = planBand('Materials against the quote', `<div class="jp-ledger">
+    <div class="jp-ledger-line">Plan needs <strong>${money(plan.costCheck.plannedChemicalCost)}</strong> in chemicals; the estimate priced <strong>${money(plan.costCheck.quotedProductCost)}</strong>.</div>
+    <div class="jp-ledger-verdict${plan.costCheck.status === 'over' ? ' is-over' : ''}">${
+      plan.costCheck.status === 'over' ? `${money(plan.costCheck.delta)} over` : 'Covered'
+    }</div>
+  </div>`);
+
+  const jpList = items => `<ul class="jp-list">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+  const kit = (plan.equipment.length || plan.ppe.length) ? planBand('Kit', `<div class="jp-cols">
+    ${plan.equipment.length ? `<div><div class="jp-spec-label">Equipment</div>${jpList(plan.equipment)}</div>` : ''}
+    ${plan.ppe.length ? `<div><div class="jp-spec-label">PPE</div>${jpList(plan.ppe)}</div>` : ''}
+  </div>`) : '';
+
+  // "Weather window" rather than "Call it off if" -- some of these are hard
+  // stops and some are handling notes, and a label should not promise one
+  // thing and deliver the other.
+  const conditions = plan.weather.length ? planBand('Weather window', jpList(plan.weather)) : '';
+
+  return `<div class="jp">
+    <div class="jp-head">
+      <span class="jp-head-title">Job Plan</span>
+      <span class="jp-head-services">${plan.services.join(' · ')}</span>
+      <span class="jp-tag">INTERNAL · NOT SENT TO CLIENT</span>
+    </div>
+    ${flags}
+    ${specs}
+    ${compliance}
+    ${sequence}
+    ${load}
+    ${ledger}
+    ${kit}
+    ${conditions}
+    <div class="jp-actions">
+      <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">Print crew pack</button>
+    </div>
+  </div>`;
 }
 
 const MAX_PHOTO_DIMENSION = 1600;

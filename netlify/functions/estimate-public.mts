@@ -4,6 +4,8 @@ import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined } from './_shared/email.mts'
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
+import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
+import { buildProposalScope } from './_shared/scopeLibrary.mts'
 
 export default async (request: Request, context: Context) => {
   const token = context.params.token
@@ -26,7 +28,19 @@ export default async (request: Request, context: Context) => {
       .where(eq(schema.estimateLineItems.estimateId, estimate.id))
       .orderBy(schema.estimateLineItems.sortOrder)
 
-    return json({ estimate, client, lineItems })
+    // Scope, exclusions and assumptions are derived from the services actually
+    // quoted, so the proposal can never describe work that is not on the bid.
+    const proposal = buildProposalScope(lineItems.map(li => li.serviceType))
+
+    return json({
+      estimate,
+      client,
+      lineItems,
+      proposal,
+      // Server owns these so the date shown and the date enforced always agree.
+      expiresOn: effectiveExpiry(estimate.validUntil, estimate.createdAt),
+      expired: isExpired(estimate.validUntil, estimate.createdAt),
+    })
   }
 
   if (request.method === 'POST') {
@@ -42,6 +56,12 @@ export default async (request: Request, context: Context) => {
     }
 
     if (body.action === 'approve') {
+      // An expired estimate must not be approvable -- approval auto-creates a
+      // work order, so this would commit the crew at months-old pricing.
+      if (isExpired(estimate.validUntil, estimate.createdAt)) {
+        return badRequest('This estimate expired on ' + effectiveExpiry(estimate.validUntil, estimate.createdAt) + '. Please contact us for an updated quote.')
+      }
+
       await db.update(schema.estimates).set({ status: 'approved', approvedAt: new Date() }).where(eq(schema.estimates.id, estimate.id))
       if (client) await notifyAdminEstimateApproved(client.name, estimate.id)
       try {
