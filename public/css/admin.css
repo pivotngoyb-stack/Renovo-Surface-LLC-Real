@@ -175,6 +175,18 @@ body.admin-body {
 .calc-service-btn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
 .calc-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .calc-fields .field-group { grid-column: span 1; }
+/* Job conditions sit between the service inputs and the price, because they
+   change the price and the estimator needs to see them before reading it. */
+.cond-box { margin-top: 4px; padding: 14px 16px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); background: #FCFDFF; }
+.cond-title { font-family: var(--font-head); font-weight: 700; font-size: 0.85rem; color: var(--navy); margin-bottom: 10px; }
+.cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.cond-grid .field-group { margin-bottom: 12px; }
+.cond-grid label { font-size: 0.8rem; }
+.cond-effect { font-size: 0.8rem; line-height: 1.5; border-top: 1px solid #EEF2F8; padding-top: 9px; }
+.cond-quiet { color: #8A98AC; }
+.cond-applied { color: #1B5FA8; }
+.cond-applied strong { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+
 .calc-price-display { margin-top: 20px; background: var(--off-white); border-radius: var(--radius); padding: 20px; }
 .calc-price-main { text-align: center; margin-bottom: 14px; }
 .calc-price-label { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8A98AC; font-weight: 700; }
@@ -466,6 +478,7 @@ body.admin-body {
   .line-item-row { grid-template-columns: 1fr 50px 80px 28px; gap: 6px; }
 
   .calc-fields { grid-template-columns: 1fr; }
+  .cond-grid { grid-template-columns: 1fr; }
   .burden-grid { grid-template-columns: 1fr; }
   .burden-headline { font-size: 0.72rem; }
   .calc-service-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }

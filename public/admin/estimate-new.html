@@ -128,6 +128,12 @@
 
           <div id="calcFields" class="calc-fields"></div>
 
+          <div id="calcConditions" class="cond-box" style="display:none;">
+            <div class="cond-title">Job conditions</div>
+            <div class="cond-grid" id="calcConditionFields"></div>
+            <div class="cond-effect" id="calcConditionEffect"></div>
+          </div>
+
           <div id="calcPriceDisplay" class="calc-price-display" style="display:none;">
             <div class="calc-price-main">
               <span class="calc-price-label">Recommended Price</span>
@@ -278,6 +284,7 @@ function selectService(key) {
   SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.toggle('active', s.key === key));
   document.getElementById('calcFields').innerHTML = FIELD_BUILDERS[key]();
   document.getElementById('calcPriceDisplay').style.display = 'none';
+  renderConditionFields();
   attachFieldListeners();
   recalculate();
 }
@@ -706,8 +713,176 @@ const MIN_BILLABLE_HOURS = {
   ventCleaning: 2,
 };
 
+/* ---------- Global job conditions ----------
+ *
+ * MIRRORS netlify/functions/_shared/jobConditions.mts, enforced by the
+ * condition parity test. Every calculator here used to price a job as if it
+ * happened on a Tuesday at 10am in an empty open-plan room with two weeks'
+ * notice. Almost no commercial cleaning work does.
+ *
+ *   layout, occupancy  -> TIME   (a slower job costs more AND takes longer)
+ *   shift, urgency     -> PRICE and WAGE (a premium, not more hours)
+ *
+ * The wage multiplier matters: charging a 30% overnight premium while booking
+ * cost at day rates would report a margin Renovo never earned.
+ */
+const COND_AXES = {
+  layout: [
+    { key: 'standard', label: 'Standard mix, offices and corridors', time: 1, price: 1, wage: 1 },
+    { key: 'open', label: 'Open floor plan: warehouse, showroom, big-box', time: 0.9, price: 1, wage: 1 },
+    { key: 'partitioned', label: 'Partitioned / cubicle-dense', time: 1.15, price: 1, wage: 1 },
+    { key: 'compartmented', label: 'Highly compartmented: many small rooms, exam rooms', time: 1.3, price: 1, wage: 1,
+      note: 'Pricing assumes a highly compartmented floor plan; a materially more open layout may reduce the hours required.' },
+  ],
+  occupancy: [
+    { key: 'vacant', label: 'Vacant / building empty during service', time: 1, price: 1, wage: 1 },
+    { key: 'occupied', label: 'Occupied: crew works around staff and public', time: 1.15, price: 1, wage: 1,
+      note: 'Service is performed while the facility is occupied. Areas in active use at the time of service are cleaned when they become available.' },
+    { key: 'escorted', label: 'Restricted zones / escort required', time: 1.3, price: 1, wage: 1,
+      note: 'Pricing assumes client-provided escort and access to restricted areas at the scheduled start time. Crew standby caused by delayed access is billable at the hourly rate.' },
+  ],
+  shift: [
+    { key: 'standard', label: 'Standard hours, 7am to 5pm', time: 1, price: 1, wage: 1 },
+    { key: 'evening', label: 'After hours, 5pm to 10pm', time: 1, price: 1.15, wage: 1.05,
+      note: 'Service is scheduled outside normal business hours.' },
+    { key: 'overnight', label: 'Overnight, 10pm to 6am', time: 1, price: 1.3, wage: 1.15,
+      note: 'Service is scheduled overnight. Building access and alarm codes are to be provided in advance.' },
+    { key: 'weekend', label: 'Weekend', time: 1, price: 1.25, wage: 1.1,
+      note: 'Service is scheduled on a weekend.' },
+    { key: 'holiday', label: 'Recognised holiday', time: 1, price: 1.5, wage: 1.5,
+      note: 'Service is scheduled on a recognised holiday and is staffed at holiday pay rates.' },
+  ],
+  urgency: [
+    { key: 'scheduled', label: 'Scheduled (normal lead time)', time: 1, price: 1, wage: 1 },
+    { key: 'expedited', label: 'Expedited, within 48 hours', time: 1, price: 1.2, wage: 1.05,
+      note: 'Expedited scheduling. Crew and equipment are committed ahead of the normal booking window.' },
+    { key: 'emergency', label: 'Emergency, same day', time: 1, price: 1.5, wage: 1.25,
+      note: 'Emergency same-day response. Crew is diverted from scheduled work and staffed at overtime rates.' },
+  ],
+};
+
+const COND_AXIS_LABELS = {
+  layout: 'Floor plan',
+  occupancy: 'Occupancy',
+  shift: 'When the work happens',
+  urgency: 'Lead time',
+};
+
+// A parking lot has no cubicles and a dumpster pad is never escorted.
+const INTERIOR_SERVICES = new Set([
+  'janitorial', 'floorCare', 'disinfection', 'carpetExtraction', 'tileGrout',
+  'ventCleaning', 'windowCleaning', 'constructionRough', 'constructionProgress',
+  'constructionFinal', 'constructionTouchup',
+]);
+
+function axisApplies(axis, service) {
+  if (axis === 'layout' || axis === 'occupancy') return INTERIOR_SERVICES.has(service);
+  return true;
+}
+
+const condIsNeutral = o => o.time === 1 && o.price === 1 && o.wage === 1;
+
+// An unrecognised key resolves to a multiplier of 1, never to whatever happens
+// to be first. A default that quietly discounts every unconfigured job is worse
+// than no default at all.
+function condOption(axis, key) {
+  const list = COND_AXES[axis];
+  return list.find(o => o.key === key) || list.find(condIsNeutral) || list[0];
+}
+
+const round3 = n => Math.round(n * 1000) / 1000;
+const condPct = m => (m > 1 ? '+' : '-') + Math.round(Math.abs(m - 1) * 100) + '%';
+
+// Effect derived from the multipliers, never typed into the label: hardcoding
+// "+15%" beside a 1.20 is a lie that survives review because both look correct.
+function optionLabel(o) {
+  const bits = [];
+  if (o.time !== 1) bits.push(condPct(o.time) + ' time');
+  if (o.price !== 1) bits.push(condPct(o.price) + ' price');
+  return bits.length ? o.label + ' (' + bits.join(', ') + ')' : o.label;
+}
+
+function resolveConditions(service, sel) {
+  sel = sel || {};
+  const selected = [];
+  const notes = [];
+  let time = 1, price = 1, wage = 1;
+  Object.keys(COND_AXES).forEach(axis => {
+    if (!axisApplies(axis, service)) return;
+    const opt = condOption(axis, sel[axis]);
+    selected.push({ axis, option: opt });
+    time *= opt.time; price *= opt.price; wage *= opt.wage;
+    if (opt.note) notes.push(opt.note);
+  });
+  return {
+    timeMultiplier: round3(time),
+    priceMultiplier: round3(price),
+    wageMultiplier: round3(wage),
+    selected, notes,
+    anyApplied: selected.some(s => s.option.time !== 1 || s.option.price !== 1),
+  };
+}
+
+function conditionSummary(service, sel) {
+  return resolveConditions(service, sel).selected
+    .filter(s => s.option.time !== 1 || s.option.price !== 1)
+    .map(s => s.option.label.replace(/\s*\([^)]*\)\s*$/, '').trim())
+    .join('; ');
+}
+
+/** Current selection, read off the conditions panel. */
+function conditionSelection() {
+  const sel = {};
+  Object.keys(COND_AXES).forEach(axis => {
+    const el = document.getElementById('cond_' + axis);
+    if (el) sel[axis] = el.value;
+  });
+  return sel;
+}
+
+function conditionsFor(service) {
+  return resolveConditions(service, conditionSelection());
+}
+
+function renderConditionFields() {
+  const box = document.getElementById('calcConditions');
+  if (!box) return;
+  if (!activeService) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+
+  const prev = conditionSelection();
+  document.getElementById('calcConditionFields').innerHTML = Object.keys(COND_AXES)
+    .filter(axis => axisApplies(axis, activeService))
+    .map(axis => {
+      const opts = COND_AXES[axis].map(o =>
+        '<option value="' + o.key + '"' + (prev[axis] === o.key ? ' selected' : '') + '>' + optionLabel(o) + '</option>'
+      ).join('');
+      return '<div class="field-group"><label for="cond_' + axis + '">' + COND_AXIS_LABELS[axis] + '</label>'
+        + '<select id="cond_' + axis + '" onchange="recalculate()">' + opts + '</select></div>';
+    }).join('');
+}
+
+function renderConditionEffect(eff) {
+  const el = document.getElementById('calcConditionEffect');
+  if (!el) return;
+  if (!eff.anyApplied) {
+    el.innerHTML = '<span class="cond-quiet">Standard conditions &mdash; no adjustment applied.</span>';
+    return;
+  }
+  const bits = [];
+  if (eff.timeMultiplier !== 1) bits.push('time on site <strong>&times;' + eff.timeMultiplier.toFixed(2) + '</strong>');
+  if (eff.priceMultiplier !== 1) bits.push('labor and service charge <strong>&times;' + eff.priceMultiplier.toFixed(2) + '</strong>');
+  if (eff.wageMultiplier !== 1) bits.push('your wage cost <strong>&times;' + eff.wageMultiplier.toFixed(2) + '</strong>');
+  el.innerHTML = '<span class="cond-applied">These conditions apply ' + bits.join(', ')
+    + '. Chemicals and fuel are not marked up.</span>';
+}
+
 function billableHours(service, duration) {
-  return Math.max(duration, MIN_BILLABLE_HOURS[service] || 0);
+  // Conditions that slow the crew down extend real time, and the minimum
+  // billable floor applies after that -- never the other way round, which
+  // would multiply the floor itself on small jobs.
+  const adjusted = duration * conditionsFor(service).timeMultiplier;
+  return Math.max(adjusted, MIN_BILLABLE_HOURS[service] || 0);
 }
 
 const CALCULATORS = {
@@ -1088,33 +1263,51 @@ function recalculate() {
   lastCalcResult = result;
 
   document.getElementById('calcPriceDisplay').style.display = 'block';
-  document.getElementById('calcPriceValue').textContent = money(result.finalPrice);
+
+  const eff = conditionsFor(activeService);
+  renderConditionEffect(eff);
+
+  // Premiums apply to the labor and service portion only. Chemicals cost the
+  // same at 2am as at noon, and marking them up is a line an owner's rep finds.
+  const bareService = result.finalPrice - result.productCost - result.fuelCost;
+  const premium = round2(bareService * (eff.priceMultiplier - 1));
+  const finalPrice = round2(result.finalPrice + premium);
+
+  // Real hours on site, which is what wages are paid for and what sizes a crew.
+  const workedHours = result.duration * eff.timeMultiplier;
 
   const burden = burdenInputs();
-  const cost = jobCost(result.finalPrice, result.duration, result.productCost, result.fuelCost, burden);
+  // A shift differential is real money out the door, so it scales the wage the
+  // margin is measured against -- payroll taxes ride on the differential too.
+  const shiftBurden = Object.assign({}, burden, { baseWage: burden.baseWage * eff.wageMultiplier });
+  const cost = jobCost(finalPrice, workedHours, result.productCost, result.fuelCost, shiftBurden);
+
+  document.getElementById('calcPriceValue').textContent = money(finalPrice);
+
   // Amber below 20%: not a loss, but too thin to absorb a callback or a
   // rain day, which is where these jobs actually go wrong.
   const profitColor = cost.underwater ? '#C0392B' : cost.marginPct < 20 ? '#966A00' : '#1B7A3C';
-  const effectiveRate = result.finalPrice / result.duration;
+  const effectiveRate = workedHours > 0 ? finalPrice / workedHours : 0;
 
   // Everything that isn't a pass-through cost: labor after every multiplier,
   // plus service add-ons. These three lines always sum to the blue price.
-  const serviceCharge = result.finalPrice - result.productCost - result.fuelCost;
+  const serviceCharge = bareService + premium;
   const minHours = MIN_BILLABLE_HOURS[activeService] || 0;
-  const minApplied = result.duration < minHours - 0.001;
+  const minApplied = workedHours < minHours - 0.001;
 
   document.getElementById('calcBreakdown').innerHTML = `
     <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-bottom:2px;">What makes up this price</div>
-    <div><span>Service Labor &amp; Add-ons</span><strong>${money(serviceCharge)}</strong></div>
+    <div><span>Service Labor &amp; Add-ons</span><strong>${money(bareService)}</strong></div>
+    ${premium > 0 ? `<div><span>Condition premium (&times;${eff.priceMultiplier.toFixed(2)})</span><strong>${money(premium)}</strong></div>` : ''}
     <div><span>Chemical/Product Cost</span><strong>${money(result.productCost)}</strong></div>
     <div><span>Fuel Cost</span><strong>${money(result.fuelCost)}</strong></div>
-    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Recommended Price</span><strong>${money(result.finalPrice)}</strong></div>
-    ${minApplied ? `<div style="grid-column:1 / -1; color:#8A98AC; font-size:0.8rem;">Billed at the ${minHours}-hour minimum for this service (actual time on job ${result.duration.toFixed(1)} hrs).</div>` : ''}
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Recommended Price</span><strong>${money(finalPrice)}</strong></div>
+    ${minApplied ? `<div style="grid-column:1 / -1; color:#8A98AC; font-size:0.8rem;">Billed at the ${minHours}-hour minimum for this service (actual time on job ${workedHours.toFixed(1)} hrs).</div>` : ''}
 
     <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">What it costs you</div>
-    <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
+    <div><span>Est. Time on Job</span><strong>${workedHours.toFixed(1)} hrs</strong></div>
     <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
-    <div><span>Labor (${result.duration.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
+    <div><span>Labor (${workedHours.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
     <div><span>Chemicals + fuel</span><strong>${money(cost.materials + cost.fuel)}</strong></div>
     <div><span>Overhead (${burden.overheadPct}% of direct cost)</span><strong>${money(cost.overhead)}</strong></div>
     <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
@@ -1123,13 +1316,13 @@ function recalculate() {
   // A losing job and a thin job need different advice, so say which it is and
   // name the price that fixes it rather than just flagging the problem.
   if (cost.underwater || cost.marginPct < 20) {
-    const target = priceForMargin(35, result.duration, result.productCost, result.fuelCost, burden);
+    const target = priceForMargin(35, workedHours, result.productCost, result.fuelCost, shiftBurden);
     const losing = cost.underwater;
     document.getElementById('calcBreakdown').innerHTML += `
       <div style="grid-column:1 / -1; margin-top:10px; padding:10px 12px; border-radius:6px; background:${losing ? '#FDECEA' : '#FFF8E6'}; color:${losing ? '#C0392B' : '#966A00'}; font-size:0.84rem;">
         <strong>${losing ? 'This job loses money.' : 'Thin margin.'}</strong>
         ${losing
-          ? `Fully loaded cost is ${money(cost.loadedCost)} against a ${money(result.finalPrice)} price.`
+          ? `Fully loaded cost is ${money(cost.loadedCost)} against a ${money(finalPrice)} price.`
           : `${cost.marginPct.toFixed(1)}% leaves nothing for a callback or a weather day.`}
         Charge <strong>${money(target)}</strong> to clear 35%. Labor alone costs you ${money(cost.burdenedRate)}/hr before chemicals, fuel or overhead &mdash; that is the floor, not the target.
       </div>`;
@@ -1140,7 +1333,7 @@ function recalculate() {
   // under the band wins work at a loss; over it loses the bid outright.
   const band = CONSTRUCTION_MARKET_BAND[activeService];
   if (band && result.sqftBasis > 0) {
-    const perSqft = result.finalPrice / result.sqftBasis;
+    const perSqft = finalPrice / result.sqftBasis;
     const under = perSqft < band.low;
     const over = perSqft > band.high;
     const verdict = under
@@ -1162,24 +1355,49 @@ function recalculate() {
       </div>`;
   }
 
-  const lowRange = result.finalPrice * 0.85;
-  const highRange = result.finalPrice * 1.15;
+  const lowRange = finalPrice * 0.85;
+  const highRange = finalPrice * 1.15;
   document.getElementById('calcMarketRange').innerHTML = `Salt Lake City market range (est.): ${money(lowRange)} – ${money(highRange)}`;
 }
 
 function addCalculatorLineItem() {
   if (!activeService || !lastCalcResult) return;
   const r = lastCalcResult;
+  const eff = conditionsFor(activeService);
+  const sel = conditionSelection();
+
+  const bareService = r.finalPrice - r.productCost - r.fuelCost;
+  const finalPrice = round2(r.finalPrice + bareService * (eff.priceMultiplier - 1));
+  // Store the hours the crew will actually be on site: this is what sizes the
+  // crew and builds the schedule downstream, not the unadjusted estimate.
+  const workedHours = round2(r.duration * eff.timeMultiplier);
+
+  // The client document has to say what was assumed, or a premium looks
+  // arbitrary and an occupied-building allowance looks like padding.
+  //
+  // Only name the conditions that carry no note of their own: listing
+  // "Overnight, 10pm to 6am" and then "Service is scheduled overnight" says the
+  // same thing twice, and a proposal that repeats itself reads as boilerplate.
+  const unnoted = eff.selected
+    .filter(x => (x.option.time !== 1 || x.option.price !== 1) && !x.option.note)
+    .map(x => x.option.label);
+  const description = r.description
+    + (unnoted.length ? ' Scheduled conditions: ' + unnoted.join('; ') + '.' : '')
+    + (eff.notes.length ? ' ' + eff.notes.join(' ') : '');
+
   const meta = {
     unit: r.unit,
     serviceType: activeService,
     calculatorInputs: JSON.stringify(collectInputs(activeService)),
     basePrice: r.basePrice,
-    finalPrice: r.finalPrice,
-    estimatedDurationHours: r.duration,
+    finalPrice,
+    estimatedDurationHours: workedHours,
     estimatedProductCost: r.productCost,
+    conditions: sel,
+    conditionPriceMultiplier: eff.priceMultiplier,
+    conditionTimeMultiplier: eff.timeMultiplier,
   };
-  addLineItem(r.description, r.qty, r.finalPrice.toFixed(2), meta);
+  addLineItem(description, r.qty, finalPrice.toFixed(2), meta);
 
   if (!taxDefaultSet) {
     document.getElementById('applyTax').checked = !!TAX_DEFAULT_ON[activeService];
@@ -1187,6 +1405,7 @@ function addCalculatorLineItem() {
   }
 
   document.getElementById('calcFields').innerHTML = '';
+  document.getElementById('calcConditions').style.display = 'none';
   document.getElementById('calcPriceDisplay').style.display = 'none';
   SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.remove('active'));
   activeService = null;
@@ -1197,7 +1416,7 @@ function addCalculatorLineItem() {
 function collectInputs(key) {
   // Burden settings ride along so a reopened estimate shows the margin that
   // was actually quoted, not whatever the rates happen to be today.
-  const inputs = Object.assign({ hourlyRate: val('hourlyRate') }, burdenInputs());
+  const inputs = Object.assign({ hourlyRate: val('hourlyRate') }, burdenInputs(), { conditions: conditionSelection() });
   document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => { inputs[el.id] = el.value; });
   return inputs;
 }
