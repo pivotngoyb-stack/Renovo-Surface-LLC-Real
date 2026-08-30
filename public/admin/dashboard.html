@@ -28,6 +28,7 @@
   </nav>
 
   <div class="admin-wrap">
+    <div id="attention"></div>
     <div id="summary" class="summary-grid"></div>
 
     <div class="dash-header">
@@ -68,6 +69,68 @@ function toggleInvoiceArchived() {
   showArchivedInvoices = !showArchivedInvoices;
   document.getElementById('invoiceArchiveToggle').textContent = showArchivedInvoices ? 'Show Active' : 'Show Archived';
   loadInvoices();
+}
+
+/**
+ * Work that fell between two stages.
+ *
+ * Automatic work-order creation can fail, and when it does the client has
+ * already been told on the proposal page that we will contact them within two
+ * hours. An alert email goes out, but email bounces and gets filtered -- a
+ * queue on the dashboard does not. Renders nothing at all when everything is
+ * clean, so it never becomes furniture that gets ignored.
+ */
+async function loadAttention() {
+  const box = document.getElementById('attention');
+  if (!box) return;
+  let data;
+  try {
+    const res = await adminFetch('/api/admin/attention');
+    if (!res.ok) { box.innerHTML = ''; return; }
+    data = await res.json();
+  } catch (err) {
+    box.innerHTML = '';
+    return;
+  }
+  if (!data.total) { box.innerHTML = ''; return; }
+
+  const item = (severity, text, href, action) => `
+    <li class="attn-item">
+      <span class="attn-dot is-${severity}"></span>
+      <span class="attn-text">${text}</span>
+      <a class="btn btn-sm attn-action" href="${href}">${action}</a>
+    </li>`;
+
+  const rows = [
+    ...data.approvedWithoutWorkOrder.map(e => item(
+      'urgent',
+      `<strong>${escAttn(e.clientName || 'Client')}</strong> accepted estimate #${e.id} and no work order was created. They were told we would call within two hours.`,
+      `/admin/estimate-detail.html?id=${e.id}`,
+      'Convert now',
+    )),
+    ...data.signedWithoutInvoice.map(w => item(
+      'money',
+      `<strong>${escAttn(w.clientName || 'Client')}</strong> signed work order #${w.id}${w.completedAt ? ' and the job is complete' : ''} \u2014 not invoiced yet.`,
+      `/admin/invoice-new.html?workOrderId=${w.id}`,
+      'Invoice it',
+    )),
+    ...data.expiredUnanswered.map(e => item(
+      'stale',
+      `Estimate #${e.id} for <strong>${escAttn(e.clientName || 'Client')}</strong> expired ${e.expiredOn} with no answer.`,
+      `/admin/estimate-detail.html?id=${e.id}`,
+      'Follow up',
+    )),
+  ].join('');
+
+  box.innerHTML = `
+    <div class="attn-box">
+      <div class="attn-head">Needs attention <span class="attn-count">${data.total}</span></div>
+      <ul class="attn-list">${rows}</ul>
+    </div>`;
+}
+
+function escAttn(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function loadEstimates() {
@@ -265,6 +328,7 @@ async function archiveInvoice(id, archived) {
 
 loadEstimates();
 loadInvoices();
+loadAttention();
 </script>
 </body>
 </html>

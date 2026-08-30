@@ -309,3 +309,31 @@ export async function notifyAdminSubcontractorAgreementSigned(subName: string) {
     html: wrapper(`<p style="color:#4A5A72;"><strong>${subName}</strong> signed their subcontractor agreement. They're cleared to start work.</p>`),
   })
 }
+
+/**
+ * The client accepted, and the work order Renovo promised them did not get
+ * created. The proposal page has already told them "we will contact you within
+ * two hours", so this is a commitment made and not yet kept.
+ *
+ * Previously this failure only reached console.error, where nobody would ever
+ * see it. The dashboard also surfaces these, so the alert missing does not mean
+ * the job is lost.
+ */
+export async function notifyAdminWorkOrderCreationFailed(
+  clientName: string,
+  estimateId: number,
+  reason: string,
+) {
+  const link = `${SITE_URL}/admin/estimate-detail.html?id=${estimateId}`
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `\u26A0\uFE0F ACTION NEEDED \u2014 work order not created for ${clientName}`,
+    html: wrapper(`
+      <p style="color:#4A5A72;"><strong>${clientName}</strong> accepted estimate #${estimateId}, but the work order could not be created automatically.</p>
+      <p style="color:#4A5A72;">They have been told you will contact them within two hours, so this needs a hand now:
+        open the estimate and use <strong>Convert to Work Order</strong>.</p>
+      <p style="color:#4A5A72;"><a href="${link}" style="color:#1B7FE8;">${link}</a></p>
+      <p style="color:#8A98AC; font-size:0.85rem;"><strong>Technical reason:</strong> ${reason}</p>
+    `),
+  })
+}

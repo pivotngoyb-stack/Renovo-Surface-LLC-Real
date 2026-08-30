@@ -486,6 +486,29 @@ body.admin-body {
   .login-card { margin: 8vh auto; padding: 28px 22px; }
 }
 
+/* ---------- Needs attention ----------
+   Only rendered when there is something in it, so it never becomes furniture
+   the eye learns to skip. Colour carries the kind of problem: red is a promise
+   already made to a client, green is money earned and not billed, grey is a
+   lead going cold. */
+.attn-box { border: 1.5px solid #F0C36D; background: #FFFBF2; border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px; }
+.attn-head { font-family: var(--font-head); font-weight: 700; font-size: 0.95rem; color: #7A5A00; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.attn-count { background: #C0392B; color: #fff; border-radius: 11px; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.76rem; padding: 0 7px; }
+.attn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.attn-item { display: flex; align-items: center; gap: 10px; font-size: 0.86rem; color: #4A5A72; line-height: 1.5; }
+.attn-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.attn-dot.is-urgent { background: #C0392B; }
+.attn-dot.is-money { background: #1B7A3C; }
+.attn-dot.is-stale { background: #8A98AC; }
+.attn-text { flex: 1; }
+.attn-text strong { color: var(--navy); }
+.attn-action { flex: none; color: var(--navy); border: 1px solid #DCE4EF; background: #fff; text-decoration: none; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .attn-item { flex-wrap: wrap; }
+  .attn-action { margin-left: 19px; }
+}
+
 /* ---------- Proposal site photographs ---------- */
 .prop-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .prop-photo { margin: 0; border: 1px solid #DCE4EF; border-radius: var(--radius-sm); overflow: hidden; background: #fff; }

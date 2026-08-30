@@ -2,7 +2,7 @@ import { eq, asc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
-import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined } from './_shared/email.mts'
+import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined, notifyAdminWorkOrderCreationFailed } from './_shared/email.mts'
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
 import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
@@ -118,10 +118,34 @@ export default async (request: Request, context: Context) => {
 
       await db.update(schema.estimates).set({ status: 'approved', approvedAt: new Date() }).where(eq(schema.estimates.id, estimate.id))
       if (client) await notifyAdminEstimateApproved(client.name, estimate.id)
+      // The client has just been told we will contact them within two hours.
+      // If the work order does not get created, that promise is outstanding and
+      // nobody knows -- this used to reach console.error and stop there.
       try {
-        await createWorkOrderForEstimate(estimate.id)
+        const workOrder = await createWorkOrderForEstimate(estimate.id)
+        if (!workOrder) {
+          // No throw, but nothing created either. Every early return in that
+          // helper is a real problem at this point in the flow: the estimate is
+          // approved and has a client, so a null means a duplicate work order
+          // or a row that vanished underneath us.
+          await notifyAdminWorkOrderCreationFailed(
+            client ? client.name : `estimate #${estimate.id}`,
+            estimate.id,
+            'The estimate was approved but no work order was produced. It may already have one.',
+          )
+        }
       } catch (err) {
         console.error(`[estimate-public] auto work-order creation failed for estimate ${estimate.id}`, err)
+        // Alerting must not itself break the client's acceptance.
+        try {
+          await notifyAdminWorkOrderCreationFailed(
+            client ? client.name : `estimate #${estimate.id}`,
+            estimate.id,
+            err instanceof Error ? err.message : String(err),
+          )
+        } catch (alertErr) {
+          console.error(`[estimate-public] could not alert admin for estimate ${estimate.id}`, alertErr)
+        }
       }
       return json({ ok: true, status: 'approved' })
     }
