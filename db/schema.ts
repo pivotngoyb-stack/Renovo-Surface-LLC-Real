@@ -101,6 +101,12 @@ export const workOrders = pgTable('work_orders', {
   // When the work was actually finished. This is what makes a service history
   // real rather than a list of documents.
   completedAt: timestamp('completed_at'),
+  // What the job actually took. Everything upstream is an estimate; without
+  // this the profitability report can only ever grade its own homework, and a
+  // production rate that is wrong stays wrong because nothing contradicts it.
+  actualHours: numeric('actual_hours'),
+  actualCrewSize: integer('actual_crew_size'),
+  actualHoursNote: text('actual_hours_note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

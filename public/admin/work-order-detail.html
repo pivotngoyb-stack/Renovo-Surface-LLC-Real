@@ -118,6 +118,14 @@ async function load() {
 
     ${auditHtml}
 
+    <h3 style="margin:28px 0 6px;">Time On Job</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+      Total crew hours, all technicians added together &mdash; three techs for four hours is twelve.
+      This is the only real measurement in the system: without it the profitability report can only
+      grade its own estimates, and a production rate that is wrong stays wrong.
+    </p>
+    <div id="actuals"></div>
+
     <h3 style="margin:28px 0 12px;">Job Photos</h3>
     <div id="beforePhotos"></div>
     <div id="afterPhotos"></div>
@@ -130,6 +138,18 @@ async function load() {
   `;
 
   loadPhotos();
+  // Estimated crew hours come from the lines Renovo works itself: a
+  // subcontracted line consumed the sub's time, not ours, so counting it
+  // here would make every subbed job look wildly under estimate.
+  const estimatedHours = lineItems
+    .filter(li => !li.isOptional && !li.subcontracted)
+    .reduce((t, li) => t + (Number(li.estimatedDurationHours) || 0), 0);
+  renderActuals({
+    actualHours: workOrder.actualHours,
+    actualCrewSize: workOrder.actualCrewSize,
+    actualHoursNote: workOrder.actualHoursNote,
+    estimatedHours: Math.round(estimatedHours * 100) / 100,
+  });
   loadJobPlan();
 }
 
@@ -344,6 +364,72 @@ async function loadPhotos() {
 }
 
 load();
+
+/* ---------- Time on job ---------- */
+let actualsState = { actualHours: null, actualCrewSize: null, actualHoursNote: null, estimatedHours: null };
+
+function renderActuals(state) {
+  if (state) actualsState = Object.assign(actualsState, state);
+  const box = document.getElementById('actuals');
+  if (!box) return;
+  const a = actualsState;
+  const est = a.estimatedHours;
+  const logged = a.actualHours != null && Number(a.actualHours) > 0;
+
+  let variance = '';
+  if (logged && est > 0) {
+    const ratio = Number(a.actualHours) / est;
+    const over = ratio > 1.05;
+    const under = ratio < 0.95;
+    const color = over ? '#C0392B' : under ? '#1B7A3C' : '#4A5A72';
+    const word = over ? 'over' : under ? 'under' : 'on';
+    variance = '<p style="margin-top:10px; font-size:0.85rem; color:' + color + ';">'
+      + 'Quoted ' + est.toFixed(1) + ' hrs, took ' + Number(a.actualHours).toFixed(1) + ' hrs \u2014 '
+      + '<strong>' + Math.abs(Math.round((ratio - 1) * 100)) + '% ' + word + ' estimate</strong>.'
+      + (over ? ' The profitability report is now costing this job at the real figure.' : '')
+      + '</p>';
+  }
+
+  box.innerHTML = ''
+    + '<div style="display:grid; grid-template-columns:150px 150px 1fr; gap:0 14px; max-width:620px; align-items:end;">'
+    +   '<div class="field-group" style="margin-bottom:8px;"><label>Total crew hours</label>'
+    +     '<input type="number" id="actualHours" min="0" step="0.25" value="' + (a.actualHours != null ? a.actualHours : '') + '" placeholder="' + (est > 0 ? est.toFixed(1) : '0') + '"></div>'
+    +   '<div class="field-group" style="margin-bottom:8px;"><label>Crew size</label>'
+    +     '<input type="number" id="actualCrewSize" min="1" step="1" value="' + (a.actualCrewSize != null ? a.actualCrewSize : '') + '" placeholder="optional"></div>'
+    +   '<div class="field-group" style="margin-bottom:8px;"><label>Note</label>'
+    +     '<input type="text" id="actualHoursNote" value="' + escAttr(a.actualHoursNote || '') + '" placeholder="e.g. lift arrived two hours late"></div>'
+    + '</div>'
+    + '<button type="button" class="btn btn-primary btn-sm" onclick="saveActuals()">' + (logged ? 'Update' : 'Log') + ' time on job</button>'
+    + (logged ? ' <button type="button" class="btn btn-sm" style="color:#C0392B;" onclick="clearActuals()">Clear</button>' : '')
+    + variance;
+}
+
+function escAttr(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+async function saveActuals() {
+  const body = {
+    actualHours: document.getElementById('actualHours').value,
+    actualCrewSize: document.getElementById('actualCrewSize').value,
+    note: document.getElementById('actualHoursNote').value,
+  };
+  const res = await adminFetch('/api/admin/work-orders/' + id + '/actuals', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { adminToast(data.error || 'Could not save the hours.'); return; }
+  renderActuals({ actualHours: data.actualHours, actualCrewSize: data.actualCrewSize, actualHoursNote: data.actualHoursNote });
+  adminToast('Time on job saved.', 'success');
+}
+
+async function clearActuals() {
+  const res = await adminFetch('/api/admin/work-orders/' + id + '/actuals', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actualHours: null }),
+  });
+  if (!res.ok) { adminToast('Could not clear the hours.'); return; }
+  renderActuals({ actualHours: null, actualCrewSize: null, actualHoursNote: null });
+}
 </script>
 </body>
 </html>

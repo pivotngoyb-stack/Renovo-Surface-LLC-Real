@@ -205,6 +205,12 @@ export interface JobEconomics {
   profit: number
   marginPct: number
   laborHours: number
+  /** Hours the quote assumed for Renovo's own crew. */
+  estimatedHours: number
+  /** Hours the crew logged, when someone recorded them. */
+  actualHours: number | null
+  /** actual / estimated. Above 1 means the job ran long. */
+  hoursVariance: number | null
   subcontractorCost: number
   lines: LineEconomics[]
   /** The weakest confidence across the lines that carry real money. */
@@ -219,8 +225,34 @@ export interface JobEconomics {
  * Optional lines are excluded: they were priced for the client's consideration
  * and were not part of what was sold.
  */
-export function jobEconomics(lineItems: StoredLineItem[]): JobEconomics {
-  const lines = lineItems.filter(li => !li.isOptional).map(lineEconomics)
+export function jobEconomics(lineItems: StoredLineItem[], actualHours?: number | string | null): JobEconomics {
+  const sold = lineItems.filter(li => !li.isOptional)
+  let lines = sold.map(lineEconomics)
+
+  /*
+   * When the crew logged real hours, recost the in-house lines against them.
+   *
+   * The figure is one number for the whole visit, so it is distributed across
+   * the lines in proportion to what each was estimated at -- there is no basis
+   * for splitting it any other way, and refusing to split it would mean
+   * ignoring the only real measurement in the system.
+   *
+   * Subcontracted lines are left alone: those hours were the sub's, and Renovo
+   * pays their invoice however long it took.
+   */
+  const actual = n(actualHours)
+  const estimatedHours = round2(lines.filter(l => !l.subcontracted).reduce((t, l) => t + l.laborHours, 0))
+  const usingActuals = actual > 0 && estimatedHours > 0
+
+  if (usingActuals) {
+    const scale = actual / estimatedHours
+    // Index, not description: two lines can legitimately read the same, and
+    // matching on text would recost one of them twice and the other never.
+    lines = lines.map((l, i) =>
+      l.subcontracted || l.laborHours <= 0
+        ? l
+        : lineEconomics({ ...sold[i], estimatedDurationHours: round2(l.laborHours * scale) }))
+  }
 
   const sum = (pick: (l: LineEconomics) => number) => round2(lines.reduce((t, l) => t + pick(l), 0))
   const revenue = sum(l => l.revenue)
@@ -242,6 +274,9 @@ export function jobEconomics(lineItems: StoredLineItem[]): JobEconomics {
     profit,
     marginPct: revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0,
     laborHours: round2(lines.reduce((t, l) => t + l.laborHours, 0)),
+    estimatedHours,
+    actualHours: usingActuals ? round2(actual) : null,
+    hoursVariance: usingActuals ? Math.round((actual / estimatedHours) * 100) / 100 : null,
     subcontractorCost: sum(l => l.subcontractorCost),
     lines,
     confidence: material.length ? confidence : 'none',

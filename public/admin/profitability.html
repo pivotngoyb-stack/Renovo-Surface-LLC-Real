@@ -77,6 +77,26 @@ const CONFIDENCE = {
   none: { label: 'No cost data', cls: 'conf-none', title: 'Entered by hand, so no cost was recorded. Shown as revenue only — the margin is not real.' },
 };
 
+/*
+ * Estimated against actual.
+ *
+ * Until a crew logs real hours every margin here is the estimate grading
+ * itself. A job shown as 34% that ran 65% long was never a 34% job, and the
+ * only way to find that out is to see the two numbers side by side.
+ */
+function hoursCell(j) {
+  if (!j.estimatedHours) return '<span style="color:#8A98AC;">&mdash;</span>';
+  if (j.actualHours == null) {
+    return `${j.estimatedHours.toFixed(1)}<div style="font-size:0.72rem; color:#8A98AC;">est. only</div>`;
+  }
+  const over = j.hoursVariance > 1.05;
+  const under = j.hoursVariance < 0.95;
+  const color = over ? '#C0392B' : under ? '#1B7A3C' : '#4A5A72';
+  const delta = Math.abs(Math.round((j.hoursVariance - 1) * 100));
+  return `${j.actualHours.toFixed(1)}
+    <div style="font-size:0.72rem; color:${color};">${delta === 0 ? 'on estimate' : `${delta}% ${over ? 'over' : 'under'}`}</div>`;
+}
+
 function confidencePill(c) {
   const meta = CONFIDENCE[c] || CONFIDENCE.none;
   return `<span class="conf-pill ${meta.cls}" title="${esc(meta.title)}">${meta.label}</span>`;
@@ -122,6 +142,7 @@ async function load() {
         <div style="font-size:0.78rem; color:#8A98AC;">Estimate #${j.estimateId}${j.completedAt ? ' · completed' : j.workOrderStatus === 'signed' ? ' · signed' : ' · awaiting signature'}</div>
       </td>
       <td>${confidencePill(j.confidence)}</td>
+      <td style="text-align:right;">${hoursCell(j)}</td>
       <td style="text-align:right;">${money(j.quoted)}</td>
       <td style="text-align:right;">
         ${j.invoiced == null ? '<span style="color:#8A98AC;">not invoiced</span>' : money(j.invoiced)}
@@ -171,7 +192,7 @@ async function load() {
     <div class="prof-scroll">
       <table class="dash-table">
         <thead><tr>
-          <th>Client</th><th>Cost basis</th>
+          <th>Client</th><th>Cost basis</th><th style="text-align:right;">Hours</th>
           <th style="text-align:right;">Quoted</th><th style="text-align:right;">Invoiced</th>
           <th style="text-align:right;">Collected</th><th style="text-align:right;">Cost</th>
           <th style="text-align:right;">Profit</th>
