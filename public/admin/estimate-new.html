@@ -1579,7 +1579,10 @@ function recalculate() {
   const finalPrice = round2(result.finalPrice + premium);
 
   // Real hours on site, which is what wages are paid for and what sizes a crew.
-  const workedHours = result.duration * eff.timeMultiplier;
+  // Rounded here rather than on the way out, so the hours the cost is computed
+  // from are the same hours that get stored -- 103.04045714285716 in a database
+  // column is noise, and a stored value that differs from the costed one is worse.
+  const workedHours = round2(result.duration * eff.timeMultiplier);
 
   const burden = burdenInputs();
   // A shift differential is real money out the door, so it scales the wage the
@@ -1592,6 +1595,12 @@ function recalculate() {
   const cost = jobCost(finalPrice, workedHours, result.productCost + equip.total, result.fuelCost, shiftBurden);
 
   document.getElementById('calcPriceValue').textContent = money(finalPrice);
+
+  // Stash exactly what was displayed. The add path used to recompute the same
+  // figure with the rounding in a different order -- premium rounded first here,
+  // rounded only at the end there -- and the two disagreed by a cent. The blue
+  // price and the line item it becomes must be the same number, always.
+  lastCalcResult.computed = { finalPrice, workedHours, premium, bareService, conditions: eff };
 
   // Amber below 20%: not a loss, but too thin to absorb a callback or a
   // rain day, which is where these jobs actually go wrong.
@@ -1696,11 +1705,15 @@ function addCalculatorLineItem() {
   const sel = conditionSelection();
   const subMeta = subInputs();
 
-  const bareService = r.finalPrice - r.productCost - r.fuelCost;
-  const finalPrice = round2(r.finalPrice + bareService * (eff.priceMultiplier - 1));
-  // Store the hours the crew will actually be on site: this is what sizes the
-  // crew and builds the schedule downstream, not the unadjusted estimate.
-  const workedHours = round2(r.duration * eff.timeMultiplier);
+  // Whatever recalculate displayed is what gets added. Recomputing it here is
+  // how the blue price and the line item drifted apart by a cent.
+  const computed = r.computed || {};
+  const finalPrice = computed.finalPrice != null
+    ? computed.finalPrice
+    : round2(r.finalPrice + (r.finalPrice - r.productCost - r.fuelCost) * (eff.priceMultiplier - 1));
+  // Hours the crew will actually be on site: this is what sizes the crew and
+  // builds the schedule downstream, not the unadjusted estimate.
+  const workedHours = computed.workedHours != null ? computed.workedHours : round2(r.duration * eff.timeMultiplier);
 
   // The client document has to say what was assumed, or a premium looks
   // arbitrary and an occupied-building allowance looks like padding.

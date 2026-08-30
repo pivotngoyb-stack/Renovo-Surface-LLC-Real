@@ -35,7 +35,7 @@ export default withErrorHandling('admin-profitability', async (request: Request,
   if (!isAuthenticated(request)) return unauthorized()
 
   /* Sold work only: a draft estimate is a hope, not a job. */
-  const jobs = await db
+  const joined = await db
     .select({
       estimateId: schema.estimates.id,
       approvedAt: schema.estimates.approvedAt,
@@ -53,6 +53,19 @@ export default withErrorHandling('admin-profitability', async (request: Request,
     .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
     .leftJoin(schema.workOrders, eq(schema.workOrders.estimateId, schema.estimates.id))
     .where(sql`${schema.estimates.status} = 'approved' and ${schema.estimates.archived} = false`)
+
+  /*
+   * One row per estimate.
+   *
+   * The work-order join is one-to-many in the schema even though the code that
+   * creates them allows only one. If a second ever appears -- a race between the
+   * automatic creation on approval and a manual convert -- the join would return
+   * the estimate twice and this report would count that client's revenue and
+   * profit twice. A financial report that silently doubles a number is worse
+   * than one that is missing it.
+   */
+  const jobs = [...new Map(joined.map(j => [j.estimateId, j])).values()]
+  const duplicateEstimates = joined.length - jobs.length
 
   if (!jobs.length) {
     return json({ jobs: [], byService: [], byClient: [], totals: emptyTotals() })
@@ -201,6 +214,9 @@ export default withErrorHandling('admin-profitability', async (request: Request,
   totals.marginPct = totals.quoted > 0 ? Math.round((totals.profit / totals.quoted) * 1000) / 10 : 0
 
   return json({
+    // Non-zero means an estimate carries more than one work order, which should
+    // not happen. Reported rather than hidden so it can be chased down.
+    duplicateEstimates,
     jobs: rows.sort((a, b) => a.marginPct - b.marginPct),
     byService: [...byService.values()].map(withMargin).sort((a, b) => a.marginPct - b.marginPct),
     byClient: [...byClient.values()].map(withMargin).sort((a, b) => b.revenue - a.revenue),

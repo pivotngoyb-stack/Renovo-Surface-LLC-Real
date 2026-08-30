@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql } from 'drizzle-orm'
+import { eq, and, isNull, inArray, sql } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
@@ -95,7 +95,7 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
           value: sql<string>`sum(${schema.estimateLineItems.quantity} * ${schema.estimateLineItems.unitPrice})`,
         })
         .from(schema.estimateLineItems)
-        .where(sql`${schema.estimateLineItems.estimateId} in ${liveEstimates.map(e => e.id)}`)
+        .where(inArray(schema.estimateLineItems.estimateId, liveEstimates.map(e => e.id)))
         .groupBy(schema.estimateLineItems.estimateId)
     : []
 

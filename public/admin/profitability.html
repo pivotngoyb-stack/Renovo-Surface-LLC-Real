@@ -133,6 +133,16 @@ async function load() {
       above is optimistic by an unknown amount. Price through the calculator to fix it going forward.
     </div>` : '';
 
+  // An estimate should carry exactly one work order. More than one means the
+  // automatic creation on approval raced a manual convert, and the numbers here
+  // are computed off the first one. A counter nobody reads is not a safeguard.
+  const dupeWarning = data.duplicateEstimates > 0 ? `
+    <div class="prof-caveat" style="border-color:#E8A0A0; background:#FDF3F2; color:#8A2E22;">
+      <strong>${data.duplicateEstimates}</strong> estimate${data.duplicateEstimates === 1 ? ' carries' : 's carry'} more than one work order.
+      Each is counted once here, using the earliest, so these totals are right — but the extra work orders are real
+      rows that should not exist and are worth clearing up.
+    </div>` : '';
+
   const jobRows = data.jobs.map(j => {
     const billedGap = j.invoiced != null && Math.abs(j.invoiced - j.quoted) > 0.5;
     return `
@@ -187,6 +197,7 @@ async function load() {
       ${card('Margin', pct(t.marginPct), marginColor(t.marginPct))}
     </div>
     ${uncostedWarning}
+    ${dupeWarning}
 
     <h2 style="font-size:1.1rem; margin:28px 0 12px;">Every sold job, worst margin first</h2>
     <div class="prof-scroll">
