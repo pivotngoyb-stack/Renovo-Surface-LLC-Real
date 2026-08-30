@@ -135,8 +135,51 @@ function siteBreakdownHtml(sites, discountPct) {
     </div>` : ''}`;
 }
 
+/** Opening paragraph. A director with fifteen bids reads this and the total. */
+function executiveSummaryHtml(summary) {
+  if (!summary || !summary.length) return '';
+  return summary.map(p => `<p style="color:#374151; font-size:0.92rem; line-height:1.75; margin-bottom:10px;">${esc(p)}</p>`).join('');
+}
+
+/**
+ * Base year plus option years. Agencies price renewals separately so they
+ * can extend without re-bidding, and they expect escalation stated openly.
+ */
+function multiYearHtml(my) {
+  if (!my || !my.hasOptionYears) return '';
+  return `
+    <div class="prop-scroll"><table class="doc-items-table est-items-table">
+      <thead><tr><th>Contract Period</th><th style="text-align:right;">Annual Value</th></tr></thead>
+      <tbody>${my.years.map(y => `<tr>
+        <td>${esc(y.label)}${y.isBase ? ' <span style="color:#8A98AC; font-size:0.8rem;">(includes any one-time work)</span>' : ''}</td>
+        <td style="text-align:right;">${money(y.annualValue)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div class="prop-acv">
+      <div class="prop-acv-row"><span>Annual escalation applied to option years</span><strong>${my.escalationPct}%</strong></div>
+      <div class="prop-acv-row is-total"><span>Total contract value, all periods</span><strong>${money(my.totalContractValue)}</strong></div>
+    </div>`;
+}
+
+/**
+ * Vendor registration. Contracting officers screen this before price, and a
+ * bid missing a NAICS or UEI is often non-responsive on its face. Anything
+ * not yet held is shown as pending rather than omitted or invented.
+ */
+function registrationHtml(gov) {
+  if (!gov) return '';
+  const rows = gov.registration.map(r => `<tr>
+    <td style="width:230px;"><strong>${esc(r.label)}</strong></td>
+    <td>${esc(r.value)}${r.held ? '' : ' <span style="color:#966A00; font-size:0.8rem;">(pending)</span>'}</td>
+  </tr>`).join('');
+  const wage = gov.prevailingWageStatements.length
+    ? `<h4 style="margin:18px 0 8px; font-size:0.9rem; color:var(--navy);">Prevailing Wage &amp; Certified Payroll</h4>${bulletList(gov.prevailingWageStatements)}`
+    : '';
+  return `<div class="prop-scroll"><table class="doc-items-table est-items-table"><tbody>${rows}</tbody></table></div>${wage}`;
+}
+
 function render(data) {
-  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, expiresOn, expired } = data;
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -159,7 +202,8 @@ function render(data) {
 
   // Sections 2 and 3 only appear on recurring or multi-site bids, so the
   // numbering has to shift rather than leave gaps a client would notice.
-  let sectionNo = schedule && schedule.hasAny ? 2 : 1;
+  // Section 1 is the executive summary when present; everything else follows.
+  let sectionNo = summary && summary.length ? 1 : 0;
   const nextNum = () => `${++sectionNo}.`;
 
   /* ---------- 1. Scope of work ---------- */
@@ -253,14 +297,18 @@ function render(data) {
             ${estimate.siteAddress ? `${esc(estimate.siteAddress)}<br>` : (client?.propertyAddress ? `${esc(client.propertyAddress)}<br>` : '')}
             Proposal ${proposalNumber(estimate.id)}
             ${estimate.walkthroughDate ? `<br>Site walk completed ${fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00'))}` : ''}
+            ${government && government.solicitationNumber ? `<br>Solicitation ${esc(government.solicitationNumber)}` : ''}
           </p>
         </div>
       </div>
 
-      ${section('1.', 'Scope of Work', scopeBody)}
-      ${schedule && schedule.hasAny ? section('2.', 'Service Schedule', scheduleMatrixHtml(schedule)) : ''}
+      ${summary && summary.length ? section('1.', 'Executive Summary', executiveSummaryHtml(summary)) : ''}
+      ${section(nextNum(), 'Scope of Work', scopeBody)}
+      ${schedule && schedule.hasAny ? section(nextNum(), 'Service Schedule', scheduleMatrixHtml(schedule)) : ''}
       ${sites && sites.length > 1 ? section(nextNum(), 'Property Breakdown', siteBreakdownHtml(sites, portfolioDiscountPct)) : ''}
       ${section(nextNum(), 'Pricing', pricingBody + contractValueHtml(contract))}
+      ${government && government.multiYear && government.multiYear.hasOptionYears ? section(nextNum(), 'Contract Period Pricing', multiYearHtml(government.multiYear)) : ''}
+      ${government ? section(nextNum(), 'Vendor Information &amp; Certifications', registrationHtml(government)) : ''}
       ${scope.exclusions.length ? section(nextNum(), 'Exclusions', `
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">The following are not included in the pricing above. Any of them can be quoted separately on request.</p>
         ${bulletList(scope.exclusions, 'is-exclusion')}`) : ''}

@@ -33,6 +33,12 @@ export const estimates = pgTable('estimates', {
   projectName: text('project_name'),
   siteAddress: text('site_address'),
   // Evidence the price is grounded in an actual site visit.
+  // Government solicitations need a different document shape: unit pricing,
+  // base plus option years, a vendor registration block, and wage flags.
+  bidMode: text('bid_mode').notNull().default('standard'),
+  solicitationNumber: text('solicitation_number'),
+  optionYears: integer('option_years').notNull().default(0),
+  prevailingWage: boolean('prevailing_wage').notNull().default(false),
   walkthroughDate: date('walkthrough_date'),
   siteConditions: text('site_conditions'),
   validUntil: date('valid_until'),

@@ -47,6 +47,22 @@
         <div class="field-group"><label>Site Conditions Observed</label><input type="text" id="siteConditions" placeholder="e.g. Heavy drywall dust throughout, elevator available, water on 1st floor only"></div>
       </div>
 
+      <h3 style="margin: 28px 0 12px;">Bid Type</h3>
+      <div class="consent-row" style="margin-top:0;">
+        <input type="checkbox" id="bidModeGov" onchange="toggleGovFields()">
+        <label for="bidModeGov"><strong>Government / institutional bid</strong> &mdash; adds unit pricing, base and option years, and the vendor registration block (NAICS 561720)</label>
+      </div>
+      <div id="govFields" style="display:none; margin-top:12px; padding:14px 16px; background:var(--off-white); border-radius:8px;">
+        <div style="display:grid; grid-template-columns:1fr 150px; gap:0 16px;">
+          <div class="field-group"><label>Solicitation / RFP Number</label><input type="text" id="solicitationNumber" placeholder="e.g. JSD-2026-014"></div>
+          <div class="field-group"><label>Option Years</label><input type="number" id="optionYears" min="0" max="9" value="0"></div>
+        </div>
+        <div class="consent-row" style="margin-top:0;">
+          <input type="checkbox" id="prevailingWage">
+          <label for="prevailingWage">Prevailing wage / Davis-Bacon applies &mdash; adds wage and certified payroll commitments to the bid</label>
+        </div>
+      </div>
+
       <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
       <div class="calc-box">
         <button type="button" class="calc-toggle" onclick="toggleCalculator()">
@@ -193,6 +209,12 @@ const CONSTRUCTION_MARKET_BAND = {
 };
 
 let activeService = null;
+
+/** Government fields only appear when the bid is actually a government bid. */
+function toggleGovFields() {
+  document.getElementById('govFields').style.display =
+    document.getElementById('bidModeGov').checked ? 'block' : 'none';
+}
 
 function toggleCalculator() {
   const body = document.getElementById('calcBody');
@@ -969,6 +991,10 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
           company: document.getElementById('clientCompany').value,
           propertyAddress: document.getElementById('clientAddress').value
         },
+        bidMode: document.getElementById('bidModeGov').checked ? 'government' : 'standard',
+        solicitationNumber: document.getElementById('solicitationNumber').value || undefined,
+        optionYears: Number(document.getElementById('optionYears').value) || 0,
+        prevailingWage: document.getElementById('prevailingWage').checked,
         projectName: document.getElementById('projectName').value || undefined,
         siteAddress: document.getElementById('siteAddress').value || undefined,
         walkthroughDate: document.getElementById('walkthroughDate').value || undefined,

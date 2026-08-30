@@ -31,6 +31,10 @@ interface CreateEstimateBody {
   siteAddress?: string
   walkthroughDate?: string
   siteConditions?: string
+  bidMode?: string
+  solicitationNumber?: string
+  optionYears?: number | string
+  prevailingWage?: boolean
   lineItems: LineItemInput[]
   taxApplied?: boolean
   taxAmount?: number | string
@@ -110,6 +114,10 @@ export default async (request: Request) => {
         notes: body.notes,
         projectName: body.projectName,
         siteAddress: body.siteAddress,
+        bidMode: body.bidMode === 'government' ? 'government' : 'standard',
+        solicitationNumber: body.solicitationNumber,
+        optionYears: Math.max(0, Math.min(Number(body.optionYears) || 0, 9)),
+        prevailingWage: Boolean(body.prevailingWage),
         walkthroughDate: body.walkthroughDate,
         siteConditions: body.siteConditions,
         // Default to a 30-day window. Left blank, an estimate previously had
