@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schedule | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/schedule.html">Schedule</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/documents.html">Documents</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <a href="/admin/invoice-new.html">+ New Invoice</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <div class="sched-bar">
+      <div class="sched-month" id="monthLabel">&nbsp;</div>
+      <div class="sched-nav">
+        <button type="button" onclick="shiftMonth(-1)" aria-label="Previous month">&larr; Prev</button>
+        <button type="button" onclick="goToday()">Today</button>
+        <button type="button" onclick="shiftMonth(1)" aria-label="Next month">Next &rarr;</button>
+      </div>
+    </div>
+
+    <div id="calendar">Loading schedule…</div>
+
+    <div class="sched-legend">
+      <span><span class="sched-key" style="background:#E8A317;"></span>Awaiting signature</span>
+      <span><span class="sched-key" style="background:#1B7FE8;"></span>Signed, not yet done</span>
+      <span><span class="sched-key" style="background:#1B7A3C;"></span>Completed</span>
+    </div>
+
+    <div class="sched-unbooked">
+      <h2 style="font-size:1.1rem; margin-bottom:6px;">Needs a date</h2>
+      <p style="color:#8A98AC; font-size:0.85rem; margin-bottom:10px;">Work orders with no service date set. These are jobs you have agreed to but not yet booked.</p>
+      <div id="unbooked">Loading…</div>
+    </div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+/* The business runs in Salt Lake City; "today" must be its today, not UTC's. */
+const BUSINESS_TZ = 'America/Denver';
+const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const todayIso = () => iso(new Date());
+
+/* Month being viewed, as a UTC-noon anchor so DST never shifts the month. */
+let cursor = (() => {
+  const [y, m] = todayIso().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, 1, 12));
+})();
+
+const pad = (n) => String(n).padStart(2, '0');
+const keyOf = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+
+function monthBounds(anchor) {
+  const y = anchor.getUTCFullYear();
+  const m = anchor.getUTCMonth();
+  const first = new Date(Date.UTC(y, m, 1, 12));
+  const last = new Date(Date.UTC(y, m + 1, 0, 12));
+  return {
+    y, m,
+    firstWeekday: first.getUTCDay(),
+    daysInMonth: last.getUTCDate(),
+    from: keyOf(y, m + 1, 1),
+    to: keyOf(y, m + 1, last.getUTCDate()),
+  };
+}
+
+function fmtTime(hhmm) {
+  if (!hhmm) return '';
+  const [h, min] = hhmm.split(':').map(Number);
+  const suffix = h < 12 ? 'am' : 'pm';
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return min === 0 ? `${hour}${suffix}` : `${hour}:${pad(min)}${suffix}`;
+}
+
+function chipClass(job) {
+  if (job.completedAt) return 'is-completed';
+  return job.status === 'signed' ? 'is-signed' : 'is-pending';
+}
+
+function chipHtml(job) {
+  const time = fmtTime(job.scheduledStart);
+  return `<a class="sched-chip ${chipClass(job)}" href="/admin/work-order-detail.html?id=${job.id}" title="${job.summary.replace(/"/g, '&quot;')}">
+    ${time ? `<span class="sched-chip-time">${time}</span> ` : ''}<span class="sched-chip-name">${job.clientName || 'Work Order #' + job.id}</span>
+  </a>`;
+}
+
+function renderCalendar(jobs) {
+  const b = monthBounds(cursor);
+  const today = todayIso();
+
+  const byDate = {};
+  for (const j of jobs) (byDate[j.scheduledDate] ||= []).push(j);
+
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  let cells = dows.map(d => `<div class="sched-dow">${d}</div>`).join('');
+
+  // Leading blanks so the 1st lands on its real weekday.
+  for (let i = 0; i < b.firstWeekday; i++) cells += '<div class="sched-day is-outside"></div>';
+
+  for (let day = 1; day <= b.daysInMonth; day++) {
+    const key = keyOf(b.y, b.m + 1, day);
+    const dayJobs = byDate[key] || [];
+    cells += `<div class="sched-day${key === today ? ' is-today' : ''}">
+      <span class="sched-daynum">${pad(day)}</span>
+      ${dayJobs.map(chipHtml).join('')}
+    </div>`;
+  }
+
+  // Trailing blanks to complete the final week row.
+  const used = b.firstWeekday + b.daysInMonth;
+  for (let i = used; i % 7 !== 0; i++) cells += '<div class="sched-day is-outside"></div>';
+
+  // Phones get an agenda instead of a 7-column grid; CSS swaps them.
+  const agendaDays = Object.keys(byDate).sort();
+  const agenda = agendaDays.length
+    ? agendaDays.map(date => `
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:700; color:#0D1F38; font-size:0.85rem; margin-bottom:5px;">
+            ${new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </div>
+          ${byDate[date].map(chipHtml).join('')}
+        </div>`).join('')
+    : '<div class="empty-state" style="padding:30px;">No jobs booked this month.</div>';
+
+  document.getElementById('calendar').innerHTML =
+    `<div class="sched-grid">${cells}</div><div class="sched-agenda">${agenda}</div>`;
+
+}
+
+function paintMonthLabel() {
+  const b = monthBounds(cursor);
+  document.getElementById('monthLabel').textContent =
+    new Date(Date.UTC(b.y, b.m, 1, 12)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function renderUnbooked(workOrders) {
+  const pending = workOrders.filter(w => !w.scheduledDate && !w.completedAt);
+  const el = document.getElementById('unbooked');
+  if (!pending.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;">Everything agreed is on the calendar.</div>';
+    return;
+  }
+  el.innerHTML = pending.map(w => `
+    <div class="sched-unbooked-row">
+      <div>
+        <strong>${w.clientName || 'Unknown client'}</strong>
+        <span style="color:#8A98AC; font-size:0.85rem;"> &middot; Work Order #${w.id}</span>
+        <div style="color:#8A98AC; font-size:0.8rem;">Created ${new Date(w.createdAt).toLocaleDateString()}</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${statusPill(w.status)}
+        <a class="btn btn-sm" style="color:var(--blue); white-space:nowrap;" href="/admin/work-order-detail.html?id=${w.id}">Set a date &rarr;</a>
+      </div>
+    </div>`).join('');
+}
+
+async function load() {
+  // Repaint the header first so the month changes the instant you navigate,
+  // whether or not the request behind it succeeds.
+  paintMonthLabel();
+  const b = monthBounds(cursor);
+  const [schedRes, woRes] = await Promise.all([
+    adminFetch(`/api/admin/schedule?from=${b.from}&to=${b.to}`),
+    adminFetch('/api/admin/work-orders'),
+  ]);
+  if (!schedRes.ok) { document.getElementById('calendar').innerHTML = '<div class="empty-state">Could not load the schedule.</div>'; return; }
+  const { jobs } = await schedRes.json();
+  renderCalendar(jobs);
+  if (woRes.ok) renderUnbooked((await woRes.json()).workOrders);
+}
+
+function shiftMonth(delta) {
+  cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + delta, 1, 12));
+  load();
+}
+
+function goToday() {
+  const [y, m] = todayIso().split('-').map(Number);
+  cursor = new Date(Date.UTC(y, m - 1, 1, 12));
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

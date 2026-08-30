@@ -9,6 +9,9 @@ interface DocRow {
   title: string
   status: string
   date: string
+  /** Present on work orders only; null until the job is booked/finished. */
+  scheduledDate?: string | null
+  completedAt?: string | null
   detailUrl: string | null
 }
 
@@ -29,13 +32,23 @@ export default withErrorHandling('client-documents', async (request: Request) =>
   }
 
   const workOrders = await db
-    .select({ id: schema.workOrders.id, token: schema.workOrders.token, status: schema.workOrders.status, createdAt: schema.workOrders.createdAt })
+    .select({ id: schema.workOrders.id, token: schema.workOrders.token, status: schema.workOrders.status, createdAt: schema.workOrders.createdAt, scheduledDate: schema.workOrders.scheduledDate, completedAt: schema.workOrders.completedAt })
     .from(schema.workOrders)
     .innerJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
     .where(eq(schema.estimates.clientId, session.clientId))
     .orderBy(desc(schema.workOrders.createdAt))
   for (const w of workOrders) {
-    results.push({ type: 'workOrder', title: `Work Order #${w.id}`, status: w.status, date: w.createdAt.toISOString(), detailUrl: `/work-order.html?t=${w.token}` })
+    // Show the client when the work actually happened, not just when the
+    // paperwork was raised -- that is what makes this a service history.
+    results.push({
+      type: 'workOrder',
+      title: `Work Order #${w.id}`,
+      status: w.completedAt ? 'completed' : w.status,
+      date: (w.completedAt || w.createdAt).toISOString(),
+      scheduledDate: w.scheduledDate,
+      completedAt: w.completedAt ? w.completedAt.toISOString() : null,
+      detailUrl: `/work-order.html?t=${w.token}`,
+    })
   }
 
   const invoices = await db
