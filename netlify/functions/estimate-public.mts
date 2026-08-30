@@ -6,6 +6,7 @@ import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEsti
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
 import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
+import { contractValue, buildScheduleMatrix, groupBySite, portfolioDiscountPct } from './_shared/serviceSchedule.mts'
 
 export default async (request: Request, context: Context) => {
   const token = context.params.token
@@ -37,6 +38,13 @@ export default async (request: Request, context: Context) => {
       client,
       lineItems,
       proposal,
+      // Everything a recurring or multi-site bid needs to be comparable:
+      // what it costs per year, what happens on which day, and which site
+      // each line belongs to.
+      contract: contractValue(lineItems),
+      schedule: buildScheduleMatrix(lineItems),
+      sites: groupBySite(lineItems),
+      portfolioDiscountPct: portfolioDiscountPct(new Set(lineItems.map(li => li.siteName).filter(Boolean)).size),
       // Server owns these so the date shown and the date enforced always agree.
       expiresOn: effectiveExpiry(estimate.validUntil, estimate.createdAt),
       expired: isExpired(estimate.validUntil, estimate.createdAt),

@@ -53,6 +53,13 @@ export const estimateLineItems = pgTable('estimate_line_items', {
   unitPrice: numeric('unit_price').notNull(),
   // Unit of measure for this line: job, visit, sqft, hour, each.
   unit: text('unit').notNull().default('job'),
+  // How often this line recurs. Drives annual contract value and the service
+  // schedule matrix -- a weekly line and a monthly line at the same price are
+  // not the same contract, and a bid that cannot say which is not comparable.
+  frequency: text('frequency').notNull().default('one_time'),
+  // Which property this line belongs to on a multi-site portfolio proposal.
+  // Null on single-location work, which stays ungrouped.
+  siteName: text('site_name'),
   sortOrder: integer('sort_order').notNull().default(0),
   // An alternate the client may accept or decline. Excluded from the base
   // total so the headline price stays comparable against competing bids.

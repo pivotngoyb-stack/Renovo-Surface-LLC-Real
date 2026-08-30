@@ -65,7 +65,9 @@ body.admin-body {
 .empty-state { text-align: center; padding: 60px 20px; color: #8A98AC; }
 
 /* desc | qty | unit | price | optional | remove */
-.line-item-row { display: grid; grid-template-columns: 1fr 72px 84px 110px 52px 30px; gap: 8px; margin-bottom: 10px; align-items: center; }
+/* desc | qty | unit | frequency | site | price | optional | remove */
+.line-item-row { display: grid; grid-template-columns: 1fr 60px 76px 104px 96px 96px 48px 26px; gap: 6px; margin-bottom: 10px; align-items: center; }
+.line-item-row select.li-frequency { padding: 10px 4px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); font: inherit; font-size: 0.78rem; }
 .line-item-row select.li-unit { padding: 10px 6px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); font: inherit; font-size: 0.82rem; }
 .li-opt-wrap { display: flex; align-items: center; gap: 4px; font-size: 0.72rem; color: #966A00; font-weight: 700; text-transform: uppercase; cursor: pointer; }
 @media (max-width: 720px) { .line-item-row { grid-template-columns: 1fr 1fr; } .line-item-row .li-desc { grid-column: 1 / -1; } }
@@ -367,6 +369,22 @@ body.admin-body {
 .prop-totals { margin-top: 18px; text-align: right; }
 .prop-totals-line { color: #4A5A72; font-size: 0.92rem; margin-bottom: 4px; }
 .prop-grand { font-family: var(--font-head); font-weight: 800; font-size: 1.5rem; color: var(--navy); border-top: 2px solid var(--navy); padding-top: 10px; margin-top: 8px; display: inline-block; min-width: 260px; }
+
+/* Service schedule matrix: the grid every professional janitorial bid carries. */
+.sched-matrix { width: 100%; border-collapse: collapse; min-width: 520px; }
+.sched-matrix th { text-align: center; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8A98AC; padding: 8px 4px; border-bottom: 2px solid #EEF2F8; }
+.sched-matrix th:first-child, .sched-matrix td:first-child { text-align: left; }
+.sched-matrix td { padding: 10px 4px; border-bottom: 1px solid #EEF2F8; font-size: 0.86rem; text-align: center; }
+.sched-cell { color: #DCE4EF; }
+.sched-cell.is-on { color: #1B7A3C; font-weight: 700; background: #F1F8F3; }
+.sched-freq { font-size: 0.8rem; color: #4A5A72; white-space: nowrap; }
+
+/* Annual contract value: the figure a facility manager budgets against. */
+.prop-acv { margin-top: 18px; border: 1px solid #DCE4EF; border-radius: 8px; overflow: hidden; }
+.prop-acv-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; font-size: 0.88rem; color: #4A5A72; border-bottom: 1px solid #EEF2F8; }
+.prop-acv-row:last-child { border-bottom: 0; }
+.prop-acv-row.is-total { background: var(--navy); color: #fff; font-family: var(--font-head); font-weight: 800; font-size: 1rem; }
+.prop-acv-row.is-total strong { color: #fff; }
 
 .prop-accept { margin-top: 12px; border: 1px solid #DCE4EF; border-radius: var(--radius-sm); padding: 20px; background: #fff; }
 .prop-accept-grid { display: grid; grid-template-columns: 1fr 180px; gap: 30px; margin-top: 26px; }

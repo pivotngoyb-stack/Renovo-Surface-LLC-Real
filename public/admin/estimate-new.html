@@ -99,6 +99,10 @@
       <p style="font-size:0.78rem; color:#8A98AC; margin-top:-8px; margin-bottom:10px;">Utah Code 59-12-103 — janitorial and cleaning services are subject to Utah state and local sales tax. Current Salt Lake City rate: 7.25%.</p>
       <div class="totals-row" id="taxRowDisplay" style="display:none;">Utah Sales Tax (7.25%): <span id="taxDisplay">$0.00</span></div>
       <div class="totals-row">Total: <span id="totalDisplay">$0.00</span></div>
+      <div id="acvRow" style="display:none; margin-top:10px; padding:12px 14px; background:#F2F7FD; border-radius:8px; text-align:right;">
+        <div style="font-size:0.85rem; color:#4A5A72;">Recurring per month: <strong id="acvMonthly">$0.00</strong></div>
+        <div class="totals-row" style="margin-top:4px;">Annual contract value: <span id="acvAnnual">$0.00</span></div>
+      </div>
 
       <h3 style="margin: 28px 0 12px;">Details</h3>
       <div class="field-group"><label>Valid Until</label><input type="date" id="validUntil"></div>
@@ -114,6 +118,15 @@
 /* ---------- Smart Pricing Calculator ---------- */
 
 const TAX_RATE = 0.0725;
+
+// Must mirror FREQUENCIES in netlify/functions/_shared/serviceSchedule.mts.
+// A drift test asserts these stay identical.
+const LINE_FREQUENCIES = [
+  ['one_time', 'One-time'], ['daily', 'Daily (Mon-Fri)'], ['3x_week', '3x per week'],
+  ['2x_week', '2x per week'], ['weekly', 'Weekly'], ['biweekly', 'Every 2 weeks'],
+  ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['semiannual', 'Twice per year'],
+  ['annual', 'Annually'],
+];
 // Utah taxes cleaning services (59-12-103). Gutter and graffiti work are
 // cleaning; concrete sealing is a coating applied to real property, which is
 // treated differently -- left off by default, and the checkbox stays editable.
@@ -844,12 +857,18 @@ function addLineItem(desc = '', qty = 1, price = '', meta = null) {
   // to 'job'. Optional lines are alternates the client can decline, and are
   // kept out of the headline total so the base bid stays comparable.
   const unit = (meta && meta.unit) || 'job';
+  const freq = (meta && meta.frequency) || 'one_time';
+  const site = (meta && meta.siteName) || '';
   row.innerHTML = `
     <input type="text" placeholder="Description" class="li-desc" value="${desc.replace(/"/g, '&quot;')}">
     <input type="number" placeholder="Qty" class="li-qty" value="${qty}" min="0" step="0.1" oninput="updateTotal()">
     <select class="li-unit" title="Unit of measure">
       ${['job','visit','sqft','hour','each','month'].map(u => `<option value="${u}"${u === unit ? ' selected' : ''}>${u}</option>`).join('')}
     </select>
+    <select class="li-frequency" title="How often this recurs — drives annual contract value" onchange="updateTotal()">
+      ${LINE_FREQUENCIES.map(([k, l]) => `<option value="${k}"${k === freq ? ' selected' : ''}>${l}</option>`).join('')}
+    </select>
+    <input type="text" class="li-site" placeholder="Site" title="Property name — leave blank for single-location work" value="${site.replace(/"/g, '&quot;')}">
     <input type="number" placeholder="Unit Price" class="li-price" value="${price}" min="0" step="0.01" oninput="updateTotal()">
     <label class="li-opt-wrap" title="Optional — excluded from the total, shown to the client as an alternate">
       <input type="checkbox" class="li-optional" onchange="updateTotal()"> opt
@@ -878,6 +897,22 @@ function updateTotal() {
   document.getElementById('taxRowDisplay').style.display = applyTax ? 'block' : 'none';
   document.getElementById('totalDisplay').textContent = money(subtotal + taxAmount);
 
+  // Annual contract value. Mirrors contractValue() in serviceSchedule.mts:
+  // recurring lines extended over a year, optional and one-time excluded.
+  const VISITS = { one_time: 0, daily: 260, '3x_week': 156, '2x_week': 104, weekly: 52, biweekly: 26, monthly: 12, quarterly: 4, semiannual: 2, annual: 1 };
+  const annual = rows
+    .filter(r => !r.querySelector('.li-optional').checked)
+    .reduce((sum, r) => {
+      const per = Number(r.querySelector('.li-qty').value || 0) * Number(r.querySelector('.li-price').value || 0);
+      return sum + per * (VISITS[r.querySelector('.li-frequency').value] || 0);
+    }, 0);
+  const acvRow = document.getElementById('acvRow');
+  if (acvRow) {
+    acvRow.style.display = annual > 0 ? 'block' : 'none';
+    document.getElementById('acvAnnual').textContent = money(annual);
+    document.getElementById('acvMonthly').textContent = money(annual / 12);
+  }
+
   const optRow = document.getElementById('optionalRow');
   if (optRow) {
     optRow.style.display = optionalTotal > 0 ? 'block' : 'none';
@@ -902,6 +937,8 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
       quantity: row.querySelector('.li-qty').value || 1,
       unitPrice: row.querySelector('.li-price').value || 0,
       unit: row.querySelector('.li-unit').value,
+      frequency: row.querySelector('.li-frequency').value,
+      siteName: row.querySelector('.li-site').value || undefined,
       isOptional: row.querySelector('.li-optional').checked,
       ...meta,
     };

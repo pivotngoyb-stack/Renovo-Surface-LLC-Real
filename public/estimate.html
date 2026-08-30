@@ -75,8 +75,68 @@ function itemRows(items) {
     </tr>`).join('');
 }
 
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * The service schedule matrix. Standard on every professional janitorial
+ * proposal: a grid showing what happens on which day, so a facility manager
+ * can see the service pattern without reading the pricing table twice.
+ */
+function scheduleMatrixHtml(schedule) {
+  if (!schedule || !schedule.hasAny) return '';
+  const grid = schedule.weekly.length ? `
+    <div class="prop-scroll"><table class="sched-matrix">
+      <thead><tr><th>Service</th>${DAY_LABELS.map(d => `<th>${d}</th>`).join('')}<th>Frequency</th></tr></thead>
+      <tbody>${schedule.weekly.map(r => `<tr>
+        <td>${esc(r.service)}</td>
+        ${r.days.map(on => `<td class="sched-cell${on ? ' is-on' : ''}">${on ? '&#10003;' : ''}</td>`).join('')}
+        <td class="sched-freq">${esc(r.frequencyLabel)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '';
+
+  const periodic = schedule.periodic.length ? `
+    <h4 style="margin:16px 0 8px; font-size:0.9rem; color:var(--navy);">Periodic services</h4>
+    <ul class="prop-list">${schedule.periodic.map(r =>
+      `<li>${esc(r.service)} — <strong>${esc(r.frequencyLabel)}</strong> (${r.visitsPerYear} per year)</li>`).join('')}</ul>` : '';
+
+  return grid + periodic +
+    '<p style="color:#8A98AC; font-size:0.8rem; margin-top:10px;">Day pattern shown is proposed. Final service days are confirmed with your site contact before the first visit.</p>';
+}
+
+/** Annual contract value. A recurring bid is not comparable without it. */
+function contractValueHtml(contract) {
+  if (!contract || !contract.hasRecurring) return '';
+  return `
+    <div class="prop-acv">
+      <div class="prop-acv-row"><span>Recurring services, per month (average)</span><strong>${money(contract.monthlyAverage)}</strong></div>
+      ${contract.oneTimeTotal > 0 ? `<div class="prop-acv-row"><span>One-time services (first year only)</span><strong>${money(contract.oneTimeTotal)}</strong></div>` : ''}
+      <div class="prop-acv-row is-total"><span>Annual contract value</span><strong>${money(contract.annualRecurring)}</strong></div>
+      ${contract.oneTimeTotal > 0 ? `<div class="prop-acv-row"><span>Total, first year</span><strong>${money(contract.firstYearTotal)}</strong></div>` : ''}
+    </div>`;
+}
+
+/** Per-property subtotals for portfolio proposals. */
+function siteBreakdownHtml(sites, discountPct) {
+  if (!sites || sites.length < 2) return '';
+  const total = sites.reduce((sum, g) => sum + g.subtotal, 0);
+  const discount = discountPct > 0 ? total * (discountPct / 100) : 0;
+  return `
+    <div class="prop-scroll"><table class="doc-items-table est-items-table">
+      <thead><tr><th>Property</th><th>Services</th><th style="text-align:right;">Subtotal</th></tr></thead>
+      <tbody>${sites.map(g => `<tr>
+        <td><strong>${esc(g.siteName)}</strong></td>
+        <td>${g.lines.filter(l => !l.isOptional).length}</td>
+        <td style="text-align:right;">${money(g.subtotal)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    ${discount > 0 ? `<div class="prop-totals">
+      <div class="prop-totals-line">Portfolio total across ${sites.length} properties: ${money(total)}</div>
+      <div class="prop-totals-line" style="color:#1B7A3C;">Multi-property discount (${discountPct}%): −${money(discount)}</div>
+    </div>` : ''}`;
+}
+
 function render(data) {
-  const { estimate, client, lineItems, proposal, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, expiresOn, expired } = data;
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -96,6 +156,11 @@ function render(data) {
     : (estimate.validUntil ? new Date(estimate.validUntil) : addDays(estimate.createdAt, 30));
 
   const scope = proposal || { sections: [], exclusions: [], assumptions: [], compliance: [] };
+
+  // Sections 2 and 3 only appear on recurring or multi-site bids, so the
+  // numbering has to shift rather than leave gaps a client would notice.
+  let sectionNo = schedule && schedule.hasAny ? 2 : 1;
+  const nextNum = () => `${++sectionNo}.`;
 
   /* ---------- 1. Scope of work ---------- */
   const scopeBody = scope.sections.length
@@ -193,19 +258,21 @@ function render(data) {
       </div>
 
       ${section('1.', 'Scope of Work', scopeBody)}
-      ${section('2.', 'Pricing', pricingBody)}
-      ${scope.exclusions.length ? section('3.', 'Exclusions', `
+      ${schedule && schedule.hasAny ? section('2.', 'Service Schedule', scheduleMatrixHtml(schedule)) : ''}
+      ${sites && sites.length > 1 ? section(nextNum(), 'Property Breakdown', siteBreakdownHtml(sites, portfolioDiscountPct)) : ''}
+      ${section(nextNum(), 'Pricing', pricingBody + contractValueHtml(contract))}
+      ${scope.exclusions.length ? section(nextNum(), 'Exclusions', `
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">The following are not included in the pricing above. Any of them can be quoted separately on request.</p>
         ${bulletList(scope.exclusions, 'is-exclusion')}`) : ''}
-      ${(scope.assumptions.length || estimate.siteConditions) ? section('4.', 'Assumptions &amp; Site Conditions', `
+      ${(scope.assumptions.length || estimate.siteConditions) ? section(nextNum(), 'Assumptions &amp; Site Conditions', `
         ${estimate.siteConditions ? `<p style="color:#374151; font-size:0.88rem; margin-bottom:10px; padding:10px 12px; background:var(--off-white); border-radius:6px;"><strong>Observed at walk-through:</strong> ${esc(estimate.siteConditions)}</p>` : ''}
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.</p>
         ${bulletList(scope.assumptions)}`) : ''}
-      ${scope.compliance.length ? section('5.', 'Insurance, Compliance &amp; Quality Assurance', `
+      ${scope.compliance.length ? section(nextNum(), 'Insurance, Compliance &amp; Quality Assurance', `
         ${bulletList(scope.compliance, 'is-compliance')}
         <p style="color:#4A5A72; font-size:0.86rem; margin-top:10px;">If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.</p>`) : ''}
 
-      ${section('6.', 'Terms &amp; Acceptance', `
+      ${section(nextNum(), 'Terms &amp; Acceptance', `
         <div class="prop-accept">
           <p style="color:#374151; font-size:0.88rem; line-height:1.7;">
             This proposal is valid through <strong>${fmtDate(expiresDate)}</strong>. Pricing is based on the scope, exclusions and assumptions stated above.
@@ -221,6 +288,10 @@ function render(data) {
           <div class="prop-accept-grid" style="margin-top:20px;">
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">Print Name &amp; Title</div></div>
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">PO / Reference</div></div>
+          </div>
+          <div class="prop-accept-grid" style="margin-top:26px; padding-top:18px; border-top:1px solid #EEF2F8;">
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">For Renovo Surface Solutions LLC</div></div>
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">Date</div></div>
           </div>
         </div>`)}
 

@@ -129,6 +129,8 @@ export default async (request: Request) => {
         unitPrice: String(item.unitPrice),
         sortOrder: idx,
         unit: item.unit || 'job',
+        frequency: item.frequency || 'one_time',
+        siteName: item.siteName || null,
         isOptional: Boolean(item.isOptional),
         serviceType: item.serviceType,
         calculatorInputs: item.calculatorInputs,
