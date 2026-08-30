@@ -32,8 +32,12 @@
 
     <form id="estimateForm">
       <h3 style="margin-bottom:12px;">Client</h3>
-      <div class="field-group"><label>Name *</label><input type="text" id="clientName" required></div>
-      <div class="field-group"><label>Email *</label><input type="email" id="clientEmail" required></div>
+      <div class="field-group ac-wrap">
+        <label>Name *</label>
+        <input type="text" id="clientName" required autocomplete="off" oninput="searchClients(this.value)" onfocus="searchClients(this.value)">
+        <div id="clientSuggest" class="ac-list" hidden></div>
+      </div>
+      <div class="field-group"><label>Email *</label><input type="email" id="clientEmail" required autocomplete="off" oninput="searchClients(this.value)"></div>
       <div class="field-group"><label>Phone</label><input type="tel" id="clientPhone"></div>
       <div class="field-group"><label>Company</label><input type="text" id="clientCompany"></div>
       <div class="field-group"><label>Property Address</label><input type="text" id="clientAddress"></div>
@@ -303,16 +307,50 @@ function selectService(key) {
   activeService = key;
   SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.toggle('active', s.key === key));
   document.getElementById('calcFields').innerHTML = FIELD_BUILDERS[key]();
+  carryOverSqft();
   document.getElementById('calcPriceDisplay').style.display = 'none';
   renderConditionFields();
   attachFieldListeners();
   recalculate();
 }
 
+/*
+ * A building is one size. Quoting janitorial, floor care and disinfection for
+ * the same site meant typing the same square footage three times, and getting
+ * one of them wrong meant three services priced against two different
+ * buildings. Every service names its field <prefix>_sqft, so the last figure
+ * entered carries to the next service that asks for one.
+ *
+ * Prefilled, not locked: a floor-care line often covers less area than the
+ * janitorial round, and overwriting it must stay a single edit away.
+ */
+let lastSqft = 0;
+
+function rememberSqft() {
+  document.querySelectorAll('#calcFields input[id$="_sqft"]').forEach(el => {
+    const v = Number(el.value) || 0;
+    if (v > 0) lastSqft = v;
+  });
+}
+
+function carryOverSqft() {
+  if (lastSqft <= 0) return;
+  document.querySelectorAll('#calcFields input[id$="_sqft"]').forEach(el => {
+    el.value = lastSqft;
+    const group = el.closest('.field-group');
+    if (group && !group.querySelector('.sqft-carry')) {
+      const hint = document.createElement('p');
+      hint.className = 'sqft-carry';
+      hint.textContent = 'Carried over from the last service. Change it if this line covers a different area.';
+      group.appendChild(hint);
+    }
+  });
+}
+
 function attachFieldListeners() {
   document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => {
-    el.addEventListener('input', recalculate);
-    el.addEventListener('change', recalculate);
+    el.addEventListener('input', () => { rememberSqft(); recalculate(); });
+    el.addEventListener('change', () => { rememberSqft(); recalculate(); });
   });
 }
 
@@ -554,6 +592,77 @@ const FIELD_BUILDERS = {
     ${fieldGroup('Drive Distance (miles)', '<input type="number" id="gr_miles" min="0" value="5">')}
   `,
 };
+
+/* ---------- Existing client lookup ----------
+ *
+ * Retyping five fields that are already in the database is the slowest part of
+ * writing a quote and the likeliest place to fat-finger the address the crew
+ * will drive to. Two characters starts a search; picking a result fills the
+ * whole block.
+ */
+let clientSearchTimer = null;
+let lastClientQuery = '';
+
+function searchClients(q) {
+  q = (q || '').trim();
+  if (q === lastClientQuery) return;
+  lastClientQuery = q;
+  clearTimeout(clientSearchTimer);
+  if (q.length < 2) { hideClientSuggest(); return; }
+  // Debounced: this fires on every keystroke of a name.
+  clientSearchTimer = setTimeout(async () => {
+    try {
+      const res = await adminFetch('/api/admin/clients?q=' + encodeURIComponent(q));
+      if (!res.ok) { hideClientSuggest(); return; }
+      const { clients } = await res.json();
+      renderClientSuggest(clients);
+    } catch (err) {
+      hideClientSuggest();
+    }
+  }, 180);
+}
+
+function hideClientSuggest() {
+  const box = document.getElementById('clientSuggest');
+  if (box) { box.hidden = true; box.innerHTML = ''; }
+}
+
+function renderClientSuggest(clients) {
+  const box = document.getElementById('clientSuggest');
+  if (!box) return;
+  if (!clients || !clients.length) { hideClientSuggest(); return; }
+  window.__clientMatches = clients;
+  box.innerHTML = clients.map((c, i) => {
+    const sub = [c.company, c.email].filter(Boolean).join(' \u00B7 ');
+    return '<button type="button" class="ac-item" onclick="pickClient(' + i + ')">'
+      + '<span class="ac-name">' + escHtml(c.name) + '</span>'
+      + (sub ? '<span class="ac-sub">' + escHtml(sub) + '</span>' : '')
+      + '</button>';
+  }).join('');
+  box.hidden = false;
+}
+
+function pickClient(i) {
+  const c = (window.__clientMatches || [])[i];
+  if (!c) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('clientName', c.name);
+  set('clientEmail', c.email);
+  set('clientPhone', c.phone);
+  set('clientCompany', c.company);
+  set('clientAddress', c.propertyAddress);
+  lastClientQuery = c.name;
+  hideClientSuggest();
+}
+
+function escHtml(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Clicking anywhere else dismisses the list, but not a click inside it.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.ac-wrap')) hideClientSuggest();
+});
 
 function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
 function num(id) { return Number(val(id)) || 0; }

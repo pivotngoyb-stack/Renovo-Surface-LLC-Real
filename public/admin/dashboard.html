@@ -92,6 +92,9 @@ async function loadAttention() {
     box.innerHTML = '';
     return;
   }
+  window.__pipeline = data.pipeline || null;
+  renderPipelineCards();
+
   if (!data.total) { box.innerHTML = ''; return; }
 
   const item = (severity, text, href, action) => `
@@ -127,6 +130,31 @@ async function loadAttention() {
       <div class="attn-head">Needs attention <span class="attn-count">${data.total}</span></div>
       <ul class="attn-list">${rows}</ul>
     </div>`;
+}
+
+/*
+ * Pipeline cards. The summary was entirely backward-looking -- revenue booked,
+ * invoices unpaid -- and never answered "how much work am I waiting on", which
+ * is the number that decides whether today is a selling day.
+ *
+ * Appended rather than rebuilt, because loadInvoices owns that grid and the two
+ * requests finish in either order.
+ */
+function renderPipelineCards() {
+  const p = window.__pipeline;
+  const grid = document.getElementById('summary');
+  if (!p || !grid || !grid.children.length) return;
+  if (grid.querySelector('[data-pipeline]')) return;
+
+  const card = (label, value, href) => `
+    <div class="doc-card" data-pipeline style="margin:0; padding:22px;${href ? ' cursor:pointer;' : ''}"${href ? ` onclick="window.location.href='${href}'"` : ''}>
+      <div style="font-size:0.8rem; color:#8A98AC; font-weight:700; text-transform:uppercase;">${label}</div>
+      <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:var(--navy);">${value}</div>
+    </div>`;
+
+  grid.insertAdjacentHTML('beforeend',
+    card('Open Estimates', `${p.openEstimates}<span style="font-size:0.95rem; font-weight:600; color:#8A98AC;"> &middot; ${money(p.openValue)}</span>`)
+    + card('Awaiting Signature', p.pendingWorkOrders, '/admin/work-orders.html'));
 }
 
 function escAttn(v) {
@@ -211,6 +239,7 @@ async function loadInvoices() {
         <div style="font-size:1.8rem; font-family:var(--font-head); font-weight:800; color:var(--blue);">${money(forecast)}</div>
       </div>
     `;
+    renderPipelineCards();
 
     // Per-client outstanding balances (active view only)
     const byClient = {};

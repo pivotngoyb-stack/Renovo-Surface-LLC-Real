@@ -79,11 +79,43 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
     .filter(e => effectiveExpiry(e.validUntil, e.createdAt) < today)
     .map(e => ({ ...e, expiredOn: effectiveExpiry(e.validUntil, e.createdAt) }))
 
+  /*
+   * Pipeline, not problems: what is out with clients right now.
+   *
+   * The summary cards were entirely backward-looking -- revenue booked,
+   * invoices unpaid. None of them answered "how much work am I waiting on",
+   * which is the number that tells you whether to go find more.
+   */
+  const liveEstimates = openEstimates.filter(e => effectiveExpiry(e.validUntil, e.createdAt) >= today)
+
+  const estimateValues = liveEstimates.length
+    ? await db
+        .select({
+          estimateId: schema.estimateLineItems.estimateId,
+          value: sql<string>`sum(${schema.estimateLineItems.quantity} * ${schema.estimateLineItems.unitPrice})`,
+        })
+        .from(schema.estimateLineItems)
+        .where(sql`${schema.estimateLineItems.estimateId} in ${liveEstimates.map(e => e.id)}`)
+        .groupBy(schema.estimateLineItems.estimateId)
+    : []
+
+  const openValue = estimateValues.reduce((sum, r) => sum + Number(r.value || 0), 0)
+
+  const [pendingWorkOrders] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(schema.workOrders)
+    .where(eq(schema.workOrders.status, 'pending'))
+
   return json({
     approvedWithoutWorkOrder,
     signedWithoutInvoice,
     expiredUnanswered,
     total: approvedWithoutWorkOrder.length + signedWithoutInvoice.length + expiredUnanswered.length,
+    pipeline: {
+      openEstimates: liveEstimates.length,
+      openValue: Math.round(openValue * 100) / 100,
+      pendingWorkOrders: Number(pendingWorkOrders?.count || 0),
+    },
   })
 })
 
