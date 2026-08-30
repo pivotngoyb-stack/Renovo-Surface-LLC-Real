@@ -183,6 +183,41 @@ body.admin-body {
 .calc-breakdown div { display: flex; justify-content: space-between; }
 .calc-market-range { margin-top: 12px; font-size: 0.8rem; color: #8A98AC; text-align: center; }
 
+/* Cost assumptions: company-level settings, folded away so the estimate flow
+   stays two fields wide, but with the burdened rate always visible on the
+   summary line so it is never silently wrong. */
+.burden-box { border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); margin: 4px 0 18px; background: #fff; max-width: 520px; }
+.burden-box > summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 11px 14px; cursor: pointer; list-style: none;
+  font-size: 0.85rem; font-weight: 600; color: var(--navy);
+}
+.burden-box > summary::-webkit-details-marker { display: none; }
+.burden-box > summary::after { content: '\25BE'; color: #8A98AC; font-size: 0.7rem; order: 3; }
+.burden-box[open] > summary::after { content: '\25B4'; }
+.burden-box[open] > summary { border-bottom: 1px solid #EEF2F8; }
+.burden-headline {
+  margin-left: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8rem; font-weight: 700; color: #1B7FE8; white-space: nowrap;
+}
+.burden-inner { padding: 14px; }
+.burden-note { font-size: 0.78rem; color: #8A98AC; margin: 0 0 14px; line-height: 1.5; }
+.burden-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.burden-grid .burden-span { grid-column: 1 / -1; }
+.burden-grid .field-group { margin-bottom: 14px; }
+.burden-grid label { font-size: 0.8rem; }
+.burden-grid p { font-size: 0.74rem; color: #8A98AC; margin-top: 4px; line-height: 1.45; }
+.burden-breakdown {
+  display: grid; grid-template-columns: 1fr; gap: 5px;
+  font-size: 0.82rem; color: #4A5A72;
+  background: var(--off-white); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 4px;
+}
+.burden-breakdown > div { display: flex; justify-content: space-between; gap: 10px; }
+.burden-breakdown strong { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: var(--navy); }
+.burden-breakdown-title { font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+.burden-total { border-top: 1px solid #DCE4EF; margin-top: 5px; padding-top: 7px; font-weight: 700; color: var(--navy); }
+.burden-foot { display: block !important; font-size: 0.74rem; color: #8A98AC; margin-top: 6px; line-height: 1.45; }
+
 .print-btn-row { text-align: center; margin-bottom: 20px; }
 .print-only { display: none; }
 .sign-lines { margin-top: 40px; }
@@ -431,6 +466,8 @@ body.admin-body {
   .line-item-row { grid-template-columns: 1fr 50px 80px 28px; gap: 6px; }
 
   .calc-fields { grid-template-columns: 1fr; }
+  .burden-grid { grid-template-columns: 1fr; }
+  .burden-headline { font-size: 0.72rem; }
   .calc-service-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 
   .login-card { margin: 8vh auto; padding: 28px 22px; }

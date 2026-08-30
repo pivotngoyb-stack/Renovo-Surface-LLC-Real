@@ -80,11 +80,49 @@
               <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">What you charge per hour of work — this drives every price below, for every service. SLC-area pressure washing bills $50–$160/hr (avg ~$78). Change this and every job's price updates.</p>
             </div>
             <div class="field-group">
-              <label>Your Wage Cost ($/hr)</label>
-              <input type="number" id="wageCost" min="0" step="1" value="27" oninput="recalculate()">
-              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">What your time (or an employee's) actually costs — wages, payroll tax, insurance. Utah techs run ~$17–31/hr depending on service. Used only to show your real profit margin below, not to set the price.</p>
+              <label>Technician Base Wage ($/hr)</label>
+              <input type="number" id="baseWage" min="0" step="0.5" value="20" oninput="onBurdenChange()">
+              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">What you actually pay per hour, before taxes and insurance. Utah commercial cleaning runs ~$17–24/hr. What that hour truly costs you is worked out below.</p>
             </div>
           </div>
+
+          <details class="burden-box" id="burdenBox">
+            <summary>
+              <span>Cost assumptions — what an hour really costs you</span>
+              <span class="burden-headline" id="burdenHeadline">—</span>
+            </summary>
+            <div class="burden-inner">
+              <p class="burden-note">These are your company's numbers, not this job's. Set them once — they are saved on this device and applied to every estimate. Revisit them when your insurance renews or your wages change.</p>
+              <div class="burden-grid">
+                <div class="field-group">
+                  <label for="workersCompPct">Workers' comp (% of payroll)</label>
+                  <input type="number" id="workersCompPct" min="0" max="60" step="0.25" value="6" oninput="onBurdenChange()">
+                  <p>Utah janitorial (NCCI 9014) runs ~4–8%. Pressure washing and construction cleanup sit higher.</p>
+                </div>
+                <div class="field-group">
+                  <label for="generalLiabilityPct">General liability (% of payroll)</label>
+                  <input type="number" id="generalLiabilityPct" min="0" max="30" step="0.25" value="2.5" oninput="onBurdenChange()">
+                  <p>Typically 2–3% once your GL premium is spread across payroll.</p>
+                </div>
+                <div class="field-group">
+                  <label for="unemploymentPct">Unemployment: FUTA + Utah SUTA (%)</label>
+                  <input type="number" id="unemploymentPct" min="0" max="20" step="0.1" value="2" oninput="onBurdenChange()">
+                  <p>Usually 1–3%, depending on your experience rating.</p>
+                </div>
+                <div class="field-group">
+                  <label for="benefitsPct">PTO, holidays &amp; benefits (%)</label>
+                  <input type="number" id="benefitsPct" min="0" max="60" step="0.5" value="0" oninput="onBurdenChange()">
+                  <p>Leave at 0 if you offer none. This is the line that separates the published &ldquo;1.35&times; burden&rdquo; figure from your real 1.18&times;.</p>
+                </div>
+                <div class="field-group burden-span">
+                  <label for="overheadPct">Business overhead (% of direct job cost)</label>
+                  <input type="number" id="overheadPct" min="0" max="80" step="0.5" value="18" oninput="onBurdenChange()">
+                  <p>Vehicles, non-job fuel, admin time, software, equipment replacement, insurance not already counted above. Applied on top of labor, chemicals and fuel — this is the cost most contractors forget, and the reason a &ldquo;profitable&rdquo; job loses money.</p>
+                </div>
+              </div>
+              <div class="burden-breakdown" id="burdenBreakdown"></div>
+            </div>
+          </details>
 
           <div class="calc-service-grid" id="calcServiceGrid"></div>
 
@@ -492,6 +530,141 @@ const FIELD_BUILDERS = {
 
 function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
 function num(id) { return Number(val(id)) || 0; }
+
+/* ---------- Labor burden ----------
+ *
+ * MIRRORS netlify/functions/_shared/laborBurden.mts. The two implementations
+ * are compared field by field by the burden parity test; change one and you
+ * must change the other or that test fails.
+ *
+ * Two numbers, deliberately separate:
+ *   burdened rate = what one hour of labor costs to EMPLOY
+ *   loaded cost   = burdened labor + chemicals + fuel + overhead allocation
+ *
+ * The old flat "wage cost" field conflated them, so a job could show a healthy
+ * profit and still lose money once overhead landed.
+ */
+const FICA_RATE = 0.0765; // Social Security 6.2% + Medicare 1.45%, statutory.
+const DEFAULT_BURDEN = {
+  baseWage: 20,
+  workersCompPct: 6,
+  generalLiabilityPct: 2.5,
+  unemploymentPct: 2,
+  benefitsPct: 0,
+  overheadPct: 18,
+};
+const BURDEN_KEY = 'renovo.burden.v1';
+const BURDEN_FIELDS = Object.keys(DEFAULT_BURDEN);
+
+const round2 = n => Math.round(n * 100) / 100;
+
+function burdenedRate(inputs) {
+  const i = Object.assign({}, DEFAULT_BURDEN, inputs || {});
+  const base = Math.max(0, i.baseWage);
+  const fica = base * FICA_RATE;
+  const workersComp = base * Math.max(0, i.workersCompPct) / 100;
+  const generalLiability = base * Math.max(0, i.generalLiabilityPct) / 100;
+  const unemployment = base * Math.max(0, i.unemploymentPct) / 100;
+  const benefits = base * Math.max(0, i.benefitsPct) / 100;
+  const rate = base + fica + workersComp + generalLiability + unemployment + benefits;
+  return {
+    baseWage: round2(base),
+    fica: round2(fica),
+    workersComp: round2(workersComp),
+    generalLiability: round2(generalLiability),
+    unemployment: round2(unemployment),
+    benefits: round2(benefits),
+    burdenedRate: round2(rate),
+    burdenMultiplier: base > 0 ? Math.round((rate / base) * 1000) / 1000 : 0,
+  };
+}
+
+function jobCost(price, laborHours, materials, fuel, inputs) {
+  const i = Object.assign({}, DEFAULT_BURDEN, inputs || {});
+  const rate = burdenedRate(i).burdenedRate;
+  const directLabor = round2(Math.max(0, laborHours) * rate);
+  const directCost = round2(directLabor + Math.max(0, materials) + Math.max(0, fuel));
+  const overhead = round2(directCost * Math.max(0, i.overheadPct) / 100);
+  const loadedCost = round2(directCost + overhead);
+  const profit = round2(price - loadedCost);
+  return {
+    laborHours: Math.max(0, laborHours),
+    burdenedRate: rate,
+    directLabor,
+    materials: round2(Math.max(0, materials)),
+    fuel: round2(Math.max(0, fuel)),
+    directCost,
+    overhead,
+    loadedCost,
+    price: round2(price),
+    profit,
+    marginPct: price > 0 ? Math.round((profit / price) * 1000) / 10 : 0,
+    underwater: profit < 0,
+  };
+}
+
+function priceForMargin(targetMarginPct, laborHours, materials, fuel, inputs) {
+  const m = Math.min(Math.max(targetMarginPct, 0), 95) / 100;
+  const cost = jobCost(0, laborHours, materials, fuel, inputs).loadedCost;
+  return round2(cost / (1 - m));
+}
+
+/** Current burden settings, read straight off the form. */
+function burdenInputs() {
+  const out = {};
+  BURDEN_FIELDS.forEach(k => {
+    const el = document.getElementById(k);
+    out[k] = el ? (Number(el.value) || 0) : DEFAULT_BURDEN[k];
+  });
+  return out;
+}
+
+/*
+ * Burden settings are company-level, not per-estimate: nobody should retype
+ * their workers' comp rate on every quote. Saved per device; a fresh browser
+ * falls back to the defaults above.
+ */
+function loadBurdenSettings() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(BURDEN_KEY) || 'null'); } catch (e) { saved = null; }
+  if (saved) {
+    BURDEN_FIELDS.forEach(k => {
+      const el = document.getElementById(k);
+      if (el && Number.isFinite(Number(saved[k]))) el.value = saved[k];
+    });
+  }
+  renderBurden();
+}
+
+function saveBurdenSettings() {
+  try { localStorage.setItem(BURDEN_KEY, JSON.stringify(burdenInputs())); } catch (e) { /* private browsing */ }
+}
+
+function onBurdenChange() {
+  saveBurdenSettings();
+  renderBurden();
+  recalculate();
+}
+
+function renderBurden() {
+  const b = burdenedRate(burdenInputs());
+  const head = document.getElementById('burdenHeadline');
+  if (head) head.textContent = money(b.baseWage) + ' wage \u2192 ' + money(b.burdenedRate) + '/hr (' + b.burdenMultiplier.toFixed(2) + '\u00D7)';
+
+  const box = document.getElementById('burdenBreakdown');
+  if (!box) return;
+  const row = (label, value) => '<div><span>' + label + '</span><strong>' + money(value) + '</strong></div>';
+  box.innerHTML =
+    '<div class="burden-breakdown-title">One hour of technician time</div>'
+    + row('Base wage', b.baseWage)
+    + row('FICA (7.65%, statutory)', b.fica)
+    + row('Workers\' compensation', b.workersComp)
+    + row('General liability', b.generalLiability)
+    + row('Unemployment (FUTA + SUTA)', b.unemployment)
+    + (b.benefits > 0 ? row('PTO, holidays &amp; benefits', b.benefits) : '')
+    + '<div class="burden-total"><span>True cost of one hour</span><strong>' + money(b.burdenedRate) + '</strong></div>'
+    + '<div class="burden-foot">Overhead is deliberately not in this figure \u2014 it is applied per job, against chemicals and fuel as well as labor.</div>';
+}
 
 /*
  * Minimum billable hours per service.
@@ -917,11 +1090,11 @@ function recalculate() {
   document.getElementById('calcPriceDisplay').style.display = 'block';
   document.getElementById('calcPriceValue').textContent = money(result.finalPrice);
 
-  const wageCost = Number(val('wageCost')) || 0;
-  const wageTotal = result.duration * wageCost;
-  const totalRealCost = result.productCost + result.fuelCost + wageTotal;
-  const profit = result.finalPrice - totalRealCost;
-  const profitColor = profit < 0 ? '#C0392B' : '#1B7A3C';
+  const burden = burdenInputs();
+  const cost = jobCost(result.finalPrice, result.duration, result.productCost, result.fuelCost, burden);
+  // Amber below 20%: not a loss, but too thin to absorb a callback or a
+  // rain day, which is where these jobs actually go wrong.
+  const profitColor = cost.underwater ? '#C0392B' : cost.marginPct < 20 ? '#966A00' : '#1B7A3C';
   const effectiveRate = result.finalPrice / result.duration;
 
   // Everything that isn't a pass-through cost: labor after every multiplier,
@@ -938,15 +1111,28 @@ function recalculate() {
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Recommended Price</span><strong>${money(result.finalPrice)}</strong></div>
     ${minApplied ? `<div style="grid-column:1 / -1; color:#8A98AC; font-size:0.8rem;">Billed at the ${minHours}-hour minimum for this service (actual time on job ${result.duration.toFixed(1)} hrs).</div>` : ''}
 
-    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">Your margin</div>
+    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">What it costs you</div>
     <div><span>Est. Time on Job</span><strong>${result.duration.toFixed(1)} hrs</strong></div>
     <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
-    <div><span>Wage Cost (@ ${money(wageCost)}/hr)</span><strong>${money(wageTotal)}</strong></div>
-    <div><span>Chemical + Fuel Cost</span><strong>${money(result.productCost + result.fuelCost)}</strong></div>
-    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Est. Profit After All Costs</span><strong style="color:${profitColor};">${money(profit)}</strong></div>
+    <div><span>Labor (${result.duration.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
+    <div><span>Chemicals + fuel</span><strong>${money(cost.materials + cost.fuel)}</strong></div>
+    <div><span>Overhead (${burden.overheadPct}% of direct cost)</span><strong>${money(cost.overhead)}</strong></div>
+    <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${profitColor};">${money(cost.profit)} <span style="font-weight:600;">(${cost.marginPct.toFixed(1)}% margin)</span></strong></div>
   `;
-  if (profit < 0) {
-    document.getElementById('calcBreakdown').innerHTML += `<div style="grid-column:1 / -1; color:#C0392B; font-weight:700; margin-top:4px;">⚠️ Your wage cost is higher than your hourly rate on this job — raise your hourly rate above ${money(wageCost)}/hr to stay profitable.</div>`;
+  // A losing job and a thin job need different advice, so say which it is and
+  // name the price that fixes it rather than just flagging the problem.
+  if (cost.underwater || cost.marginPct < 20) {
+    const target = priceForMargin(35, result.duration, result.productCost, result.fuelCost, burden);
+    const losing = cost.underwater;
+    document.getElementById('calcBreakdown').innerHTML += `
+      <div style="grid-column:1 / -1; margin-top:10px; padding:10px 12px; border-radius:6px; background:${losing ? '#FDECEA' : '#FFF8E6'}; color:${losing ? '#C0392B' : '#966A00'}; font-size:0.84rem;">
+        <strong>${losing ? 'This job loses money.' : 'Thin margin.'}</strong>
+        ${losing
+          ? `Fully loaded cost is ${money(cost.loadedCost)} against a ${money(result.finalPrice)} price.`
+          : `${cost.marginPct.toFixed(1)}% leaves nothing for a callback or a weather day.`}
+        Charge <strong>${money(target)}</strong> to clear 35%. Labor alone costs you ${money(cost.burdenedRate)}/hr before chemicals, fuel or overhead &mdash; that is the floor, not the target.
+      </div>`;
   }
 
   // Construction is bid per square foot in this trade, so show the $/sqft our
@@ -1009,12 +1195,15 @@ function addCalculatorLineItem() {
 }
 
 function collectInputs(key) {
-  const inputs = { hourlyRate: val('hourlyRate'), wageCost: val('wageCost') };
+  // Burden settings ride along so a reopened estimate shows the margin that
+  // was actually quoted, not whatever the rates happen to be today.
+  const inputs = Object.assign({ hourlyRate: val('hourlyRate') }, burdenInputs());
   document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => { inputs[el.id] = el.value; });
   return inputs;
 }
 
 renderServiceGrid();
+loadBurdenSettings();
 
 /* ---------- Line items (existing behavior, extended with pricing metadata) ---------- */
 
