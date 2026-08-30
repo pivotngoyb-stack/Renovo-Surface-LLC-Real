@@ -117,7 +117,7 @@
                 <div class="field-group burden-span">
                   <label for="overheadPct">Business overhead (% of direct job cost)</label>
                   <input type="number" id="overheadPct" min="0" max="80" step="0.5" value="18" oninput="onBurdenChange()">
-                  <p>Vehicles, non-job fuel, admin time, software, equipment replacement, insurance not already counted above. Applied on top of labor, chemicals and fuel — this is the cost most contractors forget, and the reason a &ldquo;profitable&rdquo; job loses money.</p>
+                  <p>Vehicles, non-job fuel, admin time, software, insurance not already counted above. Applied on top of labor, chemicals and fuel — this is the cost most contractors forget, and the reason a &ldquo;profitable&rdquo; job loses money. Machine wear is costed separately, per service, because a sweeper hour and a window hour are nothing alike.</p>
                 </div>
               </div>
               <div class="burden-breakdown" id="burdenBreakdown"></div>
@@ -713,6 +713,84 @@ const MIN_BILLABLE_HOURS = {
   ventCleaning: 2,
 };
 
+
+/* ---------- Equipment ownership cost ----------
+ *
+ * MIRRORS netlify/functions/_shared/equipment.mts, enforced by the equipment
+ * parity test. This cost used to sit inside the flat overhead percentage,
+ * which cannot work: a window-cleaning hour runs about $2 of machine and a
+ * ride-on sweeper hour runs about $9.
+ *
+ *   hourly cost = (purchase - salvage) / useful life hours + maintenance/hour
+ */
+const machine = (key, label, purchase, salvage, lifeHours, maintenancePerHour) =>
+  ({ key, label, purchase, salvage, lifeHours, maintenancePerHour });
+const MACHINES = [
+  machine('hotWasher', 'Hot-water pressure washer (4 GPM / 3,500 PSI)', 7500, 750, 2500, 1.2),
+  machine('surfaceCleaner', 'Rotary surface cleaner attachment', 900, 50, 2000, 0.15),
+  machine('reclaim', 'Wash-water containment and vacuum recovery', 3500, 200, 3000, 0.25),
+  machine('truckMount', 'Truck-mount hot-water extractor', 32000, 4000, 5000, 2.5),
+  machine('portableExtractor', 'Portable hot-water extractor', 3200, 200, 2500, 0.6),
+  machine('agitator', 'Rotary / cylindrical carpet agitator', 1800, 100, 2500, 0.3),
+  machine('spinner', 'Tile and grout spinner tool', 2200, 150, 2000, 0.4),
+  machine('autoScrubber', 'Walk-behind auto scrubber', 8500, 900, 4000, 1),
+  machine('burnisher', 'High-speed floor burnisher', 3000, 250, 3000, 0.7),
+  machine('swingBuffer', 'Low-speed swing buffer', 1400, 100, 3000, 0.35),
+  machine('wetVac', 'Wet/dry vacuum', 600, 0, 2500, 0.1),
+  machine('hepaVac', 'HEPA backpack vacuum', 750, 0, 3000, 0.15),
+  machine('electrostatic', 'Electrostatic disinfection sprayer', 2400, 150, 2000, 0.35),
+  machine('airMovers', 'Air movers (set of four)', 1200, 60, 4000, 0.1),
+  machine('rideOnSweeper', 'Ride-on parking lot sweeper', 38000, 6000, 6000, 3.5),
+  machine('blower', 'Backpack blower', 500, 0, 2000, 0.2),
+  machine('gutterVac', 'Gutter vacuum system with carbon poles', 2800, 150, 2000, 0.35),
+  machine('waterFedPole', 'Water-fed pole system with DI filtration', 3500, 200, 3000, 0.6),
+  machine('airlessSprayer', 'Airless sprayer (sealer application)', 2600, 150, 2000, 0.45),
+]
+
+const SERVICE_EQUIPMENT = {
+  pressureWashing: ['hotWasher', 'surfaceCleaner', 'reclaim'],
+  windowCleaning: ['waterFedPole'],
+  janitorial: ['hepaVac', 'wetVac'],
+  floorCare: ['autoScrubber', 'burnisher', 'swingBuffer', 'wetVac'],
+  dumpsterPad: ['hotWasher', 'surfaceCleaner', 'reclaim'],
+  lotSweeping: ['rideOnSweeper', 'blower'],
+  disinfection: ['electrostatic', 'hepaVac'],
+  gutterCleaning: ['gutterVac', 'blower'],
+  concreteSealing: ['hotWasher', 'airlessSprayer'],
+  graffitiRemoval: ['hotWasher', 'reclaim'],
+  canopyWashing: ['hotWasher', 'reclaim', 'wetVac'],
+  fuelIsland: ['hotWasher', 'surfaceCleaner', 'reclaim', 'wetVac'],
+  carpetExtraction: ['portableExtractor', 'agitator', 'airMovers'],
+  tileGrout: ['spinner', 'portableExtractor'],
+  ventCleaning: ['hepaVac'],
+  constructionRough: ['hepaVac', 'wetVac', 'blower'],
+  constructionProgress: ['hepaVac', 'wetVac'],
+  constructionFinal: ['hepaVac', 'wetVac', 'autoScrubber'],
+  constructionTouchup: ['hepaVac'],
+}
+
+const MACHINES_BY_KEY = new Map(MACHINES.map(x => [x.key, x]));
+
+function machineHourlyCost(mach) {
+  const life = Math.max(1, mach.lifeHours);
+  const depreciation = Math.max(0, mach.purchase - mach.salvage) / life;
+  return round2(depreciation + Math.max(0, mach.maintenancePerHour));
+}
+
+// Every machine listed for the service is charged for the whole duration: a
+// burnisher sitting in the van on a strip-and-wax job is still consumed by the
+// job that brought it, and per-machine minutes is precision an estimate lacks.
+function equipmentCostFor(service, hours) {
+  const keys = SERVICE_EQUIPMENT[service] || [];
+  const h = Math.max(0, hours);
+  const lines = keys.map(k => MACHINES_BY_KEY.get(k)).filter(Boolean).map(mach => {
+    const hourlyCost = machineHourlyCost(mach);
+    return { key: mach.key, label: mach.label, hourlyCost, hours: h, cost: round2(hourlyCost * h) };
+  });
+  const hourlyCost = round2(lines.reduce((sum, l) => sum + l.hourlyCost, 0));
+  return { hourlyCost, total: round2(hourlyCost * h), lines };
+}
+
 /* ---------- Global job conditions ----------
  *
  * MIRRORS netlify/functions/_shared/jobConditions.mts, enforced by the
@@ -1280,7 +1358,10 @@ function recalculate() {
   // A shift differential is real money out the door, so it scales the wage the
   // margin is measured against -- payroll taxes ride on the differential too.
   const shiftBurden = Object.assign({}, burden, { baseWage: burden.baseWage * eff.wageMultiplier });
-  const cost = jobCost(finalPrice, workedHours, result.productCost, result.fuelCost, shiftBurden);
+  // Machine wear rides with materials: it is a direct cost of doing this job,
+  // and overhead is applied on top of it like everything else.
+  const equip = equipmentCostFor(activeService, workedHours);
+  const cost = jobCost(finalPrice, workedHours, result.productCost + equip.total, result.fuelCost, shiftBurden);
 
   document.getElementById('calcPriceValue').textContent = money(finalPrice);
 
@@ -1308,7 +1389,8 @@ function recalculate() {
     <div><span>Est. Time on Job</span><strong>${workedHours.toFixed(1)} hrs</strong></div>
     <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
     <div><span>Labor (${workedHours.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
-    <div><span>Chemicals + fuel</span><strong>${money(cost.materials + cost.fuel)}</strong></div>
+    <div><span>Chemicals + fuel</span><strong>${money(result.productCost + cost.fuel)}</strong></div>
+    <div><span>Equipment wear (${money(equip.hourlyCost)}/hr)</span><strong>${money(equip.total)}</strong></div>
     <div><span>Overhead (${burden.overheadPct}% of direct cost)</span><strong>${money(cost.overhead)}</strong></div>
     <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${profitColor};">${money(cost.profit)} <span style="font-weight:600;">(${cost.marginPct.toFixed(1)}% margin)</span></strong></div>
@@ -1316,7 +1398,7 @@ function recalculate() {
   // A losing job and a thin job need different advice, so say which it is and
   // name the price that fixes it rather than just flagging the problem.
   if (cost.underwater || cost.marginPct < 20) {
-    const target = priceForMargin(35, workedHours, result.productCost, result.fuelCost, shiftBurden);
+    const target = priceForMargin(35, workedHours, result.productCost + equip.total, result.fuelCost, shiftBurden);
     const losing = cost.underwater;
     document.getElementById('calcBreakdown').innerHTML += `
       <div style="grid-column:1 / -1; margin-top:10px; padding:10px 12px; border-radius:6px; background:${losing ? '#FDECEA' : '#FFF8E6'}; color:${losing ? '#C0392B' : '#966A00'}; font-size:0.84rem;">

@@ -41,8 +41,12 @@ export interface BurdenInputs {
   benefitsPct: number
   /**
    * Business overhead as a percent of direct job cost: vehicles, fuel for
-   * non-job travel, admin time, software, equipment replacement, insurance
-   * not already counted above.
+   * non-job travel, admin time, software, insurance not already counted above.
+   *
+   * Machine ownership is deliberately NOT in here. It used to be, and it could
+   * not work: a window-cleaning hour runs about $2 of equipment and a ride-on
+   * sweeper hour runs about $9. One percentage across both either overcharges
+   * the light service or eats the margin on the heavy one. See equipment.mts.
    */
   overheadPct: number
 }
