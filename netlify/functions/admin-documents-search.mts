@@ -1,4 +1,4 @@
-import { eq, and, ilike, desc } from 'drizzle-orm'
+import { eq, and, or, ilike, inArray, desc, sql } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
@@ -15,6 +15,33 @@ interface DocRow {
 
 const LIMIT_PER_TYPE = 30
 
+/**
+ * Escape LIKE wildcards.
+ *
+ * Without this a search for "100%" matches every row in the table, and a
+ * search for "_" matches everything with at least one character.
+ */
+function likeTerm(q: string): string {
+  return `%${q.replace(/[\\%_]/g, m => '\\' + m)}%`
+}
+
+/**
+ * A bare number in the search box means a document number.
+ *
+ * Renovo reads these off a printed page, where they appear as "EST-1430" or
+ * "INV-1012" or just "#430". The printed number is 1000 + the row id, which is
+ * the convention proposalNumber and the invoice templates already use, so both
+ * forms are matched: type either and the right document comes back.
+ */
+function idCandidates(q: string): number[] {
+  const digits = q.replace(/^[a-zA-Z]{2,4}-/, '').replace(/^#/, '').trim()
+  if (!/^\d+$/.test(digits)) return []
+  const n = Number(digits)
+  if (!Number.isSafeInteger(n) || n <= 0) return []
+  // Both the raw id and the printed number, deduped.
+  return n > 1000 ? [n, n - 1000] : [n]
+}
+
 export default async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 })
@@ -22,7 +49,8 @@ export default async (request: Request) => {
   const url = new URL(request.url)
   const q = (url.searchParams.get('q') || '').trim()
   const typeFilter = url.searchParams.get('type') || ''
-  const pattern = q ? `%${q}%` : null
+  const pattern = q ? likeTerm(q) : null
+  const ids = q ? idCandidates(q) : []
 
   const results: DocRow[] = []
 
@@ -36,7 +64,19 @@ export default async (request: Request) => {
       })
       .from(schema.estimates)
       .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
-      .where(and(eq(schema.estimates.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .where(and(
+        eq(schema.estimates.archived, false),
+        pattern ? or(
+          ilike(schema.clients.name, pattern),
+          ilike(sql`coalesce(${schema.clients.company}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.email}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.propertyAddress}, '')`, pattern),
+          ilike(sql`coalesce(${schema.estimates.projectName}, '')`, pattern),
+          ilike(sql`coalesce(${schema.estimates.siteAddress}, '')`, pattern),
+          ilike(sql`coalesce(${schema.estimates.solicitationNumber}, '')`, pattern),
+          ids.length ? inArray(schema.estimates.id, ids) : undefined,
+        ) : undefined,
+      ))
       .orderBy(desc(schema.estimates.createdAt))
       .limit(LIMIT_PER_TYPE)
 
@@ -64,7 +104,18 @@ export default async (request: Request) => {
       .from(schema.workOrders)
       .leftJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
       .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
-      .where(and(eq(schema.estimates.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .where(and(
+        eq(schema.estimates.archived, false),
+        pattern ? or(
+          ilike(schema.clients.name, pattern),
+          ilike(sql`coalesce(${schema.clients.company}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.email}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.propertyAddress}, '')`, pattern),
+          ilike(sql`coalesce(${schema.estimates.projectName}, '')`, pattern),
+          ids.length ? inArray(schema.workOrders.id, ids) : undefined,
+          ids.length ? inArray(schema.estimates.id, ids) : undefined,
+        ) : undefined,
+      ))
       .orderBy(desc(schema.workOrders.createdAt))
       .limit(LIMIT_PER_TYPE)
 
@@ -91,7 +142,16 @@ export default async (request: Request) => {
       })
       .from(schema.invoices)
       .leftJoin(schema.clients, eq(schema.invoices.clientId, schema.clients.id))
-      .where(and(eq(schema.invoices.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .where(and(
+        eq(schema.invoices.archived, false),
+        pattern ? or(
+          ilike(schema.clients.name, pattern),
+          ilike(sql`coalesce(${schema.clients.company}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.email}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.propertyAddress}, '')`, pattern),
+          ids.length ? inArray(schema.invoices.id, ids) : undefined,
+        ) : undefined,
+      ))
       .orderBy(desc(schema.invoices.createdAt))
       .limit(LIMIT_PER_TYPE)
 
@@ -112,7 +172,15 @@ export default async (request: Request) => {
     const rows = await db
       .select()
       .from(schema.subcontractorAgreements)
-      .where(and(eq(schema.subcontractorAgreements.archived, false), pattern ? ilike(schema.subcontractorAgreements.subcontractorName, pattern) : undefined))
+      .where(and(
+        eq(schema.subcontractorAgreements.archived, false),
+        pattern ? or(
+          ilike(schema.subcontractorAgreements.subcontractorName, pattern),
+          ilike(sql`coalesce(${schema.subcontractorAgreements.subcontractorEmail}, '')`, pattern),
+          ilike(schema.subcontractorAgreements.subcontractorPhone, pattern),
+          ids.length ? inArray(schema.subcontractorAgreements.id, ids) : undefined,
+        ) : undefined,
+      ))
       .orderBy(desc(schema.subcontractorAgreements.createdAt))
       .limit(LIMIT_PER_TYPE)
 
@@ -140,7 +208,16 @@ export default async (request: Request) => {
       })
       .from(schema.recurringContracts)
       .leftJoin(schema.clients, eq(schema.recurringContracts.clientId, schema.clients.id))
-      .where(and(eq(schema.recurringContracts.archived, false), pattern ? ilike(schema.clients.name, pattern) : undefined))
+      .where(and(
+        eq(schema.recurringContracts.archived, false),
+        pattern ? or(
+          ilike(schema.clients.name, pattern),
+          ilike(sql`coalesce(${schema.clients.company}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.email}, '')`, pattern),
+          ilike(sql`coalesce(${schema.clients.propertyAddress}, '')`, pattern),
+          ids.length ? inArray(schema.recurringContracts.id, ids) : undefined,
+        ) : undefined,
+      ))
       .orderBy(desc(schema.recurringContracts.createdAt))
       .limit(LIMIT_PER_TYPE)
 

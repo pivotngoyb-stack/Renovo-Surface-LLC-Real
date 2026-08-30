@@ -500,6 +500,55 @@ body.admin-body {
 .conf-partial { background: #FFF4DC; color: #8A6400; }
 .conf-none { background: #F3F5F9; color: #6B7A90; }
 
+/* ---------- Service packages ----------
+   Sits above the service grid because it is the faster route to the same
+   place, and the grid stays there for anything that is not a common shape. */
+.bundle-box { margin-bottom: 18px; }
+.bundle-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #8A98AC; font-weight: 700; margin-bottom: 8px;
+}
+.bundle-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.bundle-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border: 1.5px solid #DCE4EF; border-radius: 999px; background: #fff;
+  font-family: var(--font-head); font-weight: 600; font-size: 0.82rem; color: var(--navy); cursor: pointer;
+}
+.bundle-btn:hover { border-color: var(--navy); background: var(--off-white); }
+.bundle-count {
+  background: var(--off-white); border-radius: 9px; padding: 1px 7px;
+  font-size: 0.72rem; color: #6B7A90; font-weight: 700;
+}
+.bundle-btn:hover .bundle-count { background: #fff; }
+
+.bundle-progress {
+  margin-top: 12px; padding: 11px 14px;
+  border: 1.5px solid #BBD6F5; background: #F4F9FF; border-radius: var(--radius-sm);
+}
+.bundle-progress-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 0.85rem; color: var(--navy); margin-bottom: 9px;
+}
+.bundle-quiet { color: #6B7A90; font-weight: 500; }
+.bundle-skip {
+  margin-left: auto; background: none; border: none; padding: 0 0 0 12px;
+  color: #1B5FA8; font-size: 0.8rem; cursor: pointer; text-decoration: underline; font-family: inherit;
+}
+.bundle-skip + .bundle-skip { margin-left: 0; }
+.bundle-steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.bundle-step {
+  font-size: 0.76rem; padding: 3px 9px; border-radius: 999px;
+  background: #fff; border: 1px solid #DCE4EF; color: #8A98AC;
+}
+.bundle-step.is-done { background: #E8F5EC; border-color: #B8E0C6; color: #1B7A3C; }
+.bundle-step.is-done::before { content: '\2713\00A0'; }
+.bundle-step.is-current { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 600; }
+
+@media (max-width: 640px) {
+  .bundle-skip { margin-left: 0; padding-left: 0; }
+  .bundle-progress-head { gap: 8px; }
+}
+
 /* ---------- Existing client lookup ---------- */
 .ac-wrap { position: relative; }
 .ac-list {

@@ -129,6 +129,12 @@
             </div>
           </details>
 
+          <div class="bundle-box">
+            <div class="bundle-label">Common packages</div>
+            <div class="bundle-row" id="bundleRow"></div>
+            <div class="bundle-progress" id="bundleProgress" hidden></div>
+          </div>
+
           <div class="calc-service-grid" id="calcServiceGrid"></div>
 
           <div id="calcFields" class="calc-fields"></div>
@@ -297,6 +303,104 @@ function toggleCalculator() {
   const open = body.classList.toggle('open');
   icon.textContent = open ? '▴' : '▾';
   label.textContent = open ? 'Hide Calculator' : 'Show Calculator';
+}
+
+/* ---------- Service packages ----------
+ *
+ * Most quotes are not one service. A gas station is islands, canopy, lot and
+ * pad; a post-construction job is four phases of the same building; a medical
+ * facility is janitorial plus disinfection plus floors. Picking those one at a
+ * time from a grid of nineteen is most of the time it takes to write a quote.
+ *
+ * A package queues the services and walks through them in order rather than
+ * adding them all at once with default inputs. Every line still gets looked at
+ * and priced -- the saving is in not hunting for the next button, and in the
+ * square footage carrying across, which it already does.
+ */
+const BUNDLES = [
+  { key: 'gasStation', icon: '\u26FD', label: 'Gas station, monthly',
+    services: ['fuelIsland', 'canopyWashing', 'lotSweeping', 'dumpsterPad'] },
+  { key: 'postConstruction', icon: '\uD83C\uDFD7\uFE0F', label: 'Post-construction, all phases',
+    services: ['constructionRough', 'constructionProgress', 'constructionFinal', 'constructionTouchup'] },
+  { key: 'medical', icon: '\uD83C\uDFE5', label: 'Medical facility',
+    services: ['janitorial', 'disinfection', 'floorCare', 'ventCleaning'] },
+  { key: 'office', icon: '\uD83C\uDFE2', label: 'Office contract',
+    services: ['janitorial', 'carpetExtraction', 'floorCare', 'windowCleaning'] },
+  { key: 'school', icon: '\uD83C\uDF93', label: 'School / institutional',
+    services: ['janitorial', 'floorCare', 'carpetExtraction', 'tileGrout'] },
+  { key: 'exterior', icon: '\u2600\uFE0F', label: 'Exterior refresh',
+    services: ['pressureWashing', 'windowCleaning', 'lotSweeping', 'concreteSealing'] },
+];
+
+let bundleQueue = null; // { key, label, services: [], index }
+
+function renderBundleRow() {
+  const row = document.getElementById('bundleRow');
+  if (!row) return;
+  row.innerHTML = BUNDLES.map(b =>
+    '<button type="button" class="bundle-btn" onclick="startBundle(\'' + b.key + '\')">'
+    + b.icon + ' ' + b.label + '<span class="bundle-count">' + b.services.length + '</span></button>'
+  ).join('');
+}
+
+function serviceLabel(key) {
+  const s = SERVICES.find(x => x.key === key);
+  return s ? s.label : key;
+}
+
+function startBundle(key) {
+  const b = BUNDLES.find(x => x.key === key);
+  if (!b) return;
+  bundleQueue = { key: b.key, label: b.label, services: b.services.slice(), index: 0 };
+  selectService(bundleQueue.services[0]);
+  renderBundleProgress();
+}
+
+/** Move to the next service in the package, or finish. */
+function advanceBundle() {
+  if (!bundleQueue) return false;
+  bundleQueue.index += 1;
+  if (bundleQueue.index >= bundleQueue.services.length) {
+    const label = bundleQueue.label;
+    bundleQueue = null;
+    renderBundleProgress();
+    adminToast(label + ' package complete.', 'success');
+    return false;
+  }
+  selectService(bundleQueue.services[bundleQueue.index]);
+  renderBundleProgress();
+  return true;
+}
+
+/** Skip a service in the package without pricing it. */
+function skipBundleService() {
+  if (!bundleQueue) return;
+  document.getElementById('calcFields').innerHTML = '';
+  document.getElementById('calcPriceDisplay').style.display = 'none';
+  advanceBundle();
+}
+
+function exitBundle() {
+  bundleQueue = null;
+  renderBundleProgress();
+}
+
+function renderBundleProgress() {
+  const box = document.getElementById('bundleProgress');
+  if (!box) return;
+  if (!bundleQueue) { box.hidden = true; box.innerHTML = ''; return; }
+  const done = bundleQueue.index;
+  const total = bundleQueue.services.length;
+  const steps = bundleQueue.services.map((svc, i) =>
+    '<span class="bundle-step' + (i < done ? ' is-done' : i === done ? ' is-current' : '') + '">'
+    + serviceLabel(svc) + '</span>'
+  ).join('');
+  box.hidden = false;
+  box.innerHTML = '<div class="bundle-progress-head"><strong>' + bundleQueue.label + '</strong>'
+    + ' <span class="bundle-quiet">step ' + (done + 1) + ' of ' + total + '</span>'
+    + '<button type="button" class="bundle-skip" onclick="skipBundleService()">Skip this one</button>'
+    + '<button type="button" class="bundle-skip" onclick="exitBundle()">Exit package</button></div>'
+    + '<div class="bundle-steps">' + steps + '</div>';
 }
 
 function renderServiceGrid() {
@@ -1764,6 +1868,10 @@ function addCalculatorLineItem() {
   activeService = null;
   lastCalcResult = null;
   updateTotal();
+
+  // If a package is running, go straight to the next service in it rather
+  // than dropping the estimator back to the grid to find it.
+  advanceBundle();
 }
 
 function collectInputs(key) {
@@ -1775,6 +1883,7 @@ function collectInputs(key) {
 }
 
 renderServiceGrid();
+renderBundleRow();
 loadBurdenSettings();
 
 /* ---------- Line items (existing behavior, extended with pricing metadata) ---------- */
