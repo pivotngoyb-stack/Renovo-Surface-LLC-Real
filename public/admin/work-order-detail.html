@@ -149,6 +149,9 @@ async function load() {
     actualCrewSize: workOrder.actualCrewSize,
     actualHoursNote: workOrder.actualHoursNote,
     estimatedHours: Math.round(estimatedHours * 100) / 100,
+    estimatedMaterials: Math.round(lineItems
+      .filter(li => !li.isOptional && !li.subcontracted)
+      .reduce((t, li) => t + (Number(li.estimatedProductCost) || 0), 0) * 100) / 100,
   });
   loadJobPlan();
 }
@@ -366,7 +369,7 @@ async function loadPhotos() {
 load();
 
 /* ---------- Time on job ---------- */
-let actualsState = { actualHours: null, actualCrewSize: null, actualHoursNote: null, estimatedHours: null };
+let actualsState = { actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null, estimatedHours: null, estimatedMaterials: null };
 
 function renderActuals(state) {
   if (state) actualsState = Object.assign(actualsState, state);
@@ -391,11 +394,13 @@ function renderActuals(state) {
   }
 
   box.innerHTML = ''
-    + '<div style="display:grid; grid-template-columns:150px 150px 1fr; gap:0 14px; max-width:620px; align-items:end;">'
+    + '<div style="display:grid; grid-template-columns:140px 110px 140px 1fr; gap:0 14px; max-width:760px; align-items:end;">'
     +   '<div class="field-group" style="margin-bottom:8px;"><label>Total crew hours</label>'
     +     '<input type="number" id="actualHours" min="0" step="0.25" value="' + (a.actualHours != null ? a.actualHours : '') + '" placeholder="' + (est > 0 ? est.toFixed(1) : '0') + '"></div>'
     +   '<div class="field-group" style="margin-bottom:8px;"><label>Crew size</label>'
     +     '<input type="number" id="actualCrewSize" min="1" step="1" value="' + (a.actualCrewSize != null ? a.actualCrewSize : '') + '" placeholder="optional"></div>'
+    +   '<div class="field-group" style="margin-bottom:8px;"><label>Chemicals spent ($)</label>'
+    +     '<input type="number" id="actualMaterialsCost" min="0" step="1" value="' + (a.actualMaterialsCost != null ? a.actualMaterialsCost : '') + '" placeholder="' + (a.estimatedMaterials > 0 ? a.estimatedMaterials.toFixed(0) : '0') + '"></div>'
     +   '<div class="field-group" style="margin-bottom:8px;"><label>Note</label>'
     +     '<input type="text" id="actualHoursNote" value="' + escAttr(a.actualHoursNote || '') + '" placeholder="e.g. lift arrived two hours late"></div>'
     + '</div>'
@@ -412,6 +417,7 @@ async function saveActuals() {
   const body = {
     actualHours: document.getElementById('actualHours').value,
     actualCrewSize: document.getElementById('actualCrewSize').value,
+    actualMaterialsCost: document.getElementById('actualMaterialsCost').value,
     note: document.getElementById('actualHoursNote').value,
   };
   const res = await adminFetch('/api/admin/work-orders/' + id + '/actuals', {
@@ -419,7 +425,7 @@ async function saveActuals() {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { adminToast(data.error || 'Could not save the hours.'); return; }
-  renderActuals({ actualHours: data.actualHours, actualCrewSize: data.actualCrewSize, actualHoursNote: data.actualHoursNote });
+  renderActuals({ actualHours: data.actualHours, actualCrewSize: data.actualCrewSize, actualMaterialsCost: data.actualMaterialsCost, actualHoursNote: data.actualHoursNote });
   adminToast('Time on job saved.', 'success');
 }
 
@@ -428,7 +434,7 @@ async function clearActuals() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actualHours: null }),
   });
   if (!res.ok) { adminToast('Could not clear the hours.'); return; }
-  renderActuals({ actualHours: null, actualCrewSize: null, actualHoursNote: null });
+  renderActuals({ actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null });
 }
 </script>
 </body>

@@ -48,6 +48,7 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       completedAt: schema.workOrders.completedAt,
       actualHours: schema.workOrders.actualHours,
       actualCrewSize: schema.workOrders.actualCrewSize,
+      actualMaterialsCost: schema.workOrders.actualMaterialsCost,
     })
     .from(schema.estimates)
     .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
@@ -145,7 +146,7 @@ export default withErrorHandling('admin-profitability', async (request: Request,
 
   const rows = jobs.map(j => {
     // Real logged hours beat the estimate whenever someone recorded them.
-    const econ = jobEconomics(linesByEstimate.get(j.estimateId) || [], j.actualHours)
+    const econ = jobEconomics(linesByEstimate.get(j.estimateId) || [], j.actualHours, j.actualMaterialsCost)
     const billing = j.workOrderId != null ? invoiceByWorkOrder.get(j.workOrderId) : undefined
 
     econ.lines.forEach(l => {
@@ -188,6 +189,8 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       estimatedHours: econ.estimatedHours,
       actualHours: econ.actualHours,
       hoursVariance: econ.hoursVariance,
+      estimatedMaterials: econ.estimatedMaterials,
+      actualMaterials: econ.actualMaterials,
       actualCrewSize: j.actualCrewSize,
       subcontractorCost: econ.subcontractorCost,
       confidence: econ.confidence,

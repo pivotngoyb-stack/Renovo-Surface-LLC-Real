@@ -9,15 +9,18 @@ import { withErrorHandling } from './_shared/errorHandler.mts'
 const MAX_HOURS = 400
 const MAX_CREW = 30
 const MAX_NOTE = 500
+/** A single visit spending more than this on chemicals is a typo. */
+const MAX_MATERIALS = 50000
 
 /**
  * What the job actually took.
  *
- * Everything upstream of this is an estimate. Without a real figure to compare
+ * Everything upstream of this is an estimate. Without real figures to compare
  * against, the profitability report can only grade its own homework: a
- * production rate that is wrong stays wrong, because nothing ever contradicts
- * it. One number entered when the crew comes off site is what turns a quoting
- * model into something that improves.
+ * production rate that is wrong stays wrong, and a chemical model that is wrong
+ * stays wrong, because nothing ever contradicts them. Two numbers entered when
+ * the crew comes off site are what turn a quoting model into something that
+ * improves.
  */
 export default withErrorHandling('admin-work-order-actuals', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
@@ -29,7 +32,12 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
   const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, id)).limit(1)
   if (!workOrder) return notFound()
 
-  let body: { actualHours?: unknown; actualCrewSize?: unknown; note?: unknown }
+  let body: {
+    actualHours?: unknown
+    actualCrewSize?: unknown
+    actualMaterialsCost?: unknown
+    note?: unknown
+  }
   try {
     body = await request.json()
   } catch {
@@ -38,11 +46,13 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
 
   // An empty submission clears the figures rather than storing zero: "not
   // recorded" and "took no time" are different facts and the report reads them
-  // differently.
+  // differently. Hours are the anchor -- clearing them clears the rest, since
+  // materials without hours describes a job nobody worked.
   const clearing = body.actualHours === null || body.actualHours === ''
 
   let hours: string | null = null
   let crew: number | null = null
+  let materials: string | null = null
 
   if (!clearing) {
     const h = Number(body.actualHours)
@@ -52,8 +62,21 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
 
     if (body.actualCrewSize != null && body.actualCrewSize !== '') {
       const c = Number(body.actualCrewSize)
-      if (!Number.isInteger(c) || c < 1 || c > MAX_CREW) return badRequest('Crew size must be a whole number between 1 and ' + MAX_CREW)
+      if (!Number.isInteger(c) || c < 1 || c > MAX_CREW) {
+        return badRequest(`Crew size must be a whole number between 1 and ${MAX_CREW}`)
+      }
       crew = c
+    }
+
+    if (body.actualMaterialsCost != null && body.actualMaterialsCost !== '') {
+      const m = Number(body.actualMaterialsCost)
+      // Zero is meaningful here in a way it is not for hours: plenty of visits
+      // genuinely consume nothing, and recording that is a real measurement.
+      if (!Number.isFinite(m) || m < 0) return badRequest('Materials cost cannot be negative')
+      if (m > MAX_MATERIALS) {
+        return badRequest(`That is more than ${MAX_MATERIALS.toLocaleString()} dollars in materials -- please check the figure`)
+      }
+      materials = String(Math.round(m * 100) / 100)
     }
   }
 
@@ -61,10 +84,21 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
 
   await db
     .update(schema.workOrders)
-    .set({ actualHours: hours, actualCrewSize: crew, actualHoursNote: note || null })
+    .set({
+      actualHours: hours,
+      actualCrewSize: crew,
+      actualMaterialsCost: materials,
+      actualHoursNote: note || null,
+    })
     .where(eq(schema.workOrders.id, id))
 
-  return json({ ok: true, actualHours: hours, actualCrewSize: crew, actualHoursNote: note || null })
+  return json({
+    ok: true,
+    actualHours: hours,
+    actualCrewSize: crew,
+    actualMaterialsCost: materials,
+    actualHoursNote: note || null,
+  })
 })
 
 export const config = {

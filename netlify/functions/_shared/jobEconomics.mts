@@ -209,6 +209,10 @@ export interface JobEconomics {
   estimatedHours: number
   /** Hours the crew logged, when someone recorded them. */
   actualHours: number | null
+  /** Chemicals the quote assumed. */
+  estimatedMaterials: number
+  /** Chemicals actually consumed, when recorded. */
+  actualMaterials: number | null
   /** actual / estimated. Above 1 means the job ran long. */
   hoursVariance: number | null
   subcontractorCost: number
@@ -225,7 +229,11 @@ export interface JobEconomics {
  * Optional lines are excluded: they were priced for the client's consideration
  * and were not part of what was sold.
  */
-export function jobEconomics(lineItems: StoredLineItem[], actualHours?: number | string | null): JobEconomics {
+export function jobEconomics(
+  lineItems: StoredLineItem[],
+  actualHours?: number | string | null,
+  actualMaterialsCost?: number | string | null,
+): JobEconomics {
   const sold = lineItems.filter(li => !li.isOptional)
   let lines = sold.map(lineEconomics)
 
@@ -254,6 +262,32 @@ export function jobEconomics(lineItems: StoredLineItem[], actualHours?: number |
         : lineEconomics({ ...sold[i], estimatedDurationHours: round2(l.laborHours * scale) }))
   }
 
+  /*
+   * Real chemical spend, when it was recorded.
+   *
+   * Distributed across the in-house lines the same way hours are, in proportion
+   * to what each was estimated at. A line that was quoted with no materials gets
+   * none of it: the spend belongs to the work that used chemicals.
+   *
+   * A recorded zero counts. Plenty of visits genuinely consume nothing, and that
+   * is a real measurement -- which is why the check is against null, not falsy.
+   */
+  const actualMaterials = actualMaterialsCost == null || actualMaterialsCost === '' ? null : n(actualMaterialsCost)
+  const estimatedMaterials = round2(lines.filter(l => !l.subcontracted).reduce((t, l) => t + l.materials, 0))
+  const usingMaterials = actualMaterials != null && actualMaterials >= 0 && estimatedMaterials > 0
+
+  if (usingMaterials) {
+    const mScale = actualMaterials / estimatedMaterials
+    lines = lines.map((l, i) =>
+      l.subcontracted || l.materials <= 0
+        ? l
+        : lineEconomics({
+            ...sold[i],
+            estimatedDurationHours: l.laborHours,
+            estimatedProductCost: round2(l.materials * mScale),
+          }))
+  }
+
   const sum = (pick: (l: LineEconomics) => number) => round2(lines.reduce((t, l) => t + pick(l), 0))
   const revenue = sum(l => l.revenue)
   const loadedCost = sum(l => l.loadedCost)
@@ -276,6 +310,8 @@ export function jobEconomics(lineItems: StoredLineItem[], actualHours?: number |
     laborHours: round2(lines.reduce((t, l) => t + l.laborHours, 0)),
     estimatedHours,
     actualHours: usingActuals ? round2(actual) : null,
+    estimatedMaterials,
+    actualMaterials: usingMaterials ? round2(actualMaterials) : null,
     hoursVariance: usingActuals ? Math.round((actual / estimatedHours) * 100) / 100 : null,
     subcontractorCost: sum(l => l.subcontractorCost),
     lines,

@@ -97,6 +97,23 @@ function hoursCell(j) {
     <div style="font-size:0.72rem; color:${color};">${delta === 0 ? 'on estimate' : `${delta}% ${over ? 'over' : 'under'}`}</div>`;
 }
 
+/*
+ * Chemical spend against what was quoted.
+ *
+ * Only shown when it actually differs. A job that consumed what it was
+ * expected to consume needs no comment, and a note on every row is a note
+ * nobody reads.
+ */
+function materialsNote(j) {
+  if (j.actualMaterials == null || !j.estimatedMaterials) return '';
+  const delta = j.actualMaterials - j.estimatedMaterials;
+  if (Math.abs(delta) < 1) return '';
+  const over = delta > 0;
+  const ratio = Math.round((j.actualMaterials / j.estimatedMaterials) * 10) / 10;
+  return '<div style="font-size:0.72rem; color:' + (over ? '#C0392B' : '#1B7A3C') + ';">'
+    + 'chemicals ' + ratio + '× quoted</div>';
+}
+
 function confidencePill(c) {
   const meta = CONFIDENCE[c] || CONFIDENCE.none;
   return `<span class="conf-pill ${meta.cls}" title="${esc(meta.title)}">${meta.label}</span>`;
@@ -162,7 +179,10 @@ async function load() {
         ${j.collected == null ? '<span style="color:#8A98AC;">—</span>' : money(j.collected)}
         ${j.invoiceStatus === 'paid' && j.collected === 0 ? '<div style="font-size:0.74rem; color:#8A98AC;">marked paid, no payment recorded</div>' : ''}
       </td>
-      <td style="text-align:right;">${j.loadedCost > 0 ? money(j.loadedCost) : '<span style="color:#8A98AC;">—</span>'}</td>
+      <td style="text-align:right;">
+        ${j.loadedCost > 0 ? money(j.loadedCost) : '<span style="color:#8A98AC;">—</span>'}
+        ${materialsNote(j)}
+      </td>
       <td style="text-align:right; font-weight:700; color:${marginColor(j.marginPct)};">
         ${money(j.profit)}
         <div style="font-size:0.78rem; font-weight:600;">${pct(j.marginPct)}</div>

@@ -107,6 +107,10 @@ export const workOrders = pgTable('work_orders', {
   actualHours: numeric('actual_hours'),
   actualCrewSize: integer('actual_crew_size'),
   actualHoursNote: text('actual_hours_note'),
+  // What the chemicals and consumables actually cost on this job. Hours were
+  // the bigger lever, but a job that burns three times the degreaser is a job
+  // whose chemical model is wrong, and nothing else would ever say so.
+  actualMaterialsCost: numeric('actual_materials_cost'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
