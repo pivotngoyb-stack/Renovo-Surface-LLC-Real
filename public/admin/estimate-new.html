@@ -134,6 +134,26 @@
             <div class="cond-effect" id="calcConditionEffect"></div>
           </div>
 
+          <div id="calcSubBox" class="sub-box" style="display:none;">
+            <label class="sub-toggle">
+              <input type="checkbox" id="sub_on" onchange="onSubToggle()">
+              <span>This work is subcontracted</span>
+            </label>
+            <div id="subFields" class="sub-grid" style="display:none;">
+              <div class="field-group">
+                <label for="sub_cost">What the sub invoices you ($)</label>
+                <input type="number" id="sub_cost" min="0" step="25" value="0" oninput="recalculate()">
+                <p>Their price for this line, before anything you add.</p>
+              </div>
+              <div class="field-group">
+                <label for="sub_coordination">Your coordination overhead (%)</label>
+                <input type="number" id="sub_coordination" min="0" max="60" step="1" value="10" oninput="recalculate()">
+                <p>Walk-through, scheduling, quality check, the client call when something is wrong, and carrying the receivable. Not zero &mdash; treating a subbed line as pure spread is how you end up coordinating for free.</p>
+              </div>
+            </div>
+            <div id="subEffect" class="sub-effect"></div>
+          </div>
+
           <div id="calcPriceDisplay" class="calc-price-display" style="display:none;">
             <div class="calc-price-main">
               <span class="calc-price-label">Recommended Price</span>
@@ -791,6 +811,80 @@ function equipmentCostFor(service, hours) {
   return { hourlyCost, total: round2(hourlyCost * h), lines };
 }
 
+/* ---------- Subcontracted work ----------
+ *
+ * MIRRORS netlify/functions/_shared/subcontract.mts, enforced by the
+ * subcontract parity test.
+ *
+ * The calculator costs a job at burdened wages plus machine wear because it
+ * assumes Renovo's crew does the work. On a subbed line none of that is true,
+ * and pricing it with the in-house cost model reports a margin that does not
+ * exist.
+ *
+ *   markup is measured against COST  -- 30% markup on $1,000 is $1,300
+ *   margin is measured against PRICE -- that same job is a 23.1% margin
+ */
+const DEFAULT_MARKUP_PCT = 30;
+const DEFAULT_COORDINATION_PCT = 10;
+
+function subcontractResult(price, inputs) {
+  const i = Object.assign({ subCost: 0, coordinationPct: DEFAULT_COORDINATION_PCT }, inputs || {});
+  const subCost = Math.max(0, i.subCost);
+  const coordination = round2(subCost * Math.max(0, i.coordinationPct) / 100);
+  const loadedCost = round2(subCost + coordination);
+  const profit = round2(price - loadedCost);
+  return {
+    subCost: round2(subCost),
+    coordination,
+    loadedCost,
+    price: round2(price),
+    profit,
+    marginPct: price > 0 ? Math.round((profit / price) * 1000) / 10 : 0,
+    markupPct: loadedCost > 0 ? Math.round((profit / loadedCost) * 1000) / 10 : 0,
+    underwater: profit < 0,
+  };
+}
+
+function priceForMarkup(markupPct, inputs) {
+  const i = Object.assign({ subCost: 0, coordinationPct: DEFAULT_COORDINATION_PCT }, inputs || {});
+  const loadedCost = Math.max(0, i.subCost) * (1 + Math.max(0, i.coordinationPct) / 100);
+  return round2(loadedCost * (1 + Math.max(0, markupPct) / 100));
+}
+
+function priceForSubMargin(marginPct, inputs) {
+  const i = Object.assign({ subCost: 0, coordinationPct: DEFAULT_COORDINATION_PCT }, inputs || {});
+  const loadedCost = Math.max(0, i.subCost) * (1 + Math.max(0, i.coordinationPct) / 100);
+  const m = Math.min(Math.max(marginPct, 0), 95) / 100;
+  return round2(loadedCost / (1 - m));
+}
+
+function markupToMargin(markupPct) {
+  const m = Math.max(0, markupPct);
+  return Math.round((m / (100 + m)) * 1000) / 10;
+}
+
+function marginToMarkup(marginPct) {
+  const m = Math.min(Math.max(marginPct, 0), 99.9);
+  return Math.round((m / (100 - m)) * 1000) / 10;
+}
+
+/** Current subcontract settings, read off the panel. */
+function subInputs() {
+  const on = document.getElementById('sub_on');
+  return {
+    enabled: !!(on && on.checked),
+    subCost: Number(val('sub_cost')) || 0,
+    coordinationPct: Number(val('sub_coordination')) || 0,
+  };
+}
+
+function onSubToggle() {
+  const on = document.getElementById('sub_on');
+  const fields = document.getElementById('subFields');
+  if (fields) fields.style.display = on && on.checked ? 'grid' : 'none';
+  recalculate();
+}
+
 /* ---------- Global job conditions ----------
  *
  * MIRRORS netlify/functions/_shared/jobConditions.mts, enforced by the
@@ -938,6 +1032,27 @@ function renderConditionFields() {
       return '<div class="field-group"><label for="cond_' + axis + '">' + COND_AXIS_LABELS[axis] + '</label>'
         + '<select id="cond_' + axis + '" onchange="recalculate()">' + opts + '</select></div>';
     }).join('');
+}
+
+/**
+ * The sentence that stops "cost plus thirty" being mistaken for a 30% margin.
+ * On a $4,000 sub those are $566 apart, on every line, on every property.
+ */
+function renderSubEffect(sub, result) {
+  const el = document.getElementById('subEffect');
+  if (!el) return;
+  if (!sub.enabled) { el.innerHTML = ''; return; }
+  if (!result || result.subCost <= 0) {
+    el.innerHTML = '<span class="sub-quiet">Enter what the sub charges to see what you actually keep.</span>';
+    return;
+  }
+  const costPlus = priceForMarkup(DEFAULT_MARKUP_PCT, sub);
+  const keep35 = priceForSubMargin(35, sub);
+  el.innerHTML =
+    '<div class="sub-effect-row"><span>Cost plus ' + DEFAULT_MARKUP_PCT + '% would be</span><strong>' + money(costPlus)
+      + ' <span class="sub-note">(only ' + markupToMargin(DEFAULT_MARKUP_PCT).toFixed(1) + '% margin)</span></strong></div>'
+    + '<div class="sub-effect-row"><span>To actually keep 35% margin, charge</span><strong>' + money(keep35)
+      + ' <span class="sub-note">(' + marginToMarkup(35).toFixed(1) + '% markup)</span></strong></div>';
 }
 
 function renderConditionEffect(eff) {
@@ -1344,6 +1459,8 @@ function recalculate() {
 
   const eff = conditionsFor(activeService);
   renderConditionEffect(eff);
+  const subBox = document.getElementById('calcSubBox');
+  if (subBox) subBox.style.display = 'block';
 
   // Premiums apply to the labor and service portion only. Chemicals cost the
   // same at 2am as at noon, and marking them up is a line an owner's rep finds.
@@ -1361,6 +1478,7 @@ function recalculate() {
   // Machine wear rides with materials: it is a direct cost of doing this job,
   // and overhead is applied on top of it like everything else.
   const equip = equipmentCostFor(activeService, workedHours);
+  const sub = subInputs();
   const cost = jobCost(finalPrice, workedHours, result.productCost + equip.total, result.fuelCost, shiftBurden);
 
   document.getElementById('calcPriceValue').textContent = money(finalPrice);
@@ -1368,6 +1486,12 @@ function recalculate() {
   // Amber below 20%: not a loss, but too thin to absorb a callback or a
   // rain day, which is where these jobs actually go wrong.
   const profitColor = cost.underwater ? '#C0392B' : cost.marginPct < 20 ? '#966A00' : '#1B7A3C';
+
+  // A subbed line has none of Renovo's labor, machine or overhead cost in it.
+  // Showing the in-house numbers there would report profit that is not real.
+  const subResult = sub.enabled ? subcontractResult(finalPrice, sub) : null;
+  const subColor = !subResult ? '#1B7A3C'
+    : subResult.underwater ? '#C0392B' : subResult.marginPct < 20 ? '#966A00' : '#1B7A3C';
   const effectiveRate = workedHours > 0 ? finalPrice / workedHours : 0;
 
   // Everything that isn't a pass-through cost: labor after every multiplier,
@@ -1375,6 +1499,27 @@ function recalculate() {
   const serviceCharge = bareService + premium;
   const minHours = MIN_BILLABLE_HOURS[activeService] || 0;
   const minApplied = workedHours < minHours - 0.001;
+
+  const costBlock = subResult
+    ? `
+    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">What it costs you &mdash; subcontracted</div>
+    <div><span>Subcontractor invoice</span><strong>${money(subResult.subCost)}</strong></div>
+    <div><span>Coordination (${sub.coordinationPct}%)</span><strong>${money(subResult.coordination)}</strong></div>
+    <div><span>Your total cost</span><strong>${money(subResult.loadedCost)}</strong></div>
+    <div><span>Est. Time on Job</span><strong>${workedHours.toFixed(1)} hrs (sub's crew)</strong></div>
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${subColor};">${money(subResult.profit)} <span style="font-weight:600;">(${subResult.marginPct.toFixed(1)}% margin / ${subResult.markupPct.toFixed(1)}% markup)</span></strong></div>`
+    : `
+    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">What it costs you</div>
+    <div><span>Est. Time on Job</span><strong>${workedHours.toFixed(1)} hrs</strong></div>
+    <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
+    <div><span>Labor (${workedHours.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
+    <div><span>Chemicals + fuel</span><strong>${money(result.productCost + cost.fuel)}</strong></div>
+    <div><span>Equipment wear (${money(equip.hourlyCost)}/hr)</span><strong>${money(equip.total)}</strong></div>
+    <div><span>Overhead (${burden.overheadPct}% of direct cost)</span><strong>${money(cost.overhead)}</strong></div>
+    <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
+    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${profitColor};">${money(cost.profit)} <span style="font-weight:600;">(${cost.marginPct.toFixed(1)}% margin)</span></strong></div>`;
+
+  renderSubEffect(sub, subResult);
 
   document.getElementById('calcBreakdown').innerHTML = `
     <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-bottom:2px;">What makes up this price</div>
@@ -1385,15 +1530,7 @@ function recalculate() {
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Recommended Price</span><strong>${money(finalPrice)}</strong></div>
     ${minApplied ? `<div style="grid-column:1 / -1; color:#8A98AC; font-size:0.8rem;">Billed at the ${minHours}-hour minimum for this service (actual time on job ${workedHours.toFixed(1)} hrs).</div>` : ''}
 
-    <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-top:12px; margin-bottom:2px;">What it costs you</div>
-    <div><span>Est. Time on Job</span><strong>${workedHours.toFixed(1)} hrs</strong></div>
-    <div><span>Effective Billing Rate</span><strong>${money(effectiveRate)}/hr</strong></div>
-    <div><span>Labor (${workedHours.toFixed(1)} hrs @ ${money(cost.burdenedRate)} true cost)</span><strong>${money(cost.directLabor)}</strong></div>
-    <div><span>Chemicals + fuel</span><strong>${money(result.productCost + cost.fuel)}</strong></div>
-    <div><span>Equipment wear (${money(equip.hourlyCost)}/hr)</span><strong>${money(equip.total)}</strong></div>
-    <div><span>Overhead (${burden.overheadPct}% of direct cost)</span><strong>${money(cost.overhead)}</strong></div>
-    <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
-    <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${profitColor};">${money(cost.profit)} <span style="font-weight:600;">(${cost.marginPct.toFixed(1)}% margin)</span></strong></div>
+    ${costBlock}
   `;
   // A losing job and a thin job need different advice, so say which it is and
   // name the price that fixes it rather than just flagging the problem.
@@ -1447,6 +1584,7 @@ function addCalculatorLineItem() {
   const r = lastCalcResult;
   const eff = conditionsFor(activeService);
   const sel = conditionSelection();
+  const subMeta = subInputs();
 
   const bareService = r.finalPrice - r.productCost - r.fuelCost;
   const finalPrice = round2(r.finalPrice + bareService * (eff.priceMultiplier - 1));
@@ -1478,6 +1616,11 @@ function addCalculatorLineItem() {
     conditions: sel,
     conditionPriceMultiplier: eff.priceMultiplier,
     conditionTimeMultiplier: eff.timeMultiplier,
+    // Recorded so the margin on a subbed line can be reconstructed later, and
+    // so a 1099 reconciliation can find which jobs a sub was used on.
+    subcontracted: subMeta.enabled,
+    subcontractorCost: subMeta.enabled ? subMeta.subCost : null,
+    subcontractCoordinationPct: subMeta.enabled ? subMeta.coordinationPct : null,
   };
   addLineItem(description, r.qty, finalPrice.toFixed(2), meta);
 
@@ -1488,6 +1631,11 @@ function addCalculatorLineItem() {
 
   document.getElementById('calcFields').innerHTML = '';
   document.getElementById('calcConditions').style.display = 'none';
+  document.getElementById('calcSubBox').style.display = 'none';
+  document.getElementById('sub_on').checked = false;
+  document.getElementById('sub_cost').value = 0;
+  document.getElementById('subFields').style.display = 'none';
+  document.getElementById('subEffect').innerHTML = '';
   document.getElementById('calcPriceDisplay').style.display = 'none';
   SERVICES.forEach(s => document.getElementById(`calcBtn-${s.key}`).classList.remove('active'));
   activeService = null;

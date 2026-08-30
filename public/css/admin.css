@@ -486,6 +486,26 @@ body.admin-body {
   .login-card { margin: 8vh auto; padding: 28px 22px; }
 }
 
+/* ---------- Subcontracted line ---------- */
+.sub-box { margin-top: 12px; padding: 12px 16px; border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); background: #FCFDFF; }
+.sub-toggle { display: flex; align-items: center; gap: 9px; font-size: 0.85rem; font-weight: 600; color: var(--navy); cursor: pointer; margin: 0; }
+.sub-toggle input { width: auto; margin: 0; }
+.sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; margin-top: 12px; }
+.sub-grid .field-group { margin-bottom: 10px; }
+.sub-grid label { font-size: 0.8rem; }
+.sub-grid p { font-size: 0.74rem; color: #8A98AC; margin-top: 4px; line-height: 1.45; }
+.sub-effect { font-size: 0.82rem; }
+.sub-effect:not(:empty) { border-top: 1px solid #EEF2F8; margin-top: 8px; padding-top: 9px; display: grid; gap: 5px; }
+.sub-effect-row { display: flex; justify-content: space-between; gap: 12px; color: #4A5A72; }
+.sub-effect-row strong { color: var(--navy); font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; white-space: nowrap; }
+.sub-note { color: #8A98AC; font-weight: 500; font-family: var(--font-body); }
+.sub-quiet { color: #8A98AC; }
+
+@media (max-width: 640px) {
+  .sub-grid { grid-template-columns: 1fr; }
+  .sub-effect-row { flex-direction: column; gap: 2px; }
+}
+
 /* ---------- Needs attention ----------
    Only rendered when there is something in it, so it never becomes furniture
    the eye learns to skip. Colour carries the kind of problem: red is a promise
