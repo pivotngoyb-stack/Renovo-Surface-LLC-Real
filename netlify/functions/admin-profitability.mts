@@ -5,7 +5,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { jobEconomics, type StoredLineItem, type CostConfidence } from './_shared/jobEconomics.mts'
-import { contractEconomics, contractVerdict } from './_shared/contractEconomics.mts'
+import { contractEconomics, contractVerdict, DEFAULT_ACQUISITION } from './_shared/contractEconomics.mts'
 
 const round2 = (x: number) => Math.round(x * 100) / 100
 const n = (v: unknown) => {
@@ -34,6 +34,26 @@ const n = (v: unknown) => {
  */
 export default withErrorHandling('admin-profitability', async (request: Request, _context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
+
+  /*
+   * Acquisition assumptions come from the caller.
+   *
+   * How long a bid takes and how much slower a first visit runs are things
+   * Renovo knows and this code does not. Baking in a default and never
+   * exposing it would make every break-even figure a guess wearing the
+   * clothes of a measurement.
+   */
+  const params = new URL(request.url).searchParams
+  const numParam = (key: string): number | undefined => {
+    const raw = params.get(key)
+    if (raw == null || raw === '') return undefined
+    const v = Number(raw)
+    return Number.isFinite(v) && v >= 0 ? v : undefined
+  }
+  const acquisition = {
+    bidHours: numParam('bidHours'),
+    onboardingMultiplier: numParam('onboardingMultiplier'),
+  }
 
   /* Sold work only: a draft estimate is a hope, not a job. */
   const joined = await db
@@ -164,7 +184,7 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       const rec = econ.lines.filter(l => l.recurring)
       const revPerVisit = round2(rec.reduce((t, l) => t + l.revenue, 0))
       const costPerVisit = round2(rec.reduce((t, l) => t + l.loadedCost, 0))
-      const ce = contractEconomics(revPerVisit, costPerVisit, econ.visitsPerYear)
+      const ce = contractEconomics(revPerVisit, costPerVisit, econ.visitsPerYear, acquisition)
       contractRow = { ...ce, verdict: contractVerdict(ce) }
     }
 
@@ -245,6 +265,11 @@ export default withErrorHandling('admin-profitability', async (request: Request,
     // Non-zero means an estimate carries more than one work order, which should
     // not happen. Reported rather than hidden so it can be chased down.
     duplicateEstimates,
+    // Echoed so the page can state the assumptions the numbers rest on.
+    acquisitionUsed: {
+      bidHours: acquisition.bidHours ?? DEFAULT_ACQUISITION.bidHours,
+      onboardingMultiplier: acquisition.onboardingMultiplier ?? DEFAULT_ACQUISITION.onboardingMultiplier,
+    },
     jobs: rows.sort((a, b) => a.marginPct - b.marginPct),
     byService: [...byService.values()].map(withMargin).sort((a, b) => a.marginPct - b.marginPct),
     byClient: [...byClient.values()].map(withMargin).sort((a, b) => b.revenue - a.revenue),

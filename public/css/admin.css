@@ -500,6 +500,22 @@ body.admin-body {
 .conf-partial { background: #FFF4DC; color: #8A6400; }
 .conf-none { background: #F3F5F9; color: #6B7A90; }
 
+/* ---------- Acquisition assumptions ---------- */
+.acq-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  padding: 11px 14px; margin-bottom: 12px;
+  border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); background: #FCFDFF;
+  font-size: 0.82rem; color: #4A5A72;
+}
+.acq-label { font-weight: 700; color: var(--navy); }
+.acq-box label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 0.82rem; }
+.acq-box input { width: 68px; padding: 5px 7px; border: 1.5px solid #DCE4EF; border-radius: 5px; font: inherit; }
+.acq-note { color: #8A98AC; font-size: 0.78rem; margin-left: auto; }
+
+@media (max-width: 720px) {
+  .acq-note { margin-left: 0; flex-basis: 100%; }
+}
+
 /* ---------- Service packages ----------
    Sits above the service grid because it is the faster route to the same
    place, and the grid stays there for anything that is not a common shape. */

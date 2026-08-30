@@ -128,6 +128,55 @@ const VERDICT_STYLE = {
   bad: { bg: '#FDECEA', color: '#C0392B' },
 };
 
+/*
+ * What it costs to win a contract is a thing Renovo measures and this page
+ * does not. Three hours is a starting point, not a fact, so the assumption is
+ * a control rather than a constant -- and the figures below restate it, so a
+ * break-even is never read as more precise than the input it came from.
+ */
+const ACQ_KEY = 'renovo.acquisition.v1';
+const ACQ_DEFAULTS = { bidHours: 3, onboardingMultiplier: 1.5 };
+
+function loadAcquisition() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ACQ_KEY) || 'null');
+    if (saved && Number.isFinite(Number(saved.bidHours))) {
+      return {
+        bidHours: Number(saved.bidHours),
+        onboardingMultiplier: Number(saved.onboardingMultiplier) || ACQ_DEFAULTS.onboardingMultiplier,
+      };
+    }
+  } catch (e) { /* private browsing */ }
+  return { ...ACQ_DEFAULTS };
+}
+
+function saveAcquisition() {
+  const bid = Number(document.getElementById('acqBidHours').value);
+  const onb = Number(document.getElementById('acqOnboarding').value);
+  const next = {
+    bidHours: Number.isFinite(bid) && bid >= 0 ? bid : ACQ_DEFAULTS.bidHours,
+    onboardingMultiplier: Number.isFinite(onb) && onb >= 1 ? onb : ACQ_DEFAULTS.onboardingMultiplier,
+  };
+  try { localStorage.setItem(ACQ_KEY, JSON.stringify(next)); } catch (e) { /* private browsing */ }
+  load();
+}
+
+function acquisitionControls(used) {
+  return `
+    <div class="acq-box">
+      <span class="acq-label">What it costs to win one</span>
+      <label>Bid time
+        <input type="number" id="acqBidHours" min="0" step="0.5" value="${used.bidHours}" onchange="saveAcquisition()"> hrs
+      </label>
+      <label>First visit runs
+        <input type="number" id="acqOnboarding" min="1" step="0.1" value="${used.onboardingMultiplier}" onchange="saveAcquisition()">&times; longer
+      </label>
+      <span class="acq-note">Your numbers, not ours. Every figure in this table moves with them.</span>
+    </div>`;
+}
+
+let ACQ_USED = { ...ACQ_DEFAULTS };
+
 function contractSection(jobs) {
   const rows = jobs.filter(j => j.contract);
   if (!rows.length) return '';
@@ -176,6 +225,7 @@ function contractSection(jobs) {
       anything, so the number that matters is not the visit margin &mdash; it is how long the client has to stay
       for the contract to have been worth signing. Slowest to repay first.
     </p>
+    ${acquisitionControls(ACQ_USED)}
     <div class="prof-scroll">
       <table class="dash-table">
         <thead><tr>
@@ -197,7 +247,9 @@ async function load() {
   const content = document.getElementById('content');
   let data;
   try {
-    const res = await adminFetch('/api/admin/profitability');
+    const a = loadAcquisition();
+    const res = await adminFetch('/api/admin/profitability?bidHours=' + a.bidHours
+      + '&onboardingMultiplier=' + a.onboardingMultiplier);
     if (!res.ok) { content.innerHTML = '<div class="empty-state">Could not load the report.</div>'; return; }
     data = await res.json();
   } catch (err) {
@@ -210,6 +262,7 @@ async function load() {
     return;
   }
 
+  ACQ_USED = data.acquisitionUsed || { ...ACQ_DEFAULTS };
   const t = data.totals;
   const card = (label, value, color) => `
     <div class="doc-card" style="margin:0; padding:20px;">
