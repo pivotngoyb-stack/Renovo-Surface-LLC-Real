@@ -76,6 +76,13 @@ export const estimateLineItems = pgTable('estimate_line_items', {
   finalPrice: numeric('final_price'),
   estimatedDurationHours: numeric('estimated_duration_hours'),
   estimatedProductCost: numeric('estimated_product_cost'),
+  // Subcontracted work is costed against the sub's invoice, not Renovo's crew.
+  // First-class columns rather than another key inside calculatorInputs,
+  // because "which jobs did I sub out, and what did they cost me" is a real
+  // query and a JSON text blob is the wrong place to answer it from.
+  subcontracted: boolean('subcontracted').notNull().default(false),
+  subcontractorCost: numeric('subcontractor_cost'),
+  subcontractCoordinationPct: numeric('subcontract_coordination_pct'),
 })
 
 export const workOrders = pgTable('work_orders', {

@@ -146,6 +146,9 @@ export default async (request: Request) => {
         finalPrice: item.finalPrice != null ? String(item.finalPrice) : null,
         estimatedDurationHours: item.estimatedDurationHours != null ? String(item.estimatedDurationHours) : null,
         estimatedProductCost: item.estimatedProductCost != null ? String(item.estimatedProductCost) : null,
+        subcontracted: Boolean(item.subcontracted),
+        subcontractorCost: item.subcontractorCost != null ? String(item.subcontractorCost) : null,
+        subcontractCoordinationPct: item.subcontractCoordinationPct != null ? String(item.subcontractCoordinationPct) : null,
       })),
     )
 
