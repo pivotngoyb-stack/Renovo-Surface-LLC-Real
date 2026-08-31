@@ -126,6 +126,15 @@ async function load() {
     ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${estimate.notes}</p>` : ''}
     ${estimate.validUntil ? `<p style="color:#4A5A72;"><strong>Valid Until:</strong> ${estimate.validUntil}</p>` : ''}
 
+    <h3 style="margin:28px 0 6px;">What the client sees</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
+      Preview opens the proposal exactly as they will read it, without recording a view or notifying you.
+      The client link is the real one &mdash; opening that counts as them reading it.
+    </p>
+    <p>
+      <a href="${estimateLink}&preview=1" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;">Preview as the client</a>
+      <a href="/api/proposal/${estimate.token}/pdf?view=1" target="_blank" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); margin-left:8px; text-decoration:none;">Preview the PDF</a>
+    </p>
     <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${estimateLink}" target="_blank">${estimateLink}</a></p>
 
     <p style="margin-top:10px;">

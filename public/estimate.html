@@ -28,7 +28,10 @@ function proposalNumber(id) {
 
 async function load() {
   if (!token) { showError('Missing proposal link.'); return; }
-  const res = await fetch(`/api/estimate/${token}`);
+  // ?preview=1 is passed straight through; the server only honours it for an
+  // admin session, so a client following a shared link sees the real thing.
+  const wantPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+  const res = await fetch(`/api/estimate/${token}` + (wantPreview ? '?preview=1' : ''));
   if (!res.ok) { showError('This proposal could not be found.'); return; }
   const data = await res.json();
   render(data);
@@ -284,7 +287,7 @@ function registrationHtml(gov) {
 }
 
 function render(data) {
-  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, deposit, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, deposit, preview, signature, expiresOn, expired } = data;
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -353,6 +356,16 @@ function render(data) {
 
   /* ---------- action state ---------- */
   let actionsHtml = '';
+
+  /*
+   * A preview shows the document exactly as the client will read it, with the
+   * things only a client should do turned off. Seeing the real buttons greyed
+   * is more useful than hiding them: what Renovo is checking is the page the
+   * client gets, and the buttons are part of it.
+   */
+  if (preview) {
+    document.body.classList.add('is-preview');
+  }
   if (estimate.status === 'approved') {
     actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p><strong>This proposal has been accepted.</strong> We will contact you within 2 hours to confirm your service date. Thank you for choosing Renovo Surface Solutions.</p></div>`;
   } else if (expired) {
@@ -361,9 +374,44 @@ function render(data) {
     actionsHtml = `<div class="state-banner"><p>You requested changes on this proposal. We'll follow up with you directly.</p></div>`;
   } else {
     actionsHtml = `
+      <div class="sign-box no-print">
+        <h4>Accept this proposal</h4>
+        <p class="sign-intro">Sign below to accept. This is a legally binding electronic signature, and a copy is kept with the proposal.</p>
+
+        <div class="sign-fields">
+          <div class="field-group">
+            <label for="signName">Your full name</label>
+            <input type="text" id="signName" placeholder="As it should appear on the acceptance" autocomplete="name">
+          </div>
+          <div class="field-group">
+            <label for="signTitle">Title <span class="sign-optional">(optional)</span></label>
+            <input type="text" id="signTitle" placeholder="e.g. Facilities Manager">
+          </div>
+        </div>
+
+        <div class="sign-tabs">
+          <button type="button" class="sign-tab is-active" id="tabDraw" onclick="signTab('draw')">Draw it</button>
+          <button type="button" class="sign-tab" id="tabType" onclick="signTab('type')">Type it</button>
+        </div>
+
+        <div id="panelDraw" class="sign-panel is-active">
+          <canvas id="signCanvas" class="sign-canvas" width="620" height="150"></canvas>
+          <button type="button" class="sign-clear" onclick="clearSignature()">Clear</button>
+        </div>
+        <div id="panelType" class="sign-panel">
+          <input type="text" id="signTyped" class="sign-typed" placeholder="Type your name to sign">
+        </div>
+
+        <label class="sign-consent">
+          <input type="checkbox" id="signConsent">
+          <span>I agree that typing or drawing my name above is my electronic signature, and that it is as binding as a signature on paper.</span>
+        </label>
+      </div>
+
+      ${preview ? '<p class="preview-hint no-print">The client signs and accepts here. Disabled in preview so it cannot be accepted on their behalf.</p>' : ''}
       <div class="doc-actions no-print">
-        <button class="btn btn-primary" onclick="respond('approve')">Accept This Proposal</button>
-        <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;" onclick="respond('decline')">Request Changes</button>
+        <button class="btn btn-primary"${preview ? ' disabled' : ''} onclick="respond('approve')">Accept This Proposal</button>
+        <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;"${preview ? ' disabled' : ''} onclick="respond('decline')">Request Changes</button>
       </div>
       <p class="no-print" style="text-align:center; color:#4A5A72; font-size:0.85rem; margin-top:14px;">Questions? Call <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a></p>
       <p id="respondError" class="error-text no-print" style="text-align:center;"></p>
@@ -375,7 +423,15 @@ function render(data) {
     ? coverPageHtml({ company: profile, client, estimate, issuedDate, expiresDate, government, siteLine })
     : '';
 
+  const previewBanner = preview ? `
+    <div class="preview-bar no-print">
+      <strong>Preview</strong>
+      <span>This is exactly what ${esc(client?.name || 'your client')} will see. Nothing here is recorded &mdash; opening this does not count as the client viewing it.</span>
+      <a href="/admin/estimate-detail.html?id=${estimate.id}">Back to the estimate</a>
+    </div>` : '';
+
   document.getElementById('content').innerHTML = `
+    ${previewBanner}
     ${coverHtml}
     <div class="doc-card" style="max-width:840px;">
       <div class="est-header">
@@ -448,10 +504,22 @@ function render(data) {
             Payment terms, cancellation terms and the full service agreement are presented with the work order for signature.
           </p>
           ${estimate.notes ? `<p style="color:#4A5A72; font-size:0.88rem; margin-top:12px;"><strong>Notes:</strong> ${esc(estimate.notes)}</p>` : ''}
+          ${signature ? `
+            <div class="prop-signed">
+              <div class="prop-signed-mark">
+                ${signature.signatureType === 'drawn'
+                  ? `<img src="${signature.signatureData}" alt="Signature of ${esc(signature.signerName)}">`
+                  : `<span class="prop-signed-typed">${esc(signature.signatureData)}</span>`}
+              </div>
+              <div class="prop-signed-meta">
+                <strong>${esc(signature.signerName)}</strong>${signature.signerTitle ? `, ${esc(signature.signerTitle)}` : ''}<br>
+                Accepted ${fmtDate(new Date(signature.signedAt))}
+              </div>
+            </div>` : `
           <div class="prop-accept-grid">
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">Authorized Signature</div></div>
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">Date</div></div>
-          </div>
+          </div>`}
           <div class="prop-accept-grid" style="margin-top:20px;">
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">Print Name &amp; Title</div></div>
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">PO / Reference</div></div>
@@ -471,13 +539,136 @@ function render(data) {
       ${actionsHtml}
     </div>
   `;
+
+  // The canvas only exists once the document above has been written, and it
+  // needs its backing store sized to the width it actually rendered at.
+  initSignaturePad();
+}
+
+/* ---------- Signature capture ----------
+ *
+ * Draw or type, the same two options the work order offers, because a client
+ * on a phone can draw and a client on a desktop would rather type. The canvas
+ * is sized to its rendered width so the stroke lands under the finger rather
+ * than offset by the scale factor.
+ *
+ * This is a second implementation of the pad that work-order.html already has.
+ * Unifying them means touching a signing flow that is already producing signed
+ * records, which is not a change to fold into this one.
+ */
+let signMode = 'draw';
+let signDrawn = false;
+
+function signTab(mode) {
+  signMode = mode;
+  document.getElementById('tabDraw').classList.toggle('is-active', mode === 'draw');
+  document.getElementById('tabType').classList.toggle('is-active', mode === 'type');
+  document.getElementById('panelDraw').classList.toggle('is-active', mode === 'draw');
+  document.getElementById('panelType').classList.toggle('is-active', mode === 'type');
+}
+
+function initSignaturePad() {
+  const canvas = document.getElementById('signCanvas');
+  if (!canvas) return;
+
+  // Match the backing store to the rendered size, or strokes land offset.
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * ratio);
+  canvas.height = Math.round(rect.height * ratio);
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0D1F38';
+
+  let drawing = false;
+
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  };
+
+  const start = (e) => {
+    e.preventDefault();
+    drawing = true;
+    signDrawn = true;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  const move = (e) => {
+    if (!drawing) return;
+    e.preventDefault();
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+  const end = () => { drawing = false; };
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function clearSignature() {
+  const canvas = document.getElementById('signCanvas');
+  if (!canvas) return;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  signDrawn = false;
+}
+
+function signError(msg) {
+  const el = document.getElementById('respondError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+  return null;
+}
+
+/** The signature as the server wants it, or null with the reason shown. */
+function collectSignature() {
+  const name = (document.getElementById('signName')?.value || '').trim();
+  if (!name) return signError('Please enter your name as it should appear on the acceptance.');
+  if (!document.getElementById('signConsent')?.checked) {
+    return signError('Please confirm you agree to sign electronically.');
+  }
+
+  if (signMode === 'type') {
+    const typed = (document.getElementById('signTyped')?.value || '').trim();
+    if (!typed) return signError('Please type your name to sign.');
+    return { signatureType: 'typed', signatureData: typed };
+  }
+
+  if (!signDrawn) return signError('Please draw your signature in the box.');
+  return { signatureType: 'drawn', signatureData: document.getElementById('signCanvas').toDataURL('image/png') };
 }
 
 async function respond(action) {
+  let payload = { action };
+
+  // Declining needs no signature -- a client asking for changes has not agreed
+  // to anything, and demanding a signature to say no would be absurd.
+  if (action === 'approve') {
+    const sig = collectSignature();
+    if (!sig) return;
+    payload = {
+      action,
+      signerName: (document.getElementById('signName').value || '').trim(),
+      signerTitle: (document.getElementById('signTitle')?.value || '').trim() || undefined,
+      consentConfirmed: true,
+      ...sig,
+    };
+  }
+
   const res = await fetch(`/api/estimate/${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action })
+    body: JSON.stringify(payload)
   });
   if (res.ok) {
     load();

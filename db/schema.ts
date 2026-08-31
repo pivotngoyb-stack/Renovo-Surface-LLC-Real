@@ -253,6 +253,29 @@ export const workOrderPhotos = pgTable('work_order_photos', {
  * sold. Sharing one table would have meant making work_order_id nullable on a
  * table that already holds live rows, to save a handful of duplicated columns.
  */
+/**
+ * A client signing acceptance of a proposal.
+ *
+ * Kept separate from the work-order signatures table for the same reason the
+ * photos are: that table has work_order_id NOT NULL and holds live rows, and
+ * making it nullable to save a handful of duplicated columns is not worth
+ * touching a legally significant record for.
+ *
+ * The proposal already printed 'Accepted by (signature)' while the web page
+ * offered only a button. This is what makes the two agree.
+ */
+export const estimateSignatures = pgTable('estimate_signatures', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  signerName: text('signer_name').notNull(),
+  signerTitle: text('signer_title'),
+  signatureType: signatureTypeEnum('signature_type').notNull(),
+  signatureData: text('signature_data').notNull(),
+  consentConfirmed: boolean('consent_confirmed').notNull().default(false),
+  ipAddress: text('ip_address'),
+  signedAt: timestamp('signed_at').defaultNow().notNull(),
+})
+
 export const estimatePhotos = pgTable('estimate_photos', {
   id: serial('id').primaryKey(),
   estimateId: integer('estimate_id').notNull().references(() => estimates.id),

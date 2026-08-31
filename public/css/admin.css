@@ -627,6 +627,140 @@ body.admin-body {
   .attn-action { margin-left: 19px; }
 }
 
+/* ---------- Accepting a proposal ----------
+   The client signs here. Sized generously because most of these are signed on
+   a phone with a thumb, and a cramped pad produces a signature nobody would
+   recognise as theirs. */
+.sign-box {
+  border: 1.5px solid #DCE4EF;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 26px;
+  background: var(--off-white);
+}
+.sign-box h4 {
+  margin: 0 0 4px;
+  font-family: var(--font-head);
+  font-size: 1rem;
+  color: var(--navy);
+}
+.sign-intro { margin: 0 0 16px; font-size: 0.85rem; color: #4A5A72; line-height: 1.55; }
+
+.sign-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.sign-fields .field-group { margin-bottom: 14px; }
+.sign-optional { color: #8A98AC; font-weight: 400; }
+
+.sign-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+.sign-tab {
+  padding: 7px 14px;
+  border: 1.5px solid #DCE4EF;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-family: var(--font-head);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #4A5A72;
+  cursor: pointer;
+}
+.sign-tab.is-active { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+.sign-panel { display: none; }
+.sign-panel.is-active { display: block; }
+
+.sign-canvas {
+  width: 100%;
+  height: 150px;
+  background: #fff;
+  border: 1.5px dashed #C6D3E4;
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  cursor: crosshair;
+  display: block;
+}
+.sign-clear {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1B5FA8;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.sign-typed {
+  width: 100%;
+  padding: 16px 14px;
+  border: 1.5px solid #DCE4EF;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-family: 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: 1.7rem;
+  color: var(--navy);
+}
+
+.sign-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0 0;
+  font-size: 0.82rem;
+  color: #4A5A72;
+  line-height: 1.5;
+}
+.sign-consent input { width: auto; margin: 3px 0 0; flex: none; }
+
+/* The signature, once given, printed on the document itself. */
+.prop-signed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 18px 32px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #EEF2F8;
+}
+.prop-signed-mark {
+  min-width: 220px;
+  border-bottom: 1px solid var(--navy);
+  padding-bottom: 6px;
+}
+.prop-signed-mark img { max-height: 70px; max-width: 100%; display: block; }
+.prop-signed-typed {
+  font-family: 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: 1.9rem;
+  color: var(--navy);
+  line-height: 1.1;
+}
+.prop-signed-meta { font-size: 0.84rem; color: #4A5A72; line-height: 1.5; }
+.prop-signed-meta strong { color: var(--navy); }
+
+@media (max-width: 620px) {
+  .sign-fields { grid-template-columns: 1fr; }
+}
+
+/* ---------- Preview bar ----------
+   Deliberately loud and fixed to the top. Mistaking a preview for the real
+   document, or the reverse, is the whole risk this feature introduces. */
+.preview-bar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  background: #0D1F38; color: #E8EEF6;
+  padding: 11px 18px; margin-bottom: 18px; border-radius: var(--radius-sm);
+  font-size: 0.85rem; line-height: 1.5;
+}
+.preview-bar strong {
+  background: #E8A317; color: #0D1F38; border-radius: 4px;
+  padding: 2px 9px; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.preview-bar span { flex: 1; min-width: 240px; color: #B9C7DA; }
+.preview-bar a { color: #7FB4F5; white-space: nowrap; }
+
+.preview-hint {
+  text-align: center; font-size: 0.82rem; color: #8A98AC; margin: 0 0 10px;
+}
+.is-preview .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
 /* ---------- Deposit split on the proposal ---------- */
 .prop-deposit {
   margin-top: 14px; padding: 14px 16px;
