@@ -71,16 +71,31 @@ function button(label: string, url: string): string {
   return `<a href="${url}" style="display:inline-block; background:#1B7FE8; color:#ffffff; text-decoration:none; font-weight:bold; padding:14px 28px; border-radius:999px; margin-top:16px;">${label}</a>`
 }
 
-export async function sendEstimateToClient(clientEmail: string, clientName: string, token: string) {
+/**
+ * The proposal, as a link and as a file.
+ *
+ * The link is how most clients will read it and how they accept. The
+ * attachment is for the ones who cannot use a link: a procurement officer
+ * forwarding a bid to a committee, or a portal that wants a document uploaded.
+ * Sending only a link quietly excludes exactly the buyers worth winning.
+ */
+export async function sendEstimateToClient(
+  clientEmail: string,
+  clientName: string,
+  token: string,
+  pdf?: { filename: string; bytes: Uint8Array } | null,
+) {
   const url = `${SITE_URL}/estimate.html?t=${token}`
   await sendEmail({
     to: clientEmail,
-    subject: 'Your Estimate from Renovo Surface Solutions',
+    subject: 'Your Proposal from Renovo Surface Solutions',
     html: wrapper(`
       <h2 style="color:#0D1F38; margin-top:0;">Hi ${clientName},</h2>
-      <p style="color:#4A5A72; line-height:1.6;">Your estimate from Renovo Surface Solutions is ready to view. Click below to see the details and approve it whenever you're ready.</p>
-      ${button('View Your Estimate', url)}
+      <p style="color:#4A5A72; line-height:1.6;">Your proposal from Renovo Surface Solutions is ready. Click below to read the full scope and accept it whenever you're ready.</p>
+      ${button('View Your Proposal', url)}
+      ${pdf ? `<p style="color:#8A98AC; line-height:1.6; font-size:14px;">A PDF copy is attached for your records, or to forward to whoever needs it.</p>` : ''}
     `),
+    attachments: pdf ? [{ filename: pdf.filename, content: Buffer.from(pdf.bytes).toString('base64') }] : undefined,
   })
 }
 

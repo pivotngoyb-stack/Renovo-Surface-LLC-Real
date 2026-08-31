@@ -4,6 +4,7 @@ import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { sendEstimateToClient } from './_shared/email.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { buildProposalPdf, proposalFilename } from './_shared/proposalDocument.mts'
 
 export default async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
@@ -19,9 +20,22 @@ export default async (request: Request, context: Context) => {
   if (!client) return notFound()
 
   await db.update(schema.estimates).set({ status: 'sent', updatedAt: new Date() }).where(eq(schema.estimates.id, id))
-  await sendEstimateToClient(client.email, client.name, estimate.token)
 
-  return json({ ok: true })
+  /*
+   * The PDF is a nice-to-have on top of the link, so a failure to render it
+   * must not stop the proposal going out. A client with a working link and no
+   * attachment can still read and accept; a client with no email at all cannot.
+   */
+  let pdf: { filename: string; bytes: Uint8Array } | null = null
+  try {
+    pdf = { filename: proposalFilename(estimate.id), bytes: await buildProposalPdf(estimate, client) }
+  } catch (err) {
+    console.error(`[admin-estimate-send] could not build the PDF for estimate ${id}`, err)
+  }
+
+  await sendEstimateToClient(client.email, client.name, estimate.token, pdf)
+
+  return json({ ok: true, pdfAttached: pdf != null })
 }
 
 export const config = {

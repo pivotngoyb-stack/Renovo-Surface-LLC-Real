@@ -99,14 +99,22 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 class Doc {
   page: PDFPage
   y = PAGE_H - M
+
+  // Assigned in the body rather than declared as constructor parameter
+  // properties: esbuild compiles those, but Node's strip-only TypeScript does
+  // not, and that would make this the one shared module in the project that
+  // cannot be imported and tested without a build step.
+  pdf: PDFDocument
+  font: PDFFont
+  bold: PDFFont
+  private footerLine: string
   private n = 1
 
-  constructor(
-    readonly pdf: PDFDocument,
-    readonly font: PDFFont,
-    readonly bold: PDFFont,
-    private footerLine: string,
-  ) {
+  constructor(pdf: PDFDocument, font: PDFFont, bold: PDFFont, footerLine: string) {
+    this.pdf = pdf
+    this.font = font
+    this.bold = bold
+    this.footerLine = footerLine
     this.page = pdf.addPage([PAGE_W, PAGE_H])
     this.footer()
   }
