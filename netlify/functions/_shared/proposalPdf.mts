@@ -1,31 +1,40 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 
 /**
- * The proposal as a PDF.
+ * The proposal as a PDF, in Renovo's document house style.
  *
  * The web proposal already prints, and browser print-to-PDF is fine for a
  * client who just wants a copy. It is not fine for a procurement portal, which
- * wants a file uploaded, or for a contracting officer who forwards attachments
+ * wants a file uploaded, or a contracting officer who forwards attachments
  * rather than links. A bid that cannot be submitted in the form the buyer asks
  * for is non-responsive regardless of what it says.
  *
- * Content comes from the same shared helpers the HTML proposal uses --
+ * Laid out to match the invoice template Renovo already sends: wordmark left
+ * and document type right, a right-aligned meta stack under it with a coloured
+ * status line, two labelled columns, then a navy-headed table with striped
+ * rows. A client who has had an invoice from Renovo should recognise this page
+ * as coming from the same company.
+ *
+ * Content comes from the same shared helpers the HTML proposal calls --
  * buildProposalScope, contractValue, executiveSummary. Only the rendering is
  * duplicated. Rebuilding the content here is how the two documents would come
- * to say different things about the same job.
+ * to describe different jobs.
  */
 
-const PAGE_WIDTH = 612
-const PAGE_HEIGHT = 792
-const MARGIN = 54
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
-const BOTTOM = 64
+const PAGE_W = 612
+const PAGE_H = 792
+const M = 54
+const W = PAGE_W - M * 2
+const BOTTOM = 60
 
-const NAVY = rgb(0.051, 0.122, 0.22)
-const GRAY = rgb(0.29, 0.35, 0.45)
-const LIGHT = rgb(0.54, 0.6, 0.68)
-const LINE = rgb(0.87, 0.9, 0.95)
-const RULE = rgb(0.79, 0.84, 0.9)
+const NAVY = rgb(0.078, 0.145, 0.263)
+const HEAD_BAR = rgb(0.106, 0.176, 0.298)
+const INK = rgb(0.267, 0.290, 0.325)
+const MUTED = rgb(0.53, 0.57, 0.63)
+const LABEL = rgb(0.106, 0.451, 0.325)
+const STRIPE = rgb(0.961, 0.969, 0.976)
+const HAIR = rgb(0.867, 0.886, 0.910)
+const AMBER = rgb(0.769, 0.365, 0.055)
 
 const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
 
@@ -46,135 +55,135 @@ const money = (n: number) =>
   '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /**
- * A cursor that knows when to break the page.
- *
- * pdf-lib draws at absolute coordinates and has no notion of flow, so a
- * document with variable-length scope lists needs this or it silently writes
- * text off the bottom edge -- which looks fine in code and loses a paragraph in
- * the file a client opens.
+ * The standard PDF fonts are WinAnsi and throw outright on anything outside it.
+ * The scope library is full of em dashes and curly quotes, so every string is
+ * folded to ASCII before it reaches pdf-lib.
  */
-class Layout {
-  page: PDFPage
-  y: number
-  private pageNo = 1
-
-  constructor(
-    private doc: PDFDocument,
-    private font: PDFFont,
-    private bold: PDFFont,
-    private footerText: string,
-  ) {
-    this.page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-    this.y = PAGE_HEIGHT - MARGIN
-    this.footer()
-  }
-
-  private footer() {
-    this.page.drawText(this.footerText, {
-      x: MARGIN, y: 36, size: 7.5, font: this.font, color: LIGHT,
-    })
-    const label = `Page ${this.pageNo}`
-    this.page.drawText(label, {
-      x: PAGE_WIDTH - MARGIN - this.font.widthOfTextAtSize(label, 7.5),
-      y: 36, size: 7.5, font: this.font, color: LIGHT,
-    })
-  }
-
-  /** Start a new sheet. */
-  break() {
-    this.pageNo += 1
-    this.page = this.doc.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-    this.y = PAGE_HEIGHT - MARGIN
-    this.footer()
-  }
-
-  /** Break if the next block will not fit whole. */
-  need(height: number) {
-    if (this.y - height < BOTTOM) this.break()
-  }
-
-  gap(h: number) {
-    this.y -= h
-  }
-
-  text(s: string, opts: { size?: number; bold?: boolean; color?: typeof NAVY; indent?: number; leading?: number } = {}) {
-    const size = opts.size ?? 9.5
-    const font = opts.bold ? this.bold : this.font
-    const indent = opts.indent ?? 0
-    const leading = opts.leading ?? size * 1.45
-    for (const line of wrap(s, font, size, CONTENT_WIDTH - indent)) {
-      this.need(leading)
-      this.page.drawText(line, {
-        x: MARGIN + indent, y: this.y - size, size, font, color: opts.color ?? GRAY,
-      })
-      this.y -= leading
-    }
-  }
-
-  heading(num: string, title: string) {
-    // Keep the heading with at least the first line under it.
-    this.need(42)
-    this.gap(10)
-    this.page.drawText(num, { x: MARGIN, y: this.y - 11, size: 11, font: this.bold, color: LIGHT })
-    this.page.drawText(title, {
-      x: MARGIN + this.bold.widthOfTextAtSize(num, 11) + 8,
-      y: this.y - 11, size: 11, font: this.bold, color: NAVY,
-    })
-    this.y -= 17
-    this.page.drawLine({
-      start: { x: MARGIN, y: this.y }, end: { x: PAGE_WIDTH - MARGIN, y: this.y },
-      thickness: 1, color: RULE,
-    })
-    this.y -= 11
-  }
-
-  bullet(s: string, marker = '•') {
-    const size = 9
-    const indent = 14
-    const lines = wrap(s, this.font, size, CONTENT_WIDTH - indent)
-    this.need(lines.length * size * 1.4)
-    lines.forEach((line, i) => {
-      if (i === 0) {
-        this.page.drawText(marker, { x: MARGIN + 2, y: this.y - size, size, font: this.font, color: LIGHT })
-      }
-      this.page.drawText(line, { x: MARGIN + indent, y: this.y - size, size, font: this.font, color: GRAY })
-      this.y -= size * 1.4
-    })
-  }
-}
-
-function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  // pdf-lib's standard fonts are WinAnsi and throw on characters outside it,
-  // which an em dash or a curly quote in scope text will happily provide.
-  const safe = String(text)
+function ascii(text: string): string {
+  return String(text ?? '')
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, '-')
     .replace(/•/g, '-')
     .replace(/ /g, ' ')
-    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/…/g, '...')
+    .replace(/[^\x20-\x7E\n]/g, '')
+}
 
+function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = []
-  for (const para of safe.split('\n')) {
-    let current = ''
+  for (const para of ascii(text).split('\n')) {
+    let line = ''
     for (const word of para.split(/\s+/).filter(Boolean)) {
-      const trial = current ? `${current} ${word}` : word
-      if (font.widthOfTextAtSize(trial, size) > maxWidth && current) {
-        out.push(current)
-        current = word
+      const trial = line ? `${line} ${word}` : word
+      if (font.widthOfTextAtSize(trial, size) > maxWidth && line) {
+        out.push(line)
+        line = word
       } else {
-        current = trial
+        line = trial
       }
     }
-    out.push(current)
+    out.push(line)
   }
   return out.length ? out : ['']
+}
+
+/**
+ * A cursor that knows when to break.
+ *
+ * pdf-lib draws at absolute coordinates and has no notion of flow, so a
+ * document with variable-length scope lists needs this or it writes text off
+ * the bottom edge -- which looks correct in code and loses a paragraph in the
+ * file the client opens.
+ */
+class Doc {
+  page: PDFPage
+  y = PAGE_H - M
+  private n = 1
+
+  constructor(
+    readonly pdf: PDFDocument,
+    readonly font: PDFFont,
+    readonly bold: PDFFont,
+    private footerLine: string,
+  ) {
+    this.page = pdf.addPage([PAGE_W, PAGE_H])
+    this.footer()
+  }
+
+  private footer() {
+    const t = ascii(this.footerLine)
+    this.page.drawText(t, {
+      x: (PAGE_W - this.font.widthOfTextAtSize(t, 7.5)) / 2,
+      y: 34, size: 7.5, font: this.font, color: MUTED,
+    })
+  }
+
+  newPage() {
+    this.n += 1
+    this.page = this.pdf.addPage([PAGE_W, PAGE_H])
+    this.y = PAGE_H - M
+    this.footer()
+  }
+
+  need(h: number) {
+    if (this.y - h < BOTTOM) this.newPage()
+  }
+
+  gap(h: number) { this.y -= h }
+
+  right(text: string, y: number, size: number, font: PDFFont, color = INK, rightEdge = PAGE_W - M) {
+    const t = ascii(text)
+    this.page.drawText(t, { x: rightEdge - font.widthOfTextAtSize(t, size), y, size, font, color })
+  }
+
+  /** Small-caps green section label, the way the invoices mark their blocks. */
+  label(text: string) {
+    this.need(26)
+    this.gap(6)
+    this.page.drawText(ascii(text).toUpperCase(), {
+      x: M, y: this.y - 8, size: 7.5, font: this.bold, color: LABEL,
+    })
+    this.y -= 17
+  }
+
+  body(text: string, opts: { size?: number; color?: typeof INK; indent?: number; font?: PDFFont } = {}) {
+    const size = opts.size ?? 8.6
+    const font = opts.font ?? this.font
+    const indent = opts.indent ?? 0
+    const lead = size * 1.5
+    for (const line of wrap(text, font, size, W - indent)) {
+      this.need(lead)
+      this.page.drawText(line, { x: M + indent, y: this.y - size, size, font, color: opts.color ?? INK })
+      this.y -= lead
+    }
+  }
+
+  bullet(text: string) {
+    const size = 8.4
+    const indent = 13
+    const lines = wrap(text, this.font, size, W - indent)
+    this.need(lines.length * size * 1.45 + 2)
+    lines.forEach((line, i) => {
+      if (i === 0) this.page.drawText('-', { x: M + 3, y: this.y - size, size, font: this.font, color: MUTED })
+      this.page.drawText(line, { x: M + indent, y: this.y - size, size, font: this.font, color: INK })
+      this.y -= size * 1.45
+    })
+  }
+
+  rule(color = HAIR, thickness = 1) {
+    this.page.drawLine({
+      start: { x: M, y: this.y }, end: { x: PAGE_W - M, y: this.y },
+      thickness, color,
+    })
+  }
 }
 
 export interface ProposalPdfArgs {
   proposalNumber: string
   issuedDate: string
   expiresDate: string
+  statusLine: string
   walkthroughDate?: string | null
   solicitationNumber?: string | null
   company: {
@@ -201,273 +210,269 @@ export interface ProposalPdfArgs {
   optionalTotal: number
   contract?: { hasRecurring: boolean; monthlyAverage: number; annualRecurring: number; oneTimeTotal: number; firstYearTotal: number } | null
   notes?: string | null
+  paymentTerms: string[]
 }
 
 export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Array> {
-  const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
 
-  doc.setTitle(`${a.proposalNumber} - ${a.projectName}`)
-  doc.setAuthor(a.company.legalName)
-  doc.setSubject('Commercial cleaning services proposal')
-  doc.setProducer(a.company.legalName)
+  pdf.setTitle(ascii(`${a.proposalNumber} - ${a.projectName}`))
+  pdf.setAuthor(ascii(a.company.legalName))
+  pdf.setSubject('Commercial cleaning services proposal')
 
-  const footerText = `${a.company.legalName}  |  ${a.proposalNumber}  |  ${a.company.phone}`
-
-  /* ---------- cover ---------- */
-  const cover = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-  let cy = PAGE_HEIGHT - MARGIN
-
-  const logo = await logoBytes()
-  if (logo) {
-    try {
-      const img = await doc.embedPng(logo)
-      const w = 46
-      const h = (img.height / img.width) * w
-      cover.drawImage(img, { x: MARGIN, y: cy - h, width: w, height: h })
-      cover.drawText(a.company.legalName, { x: MARGIN + w + 12, y: cy - 18, size: 13, font: bold, color: NAVY })
-      cover.drawText(a.company.tagline, { x: MARGIN + w + 12, y: cy - 32, size: 8.5, font, color: LIGHT })
-      cy -= h + 8
-    } catch {
-      cover.drawText(a.company.legalName, { x: MARGIN, y: cy - 18, size: 13, font: bold, color: NAVY })
-      cy -= 34
-    }
-  } else {
-    cover.drawText(a.company.legalName, { x: MARGIN, y: cy - 18, size: 13, font: bold, color: NAVY })
-    cy -= 34
-  }
-
-  // Title block, floated down the page the way a cover reads.
-  cy -= 150
-  cover.drawText('PROPOSAL FOR COMMERCIAL CLEANING SERVICES', {
-    x: MARGIN, y: cy, size: 8.5, font: bold, color: LIGHT,
-  })
-  cy -= 30
-  for (const line of wrap(a.projectName, bold, 23, CONTENT_WIDTH)) {
-    cover.drawText(line, { x: MARGIN, y: cy, size: 23, font: bold, color: NAVY })
-    cy -= 28
-  }
-  if (a.siteAddress) {
-    cy -= 4
-    cover.drawText(wrap(a.siteAddress, font, 10.5, CONTENT_WIDTH)[0], {
-      x: MARGIN, y: cy, size: 10.5, font, color: GRAY,
-    })
-    cy -= 16
-  }
-
-  cy -= 40
-  cover.drawLine({ start: { x: MARGIN, y: cy }, end: { x: PAGE_WIDTH - MARGIN, y: cy }, thickness: 2, color: NAVY })
-  cy -= 22
-
-  const colTop = cy
-  const half = CONTENT_WIDTH / 2
-  cover.drawText('PREPARED FOR', { x: MARGIN, y: cy, size: 7.5, font: bold, color: LIGHT })
-  cover.drawText('SUBMITTED BY', { x: MARGIN + half, y: cy, size: 7.5, font: bold, color: LIGHT })
-  cy -= 15
-
-  const left = [a.client?.company, a.client?.name, a.client?.propertyAddress].filter(Boolean) as string[]
-  const right = [
-    a.company.legalName,
-    `${a.company.owner}, ${a.company.ownerTitle}`,
-    a.company.addressLine,
-    `${a.company.city}, ${a.company.state} ${a.company.zip}`,
-    a.company.phone,
-    a.company.email,
-  ]
-  let ly = cy
-  for (const l of left) {
-    for (const line of wrap(l, font, 9.5, half - 16)) {
-      cover.drawText(line, { x: MARGIN, y: ly, size: 9.5, font, color: GRAY })
-      ly -= 13
-    }
-  }
-  let ry = cy
-  for (const r of right) {
-    cover.drawText(wrap(r, font, 9.5, half - 16)[0], { x: MARGIN + half, y: ry, size: 9.5, font, color: GRAY })
-    ry -= 13
-  }
-
-  cy = Math.min(ly, ry) - 26
-  cover.drawLine({ start: { x: MARGIN, y: cy }, end: { x: PAGE_WIDTH - MARGIN, y: cy }, thickness: 1, color: LINE })
-  cy -= 18
-
-  const facts: Array<[string, string]> = [
-    ['Proposal number', a.proposalNumber],
-    ['Date issued', a.issuedDate],
-    ['Valid through', a.expiresDate],
-  ]
-  if (a.walkthroughDate) facts.push(['Site walk-through', a.walkthroughDate])
-  if (a.solicitationNumber) facts.push(['Solicitation', a.solicitationNumber])
-  facts.push(['NAICS', `${a.company.naics} - ${a.company.naicsLabel}`])
-
-  for (const [k, v] of facts) {
-    cover.drawText(k, { x: MARGIN, y: cy, size: 9, font, color: LIGHT })
-    cover.drawText(v, {
-      x: PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize(v, 9),
-      y: cy, size: 9, font: bold, color: NAVY,
-    })
-    cy -= 15
-  }
-
-  cover.drawText(
-    `${a.company.entityType} organised in ${a.company.stateOfFormation}  |  ${a.company.website}`,
-    { x: MARGIN, y: 52, size: 7.5, font, color: LIGHT },
+  const d = new Doc(
+    pdf, font, bold,
+    `${a.company.legalName} - Licensed & Insured in the State of Utah - ${a.company.website}`,
   )
 
-  /* ---------- body ---------- */
-  const L = new Layout(doc, font, bold, footerText)
-  let sectionNo = 0
-  const next = () => `${++sectionNo}.`
+  /* ---------- masthead ---------- */
+  const logo = await logoBytes()
+  let headLeft = M
+  if (logo) {
+    try {
+      const img = await pdf.embedPng(logo)
+      const w = 34
+      const h = (img.height / img.width) * w
+      d.page.drawImage(img, { x: M, y: d.y - h + 4, width: w, height: h })
+      headLeft = M + w + 10
+    } catch { /* fall through to text-only */ }
+  }
 
+  d.page.drawText(ascii(a.company.legalName.toUpperCase()), {
+    x: headLeft, y: d.y - 12, size: 13.5, font: bold, color: NAVY,
+  })
+  d.right('PROPOSAL', d.y - 15, 25, bold, NAVY)
+
+  let ly = d.y - 25
+  for (const line of [a.company.tagline, `${a.company.addressLine}, ${a.company.city}, ${a.company.state} ${a.company.zip}`, `${a.company.email} | ${a.company.phone}`]) {
+    d.page.drawText(wrap(line, font, 7.8, 300)[0], { x: headLeft, y: ly, size: 7.8, font, color: MUTED })
+    ly -= 10.5
+  }
+
+  /* right-hand meta stack, label then bold value, as on the invoices */
+  let my = d.y - 38
+  const meta: Array<[string, string, boolean]> = [
+    ['Proposal No.', a.proposalNumber, true],
+    ['Date Issued', a.issuedDate, false],
+    ['Valid Through', a.expiresDate, true],
+  ]
+  if (a.solicitationNumber) meta.push(['Solicitation', a.solicitationNumber, true])
+  for (const [k, v, strong] of meta) {
+    const vw = (strong ? bold : font).widthOfTextAtSize(ascii(v), 8.4)
+    d.right(v, my, 8.4, strong ? bold : font, strong ? NAVY : INK)
+    d.page.drawText(ascii(k), {
+      x: PAGE_W - M - vw - 6 - font.widthOfTextAtSize(ascii(k), 8.4),
+      y: my, size: 8.4, font, color: MUTED,
+    })
+    my -= 12
+  }
+  d.right(a.statusLine.toUpperCase(), my, 8.4, bold, AMBER)
+
+  d.y = Math.min(ly, my) - 16
+  d.rule()
+  d.y -= 20
+
+  /* ---------- prepared for / job site ---------- */
+  const half = W / 2
+  const colTop = d.y
+  d.page.drawText('PREPARED FOR', { x: M, y: colTop, size: 7.5, font: bold, color: LABEL })
+  d.page.drawText('PROJECT / JOB SITE', { x: M + half, y: colTop, size: 7.5, font: bold, color: LABEL })
+
+  const leftLines = [
+    a.client?.company || a.client?.name || '',
+    a.client?.company && a.client?.name ? `Attn: ${a.client.name}` : '',
+    a.client?.propertyAddress || '',
+    a.client?.email || '',
+  ].filter(Boolean)
+  const rightLines = [
+    a.projectName,
+    a.siteAddress,
+    a.walkthroughDate ? `Site walk-through: ${a.walkthroughDate}` : '',
+  ].filter(Boolean)
+
+  let a1 = colTop - 15
+  for (const l of leftLines) {
+    for (const line of wrap(l, font, 8.6, half - 18)) {
+      d.page.drawText(line, { x: M, y: a1, size: 8.6, font, color: INK })
+      a1 -= 11.5
+    }
+  }
+  let a2 = colTop - 15
+  for (const l of rightLines) {
+    for (const line of wrap(l, font, 8.6, half - 8)) {
+      d.page.drawText(line, { x: M + half, y: a2, size: 8.6, font, color: INK })
+      a2 -= 11.5
+    }
+  }
+  d.y = Math.min(a1, a2) - 18
+
+  /* ---------- what we propose ---------- */
   if (a.summary.length) {
-    L.heading(next(), 'Executive Summary')
-    for (const p of a.summary) {
-      L.text(p)
-      L.gap(5)
+    d.label('What we propose')
+    for (const p of a.summary) { d.body(p); d.gap(3) }
+    d.gap(6)
+  }
+
+  /* ---------- pricing table ---------- */
+  const COL_QTY = PAGE_W - M - 210
+  const COL_RATE = PAGE_W - M - 118
+
+  const tableHead = () => {
+    d.need(46)
+    d.page.drawRectangle({ x: M, y: d.y - 20, width: W, height: 20, color: HEAD_BAR })
+    d.page.drawText('Description', { x: M + 10, y: d.y - 13.5, size: 8, font: bold, color: rgb(1, 1, 1) })
+    d.right('Qty', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_QTY + 46)
+    d.right('Rate', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_RATE + 62)
+    d.right('Amount', d.y - 13.5, 8, bold, rgb(1, 1, 1), PAGE_W - M - 10)
+    d.y -= 20
+  }
+
+  const rows = (items: ProposalPdfArgs['lineItems'], startStriped = false) => {
+    let striped = startStriped
+    for (const li of items) {
+      const amount = Number(li.quantity) * Number(li.unitPrice)
+      const lines = wrap(li.description, font, 8.4, W - 240)
+      const h = Math.max(lines.length * 11.5 + 9, 26)
+      if (d.y - h < BOTTOM) { d.newPage(); tableHead(); }
+      if (striped) {
+        d.page.drawRectangle({ x: M, y: d.y - h, width: W, height: h, color: STRIPE })
+      }
+      let ty = d.y - 14
+      lines.forEach(line => {
+        d.page.drawText(line, { x: M + 10, y: ty, size: 8.4, font, color: INK })
+        ty -= 11.5
+      })
+      const mid = d.y - 14
+      d.right(`${li.quantity} ${ascii(li.unit || 'job')}`, mid, 8.4, font, INK, COL_QTY + 46)
+      d.right(money(Number(li.unitPrice)), mid, 8.4, font, INK, COL_RATE + 62)
+      d.right(money(amount), mid, 8.4, bold, NAVY, PAGE_W - M - 10)
+      d.y -= h
+      striped = !striped
     }
   }
 
-  L.heading(next(), 'Scope of Work')
-  if (a.scope.sections.length) {
-    for (const sec of a.scope.sections) {
-      L.need(30)
-      L.text(sec.label, { bold: true, size: 9.5, color: NAVY })
-      L.gap(2)
-      for (const item of sec.scope) L.bullet(item)
-      L.gap(7)
-    }
-  } else {
-    L.text('Scope as described in the line items below.')
-  }
-
-  /* pricing */
-  L.heading(next(), 'Pricing')
   const base = a.lineItems.filter(li => !li.isOptional)
   const optional = a.lineItems.filter(li => li.isOptional)
 
-  const drawItems = (items: typeof a.lineItems) => {
-    for (const li of items) {
-      const amount = Number(li.quantity) * Number(li.unitPrice)
-      const descLines = wrap(li.description, font, 8.5, CONTENT_WIDTH - 150)
-      L.need(descLines.length * 12 + 6)
-      descLines.forEach((line, i) => {
-        L.page.drawText(line, { x: MARGIN, y: L.y - 8.5, size: 8.5, font, color: GRAY })
-        if (i === 0) {
-          const qty = `${li.quantity} ${li.unit || 'job'}`
-          L.page.drawText(qty, { x: PAGE_WIDTH - MARGIN - 190, y: L.y - 8.5, size: 8.5, font, color: LIGHT })
-          const rate = money(Number(li.unitPrice))
-          L.page.drawText(rate, { x: PAGE_WIDTH - MARGIN - 120, y: L.y - 8.5, size: 8.5, font, color: GRAY })
-          const amt = money(amount)
-          L.page.drawText(amt, {
-            x: PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize(amt, 8.5),
-            y: L.y - 8.5, size: 8.5, font: bold, color: NAVY,
-          })
-        }
-        L.y -= 12
-      })
-      L.gap(3)
-      L.page.drawLine({
-        start: { x: MARGIN, y: L.y + 2 }, end: { x: PAGE_WIDTH - MARGIN, y: L.y + 2 },
-        thickness: 0.5, color: LINE,
-      })
-    }
-  }
-
-  drawItems(base)
-  L.gap(8)
+  d.label('Pricing')
+  tableHead()
+  rows(base)
+  d.gap(14)
 
   const totalRow = (label: string, value: number, strong = false) => {
-    L.need(16)
+    d.need(20)
+    const size = strong ? 11.5 : 8.8
     const f = strong ? bold : font
-    const size = strong ? 11 : 9
-    L.page.drawText(label, {
-      x: PAGE_WIDTH - MARGIN - 230, y: L.y - size, size, font: f, color: strong ? NAVY : GRAY,
-    })
-    const v = money(value)
-    L.page.drawText(v, {
-      x: PAGE_WIDTH - MARGIN - f.widthOfTextAtSize(v, size),
-      y: L.y - size, size, font: f, color: strong ? NAVY : GRAY,
-    })
-    L.y -= size * 1.7
+    d.right(label, d.y - size, size, f, strong ? NAVY : MUTED, PAGE_W - M - 108)
+    d.right(money(value), d.y - size, size, f, strong ? NAVY : INK)
+    d.y -= size * 1.85
   }
 
   totalRow('Subtotal', a.subtotal)
-  if (a.taxApplied) totalRow('Utah Sales Tax (7.25%)', a.taxAmount)
-  totalRow('TOTAL', a.total, true)
+  if (a.taxApplied) totalRow('Sales Tax (7.25%)', a.taxAmount)
+  d.need(14)
+  d.page.drawLine({
+    start: { x: PAGE_W - M - 230, y: d.y + 3 }, end: { x: PAGE_W - M, y: d.y + 3 },
+    thickness: 1.2, color: NAVY,
+  })
+  d.gap(4)
+  totalRow(a.contract?.hasRecurring ? 'Total, Per Visit' : 'Total', a.total, true)
 
   if (a.contract?.hasRecurring) {
-    L.gap(6)
-    L.text('Recurring services, per month (average): ' + money(a.contract.monthlyAverage), { size: 9 })
-    L.text('Annual contract value: ' + money(a.contract.annualRecurring), { size: 9, bold: true, color: NAVY })
-    if (a.contract.oneTimeTotal > 0) {
-      L.text('Total, first year: ' + money(a.contract.firstYearTotal), { size: 9 })
-    }
+    d.gap(2)
+    d.body(`Recurring services average ${money(a.contract.monthlyAverage)} per month. Annual contract value ${money(a.contract.annualRecurring)}.`
+      + (a.contract.oneTimeTotal > 0 ? ` Total for the first year, including one-time work: ${money(a.contract.firstYearTotal)}.` : ''),
+      { size: 8.4, color: MUTED })
   }
 
   if (optional.length) {
-    L.gap(12)
-    L.text('Optional - not included in the total above', { bold: true, size: 9, color: NAVY })
-    L.text('Priced for your consideration. Declining them does not change the price above.', { size: 8.5, color: LIGHT })
-    L.gap(5)
-    drawItems(optional)
-    L.gap(4)
+    d.gap(10)
+    d.label('Optional - not included in the total above')
+    d.body('Priced for your consideration. Declining them does not change the price above.', { size: 8.2, color: MUTED })
+    d.gap(5)
+    tableHead()
+    rows(optional)
+    d.gap(8)
     totalRow('If all options accepted, add', a.optionalTotal)
   }
 
+  /* ---------- scope and the rest ---------- */
+  if (a.scope.sections.length) {
+    d.gap(8)
+    d.label('Scope of work')
+    for (const sec of a.scope.sections) {
+      d.need(30)
+      d.body(sec.label, { font: bold, size: 8.8, color: NAVY })
+      d.gap(1)
+      for (const item of sec.scope) d.bullet(item)
+      d.gap(6)
+    }
+  }
+
   if (a.scope.exclusions.length) {
-    L.heading(next(), 'Exclusions')
-    L.text('The following are not included in the pricing above. Any of them can be quoted separately on request.', { size: 8.5, color: LIGHT })
-    L.gap(5)
-    for (const x of a.scope.exclusions) L.bullet(x)
+    d.label('Not included')
+    d.body('Any of the following can be quoted separately on request.', { size: 8.2, color: MUTED })
+    d.gap(4)
+    for (const x of a.scope.exclusions) d.bullet(x)
+    d.gap(4)
   }
 
   if (a.scope.assumptions.length || a.siteConditions) {
-    L.heading(next(), 'Assumptions & Site Conditions')
+    d.label('What this price assumes')
     if (a.siteConditions) {
-      L.text('Observed at walk-through: ' + a.siteConditions, { size: 9 })
-      L.gap(6)
+      d.body(`Observed at walk-through: ${a.siteConditions}`, { size: 8.4 })
+      d.gap(5)
     }
-    L.text('This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.', { size: 8.5, color: LIGHT })
-    L.gap(5)
-    for (const x of a.scope.assumptions) L.bullet(x)
+    d.body('If any of the following is not true on the service date, we will document it and re-quote before proceeding.', { size: 8.2, color: MUTED })
+    d.gap(4)
+    for (const x of a.scope.assumptions) d.bullet(x)
+    d.gap(4)
   }
 
   if (a.scope.compliance.length) {
-    L.heading(next(), 'Insurance, Compliance & Quality Assurance')
-    for (const x of a.scope.compliance) L.bullet(x)
-    L.gap(5)
-    L.text('If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.', { size: 8.5, color: LIGHT })
+    d.label('Insurance, compliance & our guarantee')
+    for (const x of a.scope.compliance) d.bullet(x)
+    d.gap(3)
+    d.body('If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.',
+      { size: 8.2, color: MUTED })
+    d.gap(4)
   }
 
-  /* acceptance, kept whole on one page */
-  L.need(230)
-  L.heading(next(), 'Terms & Acceptance')
-  L.text(
-    `This proposal is valid through ${a.expiresDate}. Pricing is based on the scope, exclusions and assumptions stated above. `
-    + 'Accepting this proposal authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described. '
-    + 'A signed work order is required before any work begins - acceptance here is not itself a work order. '
-    + 'Payment terms, cancellation terms and the full service agreement are presented with the work order for signature.',
-  )
+  d.label('Payment terms')
+  for (const t of a.paymentTerms) d.body(t, { size: 8.4 })
+
   if (a.notes) {
-    L.gap(6)
-    L.text('Notes: ' + a.notes, { size: 9 })
+    d.gap(4)
+    d.label('Notes')
+    d.body(a.notes, { size: 8.4 })
   }
 
-  L.gap(26)
-  const signRow = (leftLabel: string, rightLabel: string) => {
-    L.need(46)
-    const w = (CONTENT_WIDTH - 30) / 2
-    L.page.drawLine({ start: { x: MARGIN, y: L.y }, end: { x: MARGIN + w, y: L.y }, thickness: 1, color: NAVY })
-    L.page.drawLine({ start: { x: MARGIN + w + 30, y: L.y }, end: { x: PAGE_WIDTH - MARGIN, y: L.y }, thickness: 1, color: NAVY })
-    L.y -= 11
-    L.page.drawText(leftLabel, { x: MARGIN, y: L.y, size: 7.5, font, color: LIGHT })
-    L.page.drawText(rightLabel, { x: MARGIN + w + 30, y: L.y, size: 7.5, font, color: LIGHT })
-    L.y -= 30
-  }
-  signRow('Authorized Signature', 'Date')
-  signRow('Print Name & Title', 'PO / Reference')
-  signRow('For Renovo Surface Solutions LLC', 'Date')
+  /* ---------- acceptance, kept whole ---------- */
+  d.need(150)
+  d.gap(8)
+  d.label('Acceptance')
+  d.body(
+    `This proposal is valid through ${a.expiresDate} and is based on the scope, exclusions and assumptions stated above. `
+    + 'Accepting it authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described. '
+    + 'A signed work order is required before any work begins - acceptance here is not itself a work order.',
+    { size: 8.4 },
+  )
+  d.gap(24)
 
-  return doc.save()
+  const signRow = (l: string, r: string) => {
+    d.need(44)
+    const w = (W - 34) / 2
+    d.page.drawLine({ start: { x: M, y: d.y }, end: { x: M + w, y: d.y }, thickness: 0.9, color: NAVY })
+    d.page.drawLine({ start: { x: M + w + 34, y: d.y }, end: { x: PAGE_W - M, y: d.y }, thickness: 0.9, color: NAVY })
+    d.y -= 10
+    d.page.drawText(ascii(l), { x: M, y: d.y, size: 7.3, font, color: MUTED })
+    d.page.drawText(ascii(r), { x: M + w + 34, y: d.y, size: 7.3, font, color: MUTED })
+    d.y -= 28
+  }
+  signRow('Accepted by (signature)', 'Date')
+  signRow('Print name & title', 'PO / Reference')
+
+  return pdf.save()
 }

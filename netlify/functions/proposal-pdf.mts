@@ -3,7 +3,7 @@ import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { notFound } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
-import { effectiveExpiry } from './_shared/expiry.mts'
+import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
 import { contractValue, groupBySite, frequencyOf } from './_shared/serviceSchedule.mts'
 import { COMPANY } from './_shared/companyProfile.mts'
@@ -27,7 +27,7 @@ const fmtDate = (d: Date) =>
 
 const proposalNumber = (id: number) => 'EST-' + (1000 + id)
 
-export default withErrorHandling('proposal-pdf', async (_request: Request, context: Context) => {
+export default withErrorHandling('proposal-pdf', async (request: Request, context: Context) => {
   const token = context.params.token
   const [estimate] = await db.select().from(schema.estimates).where(eq(schema.estimates.token, token)).limit(1)
   if (!estimate) return notFound()
@@ -72,6 +72,24 @@ export default withErrorHandling('proposal-pdf', async (_request: Request, conte
     )],
   })
 
+  /*
+   * Payment terms, stated on the document rather than left to a phone call.
+   * The samples Renovo already sends carry these; a late fee that appears
+   * nowhere on the paperwork is a late fee that does not get collected.
+   */
+  const paymentTerms = [
+    'Payment is due within 14 days of the invoice date. A 1.5% monthly late fee applies to balances more than 30 days past due.',
+    'Accepted payment methods: ACH transfer, check, or card. A processing fee applies to card payments.',
+  ]
+
+  // What the reader should do with this document, in the position the
+  // invoices put PAID or DUE ON RECEIPT.
+  const statusLine = isExpired(estimate.validUntil, estimate.createdAt)
+    ? 'Expired - contact us for an updated quote'
+    : estimate.status === 'approved'
+      ? 'Accepted - work order to follow'
+      : 'Proposal - valid 30 days'
+
   const bytes = await generateProposalPdf({
     proposalNumber: proposalNumber(estimate.id),
     issuedDate: fmtDate(estimate.createdAt),
@@ -93,14 +111,21 @@ export default withErrorHandling('proposal-pdf', async (_request: Request, conte
     optionalTotal,
     contract,
     notes: estimate.notes,
+    statusLine,
+    paymentTerms,
   })
 
   const filename = `${proposalNumber(estimate.id)}-Renovo-Proposal.pdf`
 
+  // Attachment by default, because a procurement portal wants a file on disk.
+  // ?view=1 renders it in the browser instead, for a client who would rather
+  // read it than download it.
+  const inline = new URL(request.url).searchParams.get('view') === '1'
+
   return new Response(bytes, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${filename}"`,
       // A proposal can be revised in place, so this must not be cached hard the
       // way an immutable photo is.
       'Cache-Control': 'private, max-age=0, must-revalidate',
