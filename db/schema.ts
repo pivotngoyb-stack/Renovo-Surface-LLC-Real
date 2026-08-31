@@ -9,6 +9,9 @@ export const paymentTypeEnum = pgEnum('payment_type', ['flat', 'percentage'])
 export const subAgreementStatusEnum = pgEnum('sub_agreement_status', ['pending', 'signed'])
 export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'check', 'card', 'stripe', 'other'])
 export const photoCategoryEnum = pgEnum('photo_category', ['before', 'after'])
+// A project with a deposit bills twice: the deposit holds the crew, the
+// balance falls due on completion. 'full' is everything else.
+export const invoiceKindEnum = pgEnum('invoice_kind', ['full', 'deposit', 'balance'])
 
 export const clients = pgTable('clients', {
   id: serial('id').primaryKey(),
@@ -159,6 +162,7 @@ export const invoices = pgTable('invoices', {
   dueDate: date('due_date'),
   taxApplied: boolean('tax_applied').notNull().default(false),
   taxAmount: numeric('tax_amount').notNull().default('0'),
+  kind: invoiceKindEnum('kind').notNull().default('full'),
   reminderStage: integer('reminder_stage').notNull().default(0),
   lastReminderSentAt: timestamp('last_reminder_sent_at'),
   archived: boolean('archived').notNull().default(false),

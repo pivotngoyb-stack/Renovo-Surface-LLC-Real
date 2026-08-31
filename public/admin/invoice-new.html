@@ -110,10 +110,52 @@ function renderStandaloneForm() {
   });
 }
 
-function renderFromWorkOrderForm() {
+/**
+ * A project with a deposit bills in two parts, so the form has to ask which
+ * one this is. Without a deposit nothing changes and no choice is offered --
+ * a question with one answer is just an extra click.
+ */
+async function renderFromWorkOrderForm() {
+  let deposit = null;
+  let already = [];
+  try {
+    const res = await adminFetch('/api/admin/work-orders/' + workOrderId);
+    if (res.ok) {
+      const data = await res.json();
+      already = (data.invoices || []).map(i => i.kind);
+      const pct = Number(data.estimate && data.estimate.depositPct);
+      if (Number.isFinite(pct) && pct > 0) {
+        const items = (data.lineItems || [])
+          .filter(li => !li.isOptional)
+          .reduce((t, li) => t + Number(li.quantity) * Number(li.unitPrice), 0);
+        const total = items + (data.estimate.taxApplied ? Number(data.estimate.taxAmount) : 0);
+        const dep = Math.round(total * Math.min(pct, 100)) / 100;
+        deposit = { pct, depositDue: dep, balanceDue: Math.round((total - dep) * 100) / 100, total };
+      }
+    }
+  } catch (err) { /* fall back to a plain invoice */ }
+
+  const kindChoice = deposit ? `
+    <div class="field-group">
+      <label>Which invoice is this?</label>
+      <select id="invoiceKind">
+        <option value="deposit"${already.includes('deposit') ? ' disabled' : ''}>
+          Deposit &mdash; ${deposit.pct}% up front, ${money(deposit.depositDue)}${already.includes('deposit') ? ' (already sent)' : ''}
+        </option>
+        <option value="balance"${already.includes('balance') ? ' disabled' : ''}${already.includes('deposit') ? ' selected' : ''}>
+          Balance on completion &mdash; ${money(deposit.balanceDue)}${already.includes('balance') ? ' (already sent)' : ''}
+        </option>
+      </select>
+      <p style="font-size:0.8rem; color:#8A98AC; margin-top:5px;">
+        This project was quoted with a ${deposit.pct}% deposit against a ${money(deposit.total)} total.
+        The two invoices together come to the full amount.
+      </p>
+    </div>` : '';
+
   document.getElementById('content').innerHTML = `
     <form id="invoiceForm">
       <p style="color:#4A5A72; margin-bottom:20px;">Creating an invoice from signed Work Order #${workOrderId}. Line items and client info will be pulled automatically from the linked estimate.</p>
+      ${kindChoice}
       <div class="field-group"><label>Due Date</label><input type="date" id="dueDate"></div>
       <div class="field-group"><label>Notes</label><textarea id="notes" rows="3"></textarea></div>
       <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Create Invoice</button>
@@ -123,8 +165,10 @@ function renderFromWorkOrderForm() {
 
   document.getElementById('invoiceForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const kindEl = document.getElementById('invoiceKind');
     await createInvoice({
       workOrderId: Number(workOrderId),
+      kind: kindEl ? kindEl.value : undefined,
       dueDate: document.getElementById('dueDate').value || undefined,
       notes: document.getElementById('notes').value
     });

@@ -40,7 +40,7 @@ const id = new URLSearchParams(window.location.search).get('id');
 async function load() {
   const res = await adminFetch(`/api/admin/work-orders/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Work order not found.</div>'; return; }
-  const { workOrder, client, lineItems, signature, invoice } = await res.json();
+  const { workOrder, estimate, client, lineItems, signature, invoice, invoices } = await res.json();
 
   const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
   const itemsHtml = lineItems.map(li => `
@@ -132,7 +132,7 @@ async function load() {
 
     <div id="jobPlan" style="margin-top:28px;">Loading job plan…</div>
 
-    ${invoice ? `<p style="margin-top:20px;"><a href="/admin/invoice-detail.html?id=${invoice.id}" class="btn btn-primary btn-sm">View Invoice</a></p>` : ''}
+    ${invoiceLinks(invoices || (invoice ? [invoice] : []), estimate)}
 
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${woLink}" target="_blank">${woLink}</a></p>
   `;
@@ -370,6 +370,36 @@ load();
 
 /* ---------- Time on job ---------- */
 let actualsState = { actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null, estimatedHours: null, estimatedMaterials: null };
+
+const KIND_LABEL = { full: 'Invoice', deposit: 'Deposit invoice', balance: 'Balance invoice' };
+
+/*
+ * A project with a deposit bills twice, so this lists what has gone out and
+ * offers whichever half is still missing. Showing only the first invoice
+ * would hide a balance nobody had raised.
+ */
+function invoiceLinks(list, estimate) {
+  const pct = Number(estimate && estimate.depositPct);
+  const split = Number.isFinite(pct) && pct > 0;
+  const kinds = list.map(i => i.kind || 'full');
+
+  const sent = list.map(i => `
+    <p style="margin-top:10px;">
+      <a href="/admin/invoice-detail.html?id=${i.id}" class="btn btn-primary btn-sm">
+        View ${KIND_LABEL[i.kind || 'full']}
+      </a>
+      <span style="margin-left:10px; color:#8A98AC; font-size:0.85rem;">${statusPill(i.status)}</span>
+    </p>`).join('');
+
+  let next = '';
+  if (split && !kinds.includes('deposit')) {
+    next = `<p style="margin-top:12px;"><a href="/admin/invoice-new.html?workOrderId=${id}" class="btn btn-primary btn-sm">Create Deposit Invoice</a></p>`;
+  } else if (split && !kinds.includes('balance')) {
+    next = `<p style="margin-top:12px;"><a href="/admin/invoice-new.html?workOrderId=${id}" class="btn btn-primary btn-sm">Create Balance Invoice</a></p>`;
+  }
+
+  return sent + next;
+}
 
 function renderActuals(state) {
   if (state) actualsState = Object.assign(actualsState, state);

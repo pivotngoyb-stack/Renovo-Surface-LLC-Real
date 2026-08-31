@@ -71,9 +71,12 @@ export default async (request: Request, context: Context) => {
     ? await db.select().from(schema.estimateLineItems).where(eq(schema.estimateLineItems.estimateId, estimate.id)).orderBy(schema.estimateLineItems.sortOrder)
     : []
   const [signature] = await db.select().from(schema.signatures).where(eq(schema.signatures.workOrderId, id)).limit(1)
-  const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.workOrderId, id)).limit(1)
+  // A project with a deposit bills twice, so this is a list now. The single
+  // `invoice` is kept for callers that only ever expected one.
+  const invoices = await db.select().from(schema.invoices).where(eq(schema.invoices.workOrderId, id))
+  const invoice = invoices[0]
 
-  return json({ workOrder, estimate, client, lineItems, signature: signature || null, invoice: invoice || null })
+  return json({ workOrder, estimate, client, lineItems, signature: signature || null, invoice: invoice || null, invoices })
 }
 
 export const config = {

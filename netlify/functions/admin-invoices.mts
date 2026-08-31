@@ -1,4 +1,5 @@
 import { eq, desc } from 'drizzle-orm'
+import { depositSplit } from './_shared/deposit.mts'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
@@ -23,6 +24,8 @@ interface CreateInvoiceBody {
   notes?: string
   dueDate?: string
   lineItems?: LineItemInput[]
+  /** 'deposit' or 'balance' on a project that carries a deposit; 'full' otherwise. */
+  kind?: 'full' | 'deposit' | 'balance'
 }
 
 export default async (request: Request) => {
@@ -79,28 +82,85 @@ export default async (request: Request) => {
     let workOrderId: number | undefined
     let taxApplied = false
     let taxAmount = '0'
+    // Which half of a split project this invoice is, or 'full' for everything else.
+    let kind: 'full' | 'deposit' | 'balance' = 'full'
 
     if (body.workOrderId) {
       const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, body.workOrderId)).limit(1)
       if (!workOrder) return notFound()
       if (workOrder.status !== 'signed') return badRequest('Work order must be signed before invoicing')
 
-      const [existingInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.workOrderId, workOrder.id)).limit(1)
-      if (existingInvoice) return badRequest('An invoice already exists for this work order')
-
       const [estimate] = await db.select().from(schema.estimates).where(eq(schema.estimates.id, workOrder.estimateId)).limit(1)
       if (!estimate) return notFound()
-      clientId = estimate.clientId
-      workOrderId = workOrder.id
-      taxApplied = estimate.taxApplied
-      taxAmount = estimate.taxAmount
 
       const estimateItems = await db
         .select()
         .from(schema.estimateLineItems)
         .where(eq(schema.estimateLineItems.estimateId, estimate.id))
         .orderBy(schema.estimateLineItems.sortOrder)
-      lineItems = estimateItems.map((li) => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice }))
+
+      const billable = estimateItems.filter(li => !li.isOptional)
+      const itemsTotal = billable.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0)
+      const split = depositSplit(
+        itemsTotal + (estimate.taxApplied ? Number(estimate.taxAmount) : 0),
+        estimate.depositPct,
+      )
+
+      /*
+       * A project with a deposit bills twice, so the old one-invoice-per-work-order
+       * rule has to become one-of-each. Without a deposit nothing changes: a single
+       * full invoice, and a second attempt is still refused.
+       */
+      const priorInvoices = await db
+        .select({ id: schema.invoices.id, kind: schema.invoices.kind })
+        .from(schema.invoices)
+        .where(eq(schema.invoices.workOrderId, workOrder.id))
+
+      // Check what was asked for before defaulting it, or the guard below can
+      // never fire: forcing kind to 'full' first would make the test vacuous.
+      if (!split.required && body.kind && body.kind !== 'full') {
+        return badRequest('This project was not quoted with a deposit, so there is nothing to split. Create a single invoice instead.')
+      }
+      kind = split.required ? (body.kind || 'deposit') : 'full'
+      if (priorInvoices.some(i => i.kind === kind)) {
+        return badRequest(
+          kind === 'full'
+            ? 'An invoice already exists for this work order'
+            : `The ${kind} invoice for this work order has already been created`,
+        )
+      }
+      if (kind === 'balance' && !priorInvoices.some(i => i.kind === 'deposit')) {
+        return badRequest('Create the deposit invoice first, so the two together add up to the project total')
+      }
+
+      clientId = estimate.clientId
+      workOrderId = workOrder.id
+
+      if (kind === 'full') {
+        taxApplied = estimate.taxApplied
+        taxAmount = estimate.taxAmount
+        lineItems = billable.map((li) => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice }))
+      } else {
+        // The deposit is a percentage of the total INCLUDING tax, the way the
+        // proposal states it, so these two invoices carry no separate tax line.
+        // Adding one would tax the tax.
+        taxApplied = false
+        taxAmount = '0'
+        const project = estimate.projectName || 'this project'
+        lineItems = [
+          kind === 'deposit'
+            ? {
+                description: `Deposit - ${split.pct}% of the project total for ${project}, due to schedule and hold the crew`,
+                quantity: 1,
+                unitPrice: split.depositDue,
+              }
+            : {
+                description: `Balance due on completion - ${project}, less the ${split.pct}% deposit already invoiced`,
+                quantity: 1,
+                unitPrice: split.balanceDue,
+              },
+        ]
+      }
     } else {
       if (!body.client?.name || !body.client?.email) return badRequest('Client name and email are required')
       if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) return badRequest('At least one line item is required')
@@ -135,6 +195,7 @@ export default async (request: Request) => {
         status: 'unpaid',
         taxApplied,
         taxAmount,
+        kind,
       })
       .returning()
 
