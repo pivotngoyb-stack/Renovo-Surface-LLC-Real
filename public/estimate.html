@@ -458,6 +458,8 @@ function render(data) {
 
       <div class="print-btn-row no-print" style="margin-top:24px;">
         <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">Print this proposal</button>
+        <a class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); margin-left:8px; text-decoration:none;"
+           href="/api/proposal/${token}/pdf">Download PDF</a>
       </div>
 
       ${actionsHtml}
