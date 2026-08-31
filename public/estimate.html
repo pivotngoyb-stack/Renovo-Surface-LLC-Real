@@ -543,6 +543,18 @@ function render(data) {
   // The canvas only exists once the document above has been written, and it
   // needs its backing store sized to the width it actually rendered at.
   initSignaturePad();
+
+  // In preview the accept buttons are already disabled above, so nothing can
+  // reach the server. Lock the pad too, or Renovo is looking at a document
+  // that is half live -- and the banner has just promised it is not.
+  //
+  // Printing stays enabled; it records nothing, and the printed copy is part
+  // of what is being previewed.
+  if (preview) {
+    document.querySelectorAll('#content button, #content input, #content textarea, #content select')
+      .forEach(el => { if (!el.closest('.print-btn-row, .preview-bar')) el.disabled = true; });
+    document.querySelectorAll('#content canvas').forEach(c => { c.style.pointerEvents = 'none'; });
+  }
 }
 
 /* ---------- Signature capture ----------

@@ -16,6 +16,47 @@
 
 <script>
 const token = new URLSearchParams(window.location.search).get('t');
+
+/* ---------- Preview ----------
+ *
+ * Renovo needs to see exactly what the customer sees before sending. Opening
+ * the customer's own link is the only way to do that otherwise, and on a
+ * document that records anything that corrupts the record.
+ *
+ * The customer's actions render exactly as they will see them, disabled. What
+ * is being checked is the page the customer gets, and the buttons are part of
+ * it -- hiding them would preview a different page.
+ */
+const isPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+
+function previewBanner(who, backHref) {
+  if (!isPreview) return '';
+  return `
+    <div class="preview-bar no-print">
+      <strong>Preview</strong>
+      <span>This is the work order exactly as ${who || 'your client'} will see it. Nothing is recorded, and their buttons are disabled here.</span>
+      ${backHref ? `<a href="${backHref}">Back to the admin</a>` : ''}
+    </div>`;
+}
+
+/**
+ * Turn off every control a customer would act on. Called after each render.
+ *
+ * Structural rather than a list of ids: a control added to this page later is
+ * then locked by default instead of quietly staying live in preview. That
+ * matters -- the auto-pay switch here can turn a real client's card off.
+ *
+ * Printing and downloading the PDF stay enabled. They record nothing, and
+ * seeing the customer's printed copy is half the reason to preview at all.
+ */
+function applyPreviewLock() {
+  if (!isPreview) return;
+  document.body.classList.add('is-preview');
+  document.querySelectorAll('#content button, #content input, #content textarea, #content select')
+    .forEach(el => { if (!el.closest('.print-btn-row, .preview-bar')) el.disabled = true; });
+  document.querySelectorAll('#content canvas').forEach(c => { c.style.pointerEvents = 'none'; });
+}
+
 let currentTab = 'drawn';
 let hasDrawn = false;
 let shownServiceTypeLabel = 'General';
@@ -236,6 +277,7 @@ async function load() {
   if (!res.ok) { showError('This work order could not be found.'); return; }
   const { workOrder, client, signature, lineItems, photos } = await res.json();
   render(workOrder, client, signature, lineItems, photos || []);
+  applyPreviewLock();
 }
 
 function photoGalleryHtml(photos) {
@@ -254,7 +296,7 @@ function photoGalleryHtml(photos) {
 
 function render(workOrder, client, signature, lineItems, photos) {
   if (workOrder.status === 'signed' && signature) {
-    document.getElementById('content').innerHTML = `
+    document.getElementById('content').innerHTML = previewBanner(client && client.name) + `
       <div class="doc-card">
         <div class="doc-header">
           <img src="images/logo.png" alt="Renovo Surface Solutions">
@@ -274,7 +316,7 @@ function render(workOrder, client, signature, lineItems, photos) {
     return;
   }
 
-  document.getElementById('content').innerHTML = `
+  document.getElementById('content').innerHTML = previewBanner(client && client.name) + `
     <div class="doc-card">
       <div class="doc-header">
         <img src="images/logo.png" alt="Renovo Surface Solutions">
@@ -352,6 +394,7 @@ function render(workOrder, client, signature, lineItems, photos) {
 }
 
 function switchTab(tab) {
+  if (isPreview) return;
   currentTab = tab;
   document.getElementById('tabDrawn').classList.toggle('active', tab === 'drawn');
   document.getElementById('tabTyped').classList.toggle('active', tab === 'typed');

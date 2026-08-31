@@ -134,6 +134,15 @@ async function load() {
 
     ${invoiceLinks(invoices || (invoice ? [invoice] : []), estimate)}
 
+    <h3 style="margin:28px 0 6px;">What the client sees</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
+      Preview opens the work order exactly as they will read it, with their signing controls disabled
+      so a look cannot sign on their behalf. Worth checking before you send: the job plan and the crew
+      notes are yours, and should not appear here.
+    </p>
+    <p>
+      <a href="${woLink}&preview=1" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;">Preview as the client</a>
+    </p>
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${woLink}" target="_blank">${woLink}</a></p>
   `;
 

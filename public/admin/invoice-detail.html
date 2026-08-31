@@ -127,6 +127,15 @@ async function load() {
 
     ${paymentsLedger}
 
+    <h3 style="margin:28px 0 6px;">What the client sees</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
+      Preview opens the invoice exactly as they will read it, with the payment and auto-pay controls
+      disabled so a look cannot charge a card or switch their auto-pay off.
+    </p>
+    <p>
+      <a href="${invoiceLink}&preview=1" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;">Preview as the client</a>
+      <a href="/api/invoice/${invoice.token}/pdf" target="_blank" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); margin-left:8px; text-decoration:none;">Preview the PDF</a>
+    </p>
     <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${invoiceLink}" target="_blank">${invoiceLink}</a></p>
     <p style="font-size:0.85rem;"><a href="${pdfLink}" target="_blank">⬇ Download PDF</a></p>
 
