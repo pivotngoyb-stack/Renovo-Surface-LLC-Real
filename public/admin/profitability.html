@@ -177,6 +177,25 @@ function acquisitionControls(used) {
 
 let ACQ_USED = { ...ACQ_DEFAULTS };
 
+/*
+ * Whether this contract is actually billing.
+ *
+ * A weekly job can be quoted, approved, worked and never invoiced, because
+ * nothing bills until a recurring contract exists. Reporting a healthy margin
+ * on a contract that has never raised an invoice would be the most misleading
+ * row on the page.
+ */
+function billingCell(j) {
+  if (!j.billingSetUp) {
+    return `<span class="conf-pill conf-none" style="background:#FDECEA; color:#C0392B;"
+      title="No recurring contract exists for this estimate, so nothing is invoicing on a schedule. Open the estimate and set up monthly billing.">Not billing</span>`;
+  }
+  if (!j.invoiceCount) {
+    return `<span class="conf-pill conf-partial" title="Billing is set up but has not raised an invoice yet.">Awaiting first</span>`;
+  }
+  return `<span class="conf-pill conf-full" title="Invoices raised against this contract.">${j.invoiceCount} raised</span>`;
+}
+
 function contractSection(jobs) {
   const rows = jobs.filter(j => j.contract);
   if (!rows.length) return '';
@@ -200,6 +219,7 @@ function contractSection(jobs) {
         <div style="font-weight:600; color:var(--navy);">${esc(j.company || j.clientName)}</div>
         <div style="font-size:0.78rem; color:#8A98AC;">${c.visitsPerYear} visits a year</div>
       </td>
+      <td>${billingCell(j)}</td>
       <td style="text-align:right;">${money(c.revenuePerVisit)}
         <div style="font-size:0.72rem; color:#8A98AC;">${money(c.profitPerVisit)} profit</div></td>
       <td style="text-align:right; font-weight:600;">${money(c.annualRevenue)}</td>
@@ -217,6 +237,8 @@ function contractSection(jobs) {
   }).join('');
 
   const annual = rows.reduce((t, j) => t + j.contract.annualRevenue, 0);
+  const unbilled = rows.filter(j => !j.billingSetUp);
+  const unbilledValue = unbilled.reduce((t, j) => t + j.contract.annualRevenue, 0);
 
   return `
     <h2 style="font-size:1.1rem; margin:32px 0 6px;">Recurring contracts</h2>
@@ -225,11 +247,17 @@ function contractSection(jobs) {
       anything, so the number that matters is not the visit margin &mdash; it is how long the client has to stay
       for the contract to have been worth signing. Slowest to repay first.
     </p>
+    ${unbilled.length ? `
+    <div class="prof-caveat" style="border-color:#E8A0A0; background:#FDF3F2; color:#8A2E22; margin-bottom:12px;">
+      <strong>${unbilled.length}</strong> of these ${unbilled.length === 1 ? 'contracts is' : 'contracts are'} not billing.
+      Nothing invoices on a schedule until a recurring contract exists, so <strong>${money(unbilledValue)}</strong>
+      a year of sold work is currently raising no invoices. Open the estimate and set up monthly billing.
+    </div>` : ''}
     ${acquisitionControls(ACQ_USED)}
     <div class="prof-scroll">
       <table class="dash-table">
         <thead><tr>
-          <th>Client</th><th style="text-align:right;">Per visit</th><th style="text-align:right;">Per year</th>
+          <th>Client</th><th>Billing</th><th style="text-align:right;">Per visit</th><th style="text-align:right;">Per year</th>
           <th style="text-align:right;">Cost to win</th><th style="text-align:right;">Repays in</th>
           <th style="text-align:right;">Margin</th><th>Read</th>
         </tr></thead>
