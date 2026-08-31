@@ -1,0 +1,2 @@
+ALTER TABLE "recurring_contracts" ADD COLUMN "estimate_id" integer;--> statement-breakpoint
+ALTER TABLE "recurring_contracts" ADD CONSTRAINT "recurring_contracts_estimate_id_estimates_id_fkey" FOREIGN KEY ("estimate_id") REFERENCES "estimates"("id");

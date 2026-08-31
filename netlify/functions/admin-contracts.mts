@@ -25,6 +25,9 @@ export default async (request: Request) => {
     const rows = await db
       .select({
         id: schema.recurringContracts.id,
+        // The estimate this was sold on, so a quoted job can tell whether its
+        // billing already exists rather than offering to set it up twice.
+        estimateId: schema.recurringContracts.estimateId,
         description: schema.recurringContracts.description,
         amount: schema.recurringContracts.amount,
         billingDay: schema.recurringContracts.billingDay,

@@ -138,6 +138,11 @@ export const signatures = pgTable('signatures', {
 export const recurringContracts = pgTable('recurring_contracts', {
   id: serial('id').primaryKey(),
   clientId: integer('client_id').notNull().references(() => clients.id),
+  // The estimate this contract was sold on, when it came from one. Null for a
+  // contract typed straight into the contracts page. Without it there is no way
+  // to tell that a quoted weekly job already has billing set up, and no way for
+  // the profitability report to find the invoices a contract actually raised.
+  estimateId: integer('estimate_id').references(() => estimates.id),
   description: text('description').notNull(),
   amount: numeric('amount').notNull(),
   billingDay: integer('billing_day').notNull(),

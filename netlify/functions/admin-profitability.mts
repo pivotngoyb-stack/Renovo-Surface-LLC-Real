@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
@@ -108,19 +108,40 @@ export default withErrorHandling('admin-profitability', async (request: Request,
     linesByEstimate.set(li.estimateId, list)
   })
 
-  /* Invoiced and collected, per work order. */
+  /*
+   * Invoiced and collected.
+   *
+   * Two routes reach an invoice. One-off work bills against a work order.
+   * A recurring contract bills on a schedule and carries no work order at
+   * all, so joining only on work_order_id reported every recurring job as
+   * never invoiced, however long it had been billing.
+   */
   const workOrderIds = jobs.map(j => j.workOrderId).filter((x): x is number => x != null)
 
-  const invoiceRows = workOrderIds.length
+  const contractsForEstimates = await db
+    .select({ id: schema.recurringContracts.id, estimateId: schema.recurringContracts.estimateId })
+    .from(schema.recurringContracts)
+    .where(inArray(schema.recurringContracts.estimateId, estimateIds))
+
+  const contractIdByEstimate = new Map(
+    contractsForEstimates.filter(c => c.estimateId != null).map(c => [c.estimateId as number, c.id]),
+  )
+  const contractIds = contractsForEstimates.map(c => c.id)
+
+  const invoiceRows = (workOrderIds.length || contractIds.length)
     ? await db
         .select({
           invoiceId: schema.invoices.id,
           workOrderId: schema.invoices.workOrderId,
+          recurringContractId: schema.invoices.recurringContractId,
           status: schema.invoices.status,
           taxAmount: schema.invoices.taxAmount,
         })
         .from(schema.invoices)
-        .where(inArray(schema.invoices.workOrderId, workOrderIds))
+        .where(or(
+          workOrderIds.length ? inArray(schema.invoices.workOrderId, workOrderIds) : undefined,
+          contractIds.length ? inArray(schema.invoices.recurringContractId, contractIds) : undefined,
+        ))
     : []
 
   const invoiceIds = invoiceRows.map(r => r.invoiceId)
@@ -150,15 +171,26 @@ export default withErrorHandling('admin-profitability', async (request: Request,
   const invoicedBy = new Map(invoiceTotals.map(r => [r.invoiceId, n(r.total)]))
   const collectedBy = new Map(paymentTotals.map(r => [r.invoiceId, n(r.total)]))
 
-  const invoiceByWorkOrder = new Map<number, { invoiced: number; collected: number; status: string }>()
+  type Billing = { invoiced: number; collected: number; status: string; count: number }
+  const emptyBilling = (status: string): Billing => ({ invoiced: 0, collected: 0, status, count: 0 })
+
+  const invoiceByWorkOrder = new Map<number, Billing>()
+  const invoiceByContract = new Map<number, Billing>()
+
   invoiceRows.forEach(r => {
-    if (r.workOrderId == null) return
-    const prev = invoiceByWorkOrder.get(r.workOrderId) || { invoiced: 0, collected: 0, status: r.status }
-    invoiceByWorkOrder.set(r.workOrderId, {
-      invoiced: round2(prev.invoiced + (invoicedBy.get(r.invoiceId) || 0) + n(r.taxAmount)),
-      collected: round2(prev.collected + (collectedBy.get(r.invoiceId) || 0)),
-      status: r.status,
-    })
+    const add = (map: Map<number, Billing>, key: number) => {
+      const prev = map.get(key) || emptyBilling(r.status)
+      map.set(key, {
+        invoiced: round2(prev.invoiced + (invoicedBy.get(r.invoiceId) || 0) + n(r.taxAmount)),
+        collected: round2(prev.collected + (collectedBy.get(r.invoiceId) || 0)),
+        // A contract billing monthly has many invoices at different statuses;
+        // the newest one is the useful signal, and rows come back in id order.
+        status: r.status,
+        count: prev.count + 1,
+      })
+    }
+    if (r.workOrderId != null) add(invoiceByWorkOrder, r.workOrderId)
+    else if (r.recurringContractId != null) add(invoiceByContract, r.recurringContractId)
   })
 
   /* Per job, plus the rollups. */
@@ -168,7 +200,11 @@ export default withErrorHandling('admin-profitability', async (request: Request,
   const rows = jobs.map(j => {
     // Real logged hours beat the estimate whenever someone recorded them.
     const econ = jobEconomics(linesByEstimate.get(j.estimateId) || [], j.actualHours, j.actualMaterialsCost)
-    const billing = j.workOrderId != null ? invoiceByWorkOrder.get(j.workOrderId) : undefined
+    // A job bills through its work order, or through the recurring contract
+    // sold on the same estimate. Never both.
+    const contractId = contractIdByEstimate.get(j.estimateId)
+    const billing = (j.workOrderId != null ? invoiceByWorkOrder.get(j.workOrderId) : undefined)
+      || (contractId != null ? invoiceByContract.get(contractId) : undefined)
 
     /*
      * A standing agreement is a different question from a one-off job. It
@@ -218,6 +254,8 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       completedAt: j.completedAt,
       workOrderStatus: j.workOrderStatus,
       invoiceStatus: billing?.status || null,
+      invoiceCount: billing?.count || 0,
+      billingSetUp: contractIdByEstimate.has(j.estimateId),
       quoted: econ.revenue,
       invoiced: billing ? billing.invoiced : null,
       collected: billing ? billing.collected : null,

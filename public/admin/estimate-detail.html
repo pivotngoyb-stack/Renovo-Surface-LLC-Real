@@ -49,6 +49,28 @@ async function load() {
 
   const estimateLink = `${window.location.origin}/estimate.html?t=${estimate.token}`;
 
+  /*
+   * A quoted recurring job does not bill itself. Until the contract exists the
+   * scheduled biller has nothing to find, so a weekly job can be sold, worked,
+   * and never invoiced because nobody set the billing up.
+   */
+  const VISITS_PER_YEAR = { daily: 260, '3x_week': 156, '2x_week': 104, weekly: 52, biweekly: 26, monthly: 12, quarterly: 4, semiannual: 2, annual: 1 };
+  const recurringLines = lineItems.filter(li => !li.isOptional && VISITS_PER_YEAR[li.frequency]);
+  const annualRecurring = recurringLines.reduce((t, li) =>
+    t + Number(li.quantity) * Number(li.unitPrice) * VISITS_PER_YEAR[li.frequency], 0);
+
+  let recurringSection = '';
+  if (recurringLines.length) {
+    recurringSection = `
+      <h3 style="margin:28px 0 6px;">Recurring Billing</h3>
+      <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+        This estimate carries ${recurringLines.length} recurring line${recurringLines.length === 1 ? '' : 's'},
+        worth <strong>${money(annualRecurring)}</strong> a year, averaging <strong>${money(annualRecurring / 12)}</strong>
+        a month. Setting up billing schedules those charges; until then nothing invoices itself.
+      </p>
+      <div id="recurringStatus"></div>`;
+  }
+
   let actions = '';
   if (estimate.status === 'draft') {
     actions = `<button class="btn btn-primary" id="sendEstimateBtn" onclick="sendEstimate()">Send to Client</button>`;
@@ -106,6 +128,8 @@ async function load() {
 
     <p style="margin-top:20px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${estimateLink}" target="_blank">${estimateLink}</a></p>
 
+    ${recurringSection}
+
     <h3 style="margin:28px 0 6px;">Walk-Through Photos</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
       These appear on the client proposal as documented site conditions. They are what settles a scope
@@ -118,6 +142,46 @@ async function load() {
   `;
 
   loadPhotos();
+  if (recurringLines.length) loadRecurring();
+}
+
+async function loadRecurring() {
+  const box = document.getElementById('recurringStatus');
+  if (!box) return;
+  let existing = null;
+  try {
+    const res = await adminFetch('/api/admin/contracts');
+    if (res.ok) {
+      const { contracts } = await res.json();
+      existing = (contracts || []).find(c => Number(c.estimateId) === Number(id)) || null;
+    }
+  } catch (err) { /* offer setup anyway */ }
+
+  box.innerHTML = existing
+    ? `<p style="color:#1B7A3C; font-size:0.9rem;">Billing is set up &mdash; <strong>${money(existing.amount)}</strong>
+       on day ${existing.billingDay} of each month.
+       <a href="/admin/contract-detail.html?id=${existing.id}" style="margin-left:8px;">Manage</a></p>`
+    : `<button type="button" class="btn btn-primary btn-sm" id="setupBillingBtn" onclick="setUpRecurring()">Set Up Monthly Billing</button>`;
+}
+
+async function setUpRecurring() {
+  const btn = document.getElementById('setupBillingBtn');
+  btn.disabled = true;
+  btn.textContent = 'Setting up\u2026';
+  const res = await adminFetch('/api/admin/estimates/' + id + '/recurring-contract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ billingDay: 1 }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) {
+    adminToast('Monthly billing set up at ' + money(data.monthlyAverage) + '.', 'success');
+    load();
+    return;
+  }
+  adminToast(data.error || 'Could not set up billing.');
+  btn.disabled = false;
+  btn.textContent = 'Set Up Monthly Billing';
 }
 
 const MAX_PROPOSAL_PHOTOS = 12;
