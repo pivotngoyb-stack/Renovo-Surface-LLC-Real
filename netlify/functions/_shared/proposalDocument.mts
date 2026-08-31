@@ -72,13 +72,27 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     )],
   })
 
-  // What the reader should do with this, in the position the invoices put PAID
-  // or DUE ON RECEIPT.
+  /*
+   * What the reader should do with this, in the position the invoices put PAID
+   * or DUE ON RECEIPT.
+   *
+   * The validity period is measured, not assumed. The builder lets any expiry
+   * date be set, so a hardcoded "valid 30 days" sat directly above a Valid
+   * Through date fourteen days out and contradicted it -- on the one document
+   * a procurement officer reads closely.
+   */
+  const issuedDay = new Date(estimate.createdAt)
+  const expiryDay = new Date(expiresOn + 'T12:00:00')
+  const validDays = Math.max(
+    1,
+    Math.round((expiryDay.getTime() - issuedDay.getTime()) / 86400000),
+  )
+
   const statusLine = isExpired(estimate.validUntil, estimate.createdAt)
     ? 'Expired - contact us for an updated quote'
     : estimate.status === 'approved'
       ? 'Accepted - work order to follow'
-      : 'Proposal - valid 30 days'
+      : `Proposal - valid ${validDays} ${validDays === 1 ? 'day' : 'days'}`
 
   return generateProposalPdf({
     proposalNumber: proposalNumber(estimate.id),
