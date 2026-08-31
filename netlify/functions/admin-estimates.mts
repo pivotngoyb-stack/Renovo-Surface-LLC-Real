@@ -118,6 +118,7 @@ export default async (request: Request) => {
         solicitationNumber: body.solicitationNumber,
         optionYears: Math.max(0, Math.min(Number(body.optionYears) || 0, 9)),
         prevailingWage: Boolean(body.prevailingWage),
+        depositPct: body.depositPct != null && body.depositPct !== '' ? String(body.depositPct) : null,
         walkthroughDate: body.walkthroughDate,
         siteConditions: body.siteConditions,
         // Default to a 30-day window. Left blank, an estimate previously had

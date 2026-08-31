@@ -39,6 +39,11 @@ export const estimates = pgTable('estimates', {
   solicitationNumber: text('solicitation_number'),
   optionYears: integer('option_years').notNull().default(0),
   prevailingWage: boolean('prevailing_wage').notNull().default(false),
+  // Percent of the total required up front to schedule the crew. Null means
+  // no deposit. Percent rather than a fixed amount so it survives a scope
+  // revision -- a $4,000 deposit on a job that grew to $12,000 is not a
+  // deposit any more, it is a rounding error.
+  depositPct: numeric('deposit_pct'),
   walkthroughDate: date('walkthrough_date'),
   siteConditions: text('site_conditions'),
   validUntil: date('valid_until'),

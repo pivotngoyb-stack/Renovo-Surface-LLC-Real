@@ -211,6 +211,7 @@ export interface ProposalPdfArgs {
   contract?: { hasRecurring: boolean; monthlyAverage: number; annualRecurring: number; oneTimeTotal: number; firstYearTotal: number } | null
   notes?: string | null
   paymentTerms: string[]
+  deposit?: { required: boolean; pct: number; depositDue: number; balanceDue: number } | null
 }
 
 export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Array> {
@@ -379,6 +380,17 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   })
   d.gap(4)
   totalRow(a.contract?.hasRecurring ? 'Total, Per Visit' : 'Total', a.total, true)
+
+  // Deposit and balance, as the sample estimates present them. Drawn after
+  // the total so the reader sees the whole number before it is split.
+  if (a.deposit?.required) {
+    d.gap(4)
+    totalRow(`Deposit due now (${a.deposit.pct}%)`, a.deposit.depositDue)
+    totalRow('Balance due at completion', a.deposit.balanceDue)
+    d.gap(2)
+    d.body('A deposit is required to schedule and hold the crew for this project. The balance is due on completion and walk-through sign-off.',
+      { size: 8.2, color: MUTED })
+  }
 
   if (a.contract?.hasRecurring) {
     d.gap(2)

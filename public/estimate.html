@@ -284,7 +284,7 @@ function registrationHtml(gov) {
 }
 
 function render(data) {
-  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, deposit, expiresOn, expired } = data;
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -342,6 +342,12 @@ function render(data) {
       ${estimate.taxApplied ? `<div class="prop-totals-line">Utah Sales Tax (7.25%): ${money(taxAmount)}</div>` : ''}
       <div class="prop-grand">TOTAL: ${money(total)}</div>
     </div>
+    ${deposit && deposit.required ? `
+      <div class="prop-deposit">
+        <div class="prop-deposit-row"><span>Deposit due now (${deposit.pct}%)</span><strong>${money(deposit.depositDue)}</strong></div>
+        <div class="prop-deposit-row"><span>Balance due at completion</span><strong>${money(deposit.balanceDue)}</strong></div>
+        <p class="prop-deposit-note">A deposit is required to schedule and hold the crew for this project. The balance is due on completion and walk-through sign-off.</p>
+      </div>` : ''}
     ${optionalBlock}
   `;
 

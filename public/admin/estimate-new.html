@@ -68,6 +68,19 @@
         </div>
       </div>
 
+      <h3 style="margin: 28px 0 6px;">Deposit</h3>
+      <p style="color:#8A98AC; font-size:0.82rem; margin-top:-2px; margin-bottom:12px;">
+        On a large project a deposit is how you stop financing the client's job out of your own pocket.
+        Leave blank for none. Shows on the proposal as a deposit and a balance due at completion.
+      </p>
+      <div style="display:grid; grid-template-columns:200px 1fr; gap:0 16px; align-items:center; margin-bottom:8px;">
+        <div class="field-group" style="margin-bottom:0;">
+          <label for="depositPct">Deposit required (%)</label>
+          <input type="number" id="depositPct" min="0" max="100" step="5" placeholder="none" oninput="updateTotal()">
+        </div>
+        <div id="depositPreview" style="color:#4A5A72; font-size:0.86rem;"></div>
+      </div>
+
       <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
       <div class="calc-box">
         <button type="button" class="calc-toggle" onclick="toggleCalculator()">
@@ -1957,6 +1970,21 @@ function updateTotal() {
     document.getElementById('acvMonthly').textContent = money(annual / 12);
   }
 
+  // Deposit preview, so the split is visible while pricing rather than a
+  // surprise on the finished document.
+  const depPct = Number(val('depositPct'));
+  const depBox = document.getElementById('depositPreview');
+  if (depBox) {
+    const taxed = document.getElementById('applyTax').checked ? subtotal * 1.0725 : subtotal;
+    if (depPct > 0 && taxed > 0) {
+      const dep = Math.round(taxed * Math.min(depPct, 100)) / 100;
+      depBox.innerHTML = '<strong>' + money(dep) + '</strong> due now, <strong>'
+        + money(Math.round((taxed - dep) * 100) / 100) + '</strong> on completion.';
+    } else {
+      depBox.textContent = '';
+    }
+  }
+
   const optRow = document.getElementById('optionalRow');
   if (optRow) {
     optRow.style.display = optionalTotal > 0 ? 'block' : 'none';
@@ -2017,6 +2045,7 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
         solicitationNumber: document.getElementById('solicitationNumber').value || undefined,
         optionYears: Number(document.getElementById('optionYears').value) || 0,
         prevailingWage: document.getElementById('prevailingWage').checked,
+        depositPct: val('depositPct') || null,
         projectName: document.getElementById('projectName').value || undefined,
         siteAddress: document.getElementById('siteAddress').value || undefined,
         walkthroughDate: document.getElementById('walkthroughDate').value || undefined,

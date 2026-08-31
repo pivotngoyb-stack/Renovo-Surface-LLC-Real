@@ -1,0 +1,1 @@
+ALTER TABLE "estimates" ADD COLUMN "deposit_pct" numeric;

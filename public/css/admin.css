@@ -627,6 +627,18 @@ body.admin-body {
   .attn-action { margin-left: 19px; }
 }
 
+/* ---------- Deposit split on the proposal ---------- */
+.prop-deposit {
+  margin-top: 14px; padding: 14px 16px;
+  border: 1.5px solid #DCE4EF; border-radius: var(--radius-sm); background: var(--off-white);
+}
+.prop-deposit-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  font-size: 0.9rem; color: #4A5A72; padding: 3px 0;
+}
+.prop-deposit-row strong { color: var(--navy); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.prop-deposit-note { margin: 8px 0 0; font-size: 0.8rem; color: #8A98AC; line-height: 1.5; }
+
 /* ---------- Proposal site photographs ---------- */
 .prop-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .prop-photo { margin: 0; border: 1px solid #DCE4EF; border-radius: var(--radius-sm); overflow: hidden; background: #fff; }

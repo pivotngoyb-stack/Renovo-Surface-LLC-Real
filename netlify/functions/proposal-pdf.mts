@@ -4,6 +4,7 @@ import { db, schema } from './_shared/db.mts'
 import { notFound } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
+import { depositSplit } from './_shared/deposit.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
 import { contractValue, groupBySite, frequencyOf } from './_shared/serviceSchedule.mts'
 import { COMPANY } from './_shared/companyProfile.mts'
@@ -113,6 +114,7 @@ export default withErrorHandling('proposal-pdf', async (request: Request, contex
     notes: estimate.notes,
     statusLine,
     paymentTerms,
+    deposit: depositSplit(subtotal + taxAmount, estimate.depositPct),
   })
 
   const filename = `${proposalNumber(estimate.id)}-Renovo-Proposal.pdf`

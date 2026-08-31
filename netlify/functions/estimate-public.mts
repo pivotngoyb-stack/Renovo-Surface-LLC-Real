@@ -5,6 +5,7 @@ import { json, notFound, badRequest } from './_shared/http.mts'
 import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined, notifyAdminWorkOrderCreationFailed } from './_shared/email.mts'
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
 import { effectiveExpiry, isExpired } from './_shared/expiry.mts'
+import { depositSplit } from './_shared/deposit.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
 import { contractValue, buildScheduleMatrix, groupBySite, portfolioDiscountPct, frequencyOf } from './_shared/serviceSchedule.mts'
 import { COMPANY, registrationRows, PREVAILING_WAGE_STATEMENTS } from './_shared/companyProfile.mts'
@@ -83,6 +84,13 @@ export default async (request: Request, context: Context) => {
       // the registration rows a contracting officer screens on.
       company: COMPANY,
       photos,
+      // Computed server-side so the proposal, the PDF and any future invoice
+      // all split the same total the same way.
+      deposit: depositSplit(
+        lineItems.filter(li => !li.isOptional).reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0)
+          + (estimate.taxApplied ? Number(estimate.taxAmount) : 0),
+        estimate.depositPct,
+      ),
       government: isGovernment ? {
         company: COMPANY,
         registration: registrationRows(),
