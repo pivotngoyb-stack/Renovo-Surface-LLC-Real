@@ -1,4 +1,4 @@
-import { eq, and, lt } from 'drizzle-orm'
+import { eq, and, lt, gte, isNotNull } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { getStripe } from './_shared/stripe.mts'
@@ -102,9 +102,48 @@ async function runRecurringBilling(today: Date): Promise<{ generated: number }> 
         })
         .returning()
 
+      /*
+       * Say which visits the charge covers.
+       *
+       * A monthly invoice against a weekly contract is four visits behind one
+       * number. Billed as a bare "Recurring: <contract>" it asks the client to
+       * take the amount on trust, and gives Renovo nothing to point at when
+       * they query it. The visits are on record now, so the invoice can name
+       * the dates it is for.
+       *
+       * Only completed visits are named. Listing a date the crew has not been
+       * to yet would bill work that has not happened, and if it then gets
+       * missed the invoice says it was done.
+       */
+      /*
+       * Everything finished since the last invoice. On a contract that has
+       * never billed, the start of this month -- billing runs monthly, so
+       * anything older belongs to a period nobody is charging for.
+       */
+      const periodStart = contract.lastBilledAt
+        ? new Date(contract.lastBilledAt)
+        : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
+
+      const covered = await db
+        .select({ scheduledDate: schema.workOrders.scheduledDate })
+        .from(schema.workOrders)
+        .where(and(
+          eq(schema.workOrders.recurringContractId, contract.id),
+          eq(schema.workOrders.kind, 'visit'),
+          eq(schema.workOrders.status, 'completed'),
+          isNotNull(schema.workOrders.completedAt),
+          gte(schema.workOrders.completedAt, periodStart),
+        ))
+        .orderBy(schema.workOrders.scheduledDate)
+
+      const visitDates = covered.map(v => v.scheduledDate).filter(Boolean) as string[]
+      const description = visitDates.length
+        ? `${contract.description} - ${visitDates.length} ${visitDates.length === 1 ? 'visit' : 'visits'}: ${visitDates.join(', ')}`
+        : contract.description
+
       await db.insert(schema.invoiceLineItems).values({
         invoiceId: invoice.id,
-        description: contract.description,
+        description,
         quantity: '1',
         unitPrice: contract.amount,
       })
