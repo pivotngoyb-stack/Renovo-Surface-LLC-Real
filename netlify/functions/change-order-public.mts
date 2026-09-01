@@ -84,6 +84,13 @@ export default withErrorHandling('change-order-public', async (request: Request,
       client,
       projectName: estimate?.projectName || null,
       siteAddress: estimate?.siteAddress || null,
+      /*
+       * The PO already on the job. The client's field is prefilled with it,
+       * because the original PO usually has the headroom to cover a change and
+       * making them retype it invites a typo on the one field their accounts
+       * payable matches against. They can replace it if AP issued a new one.
+       */
+      jobPoNumber: estimate?.poNumber || null,
       reasonLabel: reasonLabel(changeOrder.reason),
       preview,
       terms: changeOrderTerms({

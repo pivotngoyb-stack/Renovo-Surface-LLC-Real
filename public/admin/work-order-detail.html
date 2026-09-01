@@ -148,6 +148,8 @@ async function load() {
     <p style="margin-top:24px; font-size:0.85rem; word-break:break-all;"><strong>Client link:</strong> <a href="${woLink}" target="_blank">${woLink}</a></p>
   `;
 
+  // The change order form names this so "leave blank" says what it inherits.
+  window.__jobPo = estimate?.poNumber || null;
   loadPhotos();
   loadChangeOrders();
   // Estimated crew hours come from the lines Renovo works itself: a
@@ -576,7 +578,11 @@ function renderChangeOrders(cos) {
       </div>
       <div class="field-group">
         <label for="coPo">PO number for this change <span style="color:#8A98AC; font-weight:400;">(if they issue a separate one)</span></label>
-        <input type="text" id="coPo" placeholder="Leave blank if the original PO covers it">
+        <input type="text" id="coPo" placeholder="${window.__jobPo ? 'Leave blank to use ' + window.__jobPo : 'Leave blank if the original PO covers it'}">
+        ${window.__jobPo ? `<p style="color:#8A98AC; font-size:0.78rem; margin:6px 0 0;">
+          This job is under PO <strong>${escAttr(window.__jobPo)}</strong>. Left blank, the client sees that
+          number prefilled and can replace it if their AP issued a separate one.
+        </p>` : ''}
       </div>
 
       <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:6px; color:var(--navy);">Lines</label>

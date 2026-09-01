@@ -87,7 +87,16 @@ async function load() {
 }
 
 function render(data) {
-  const { changeOrder: co, lineItems, client, projectName, siteAddress, reasonLabel, terms } = data;
+  const { changeOrder: co, lineItems, client, projectName, siteAddress, reasonLabel, terms, jobPoNumber } = data;
+
+  /*
+   * The PO this change is under. Renovo's own, if they entered one while
+   * drafting; otherwise the one already on the job, because the original PO
+   * usually covers a change and retyping it invites a typo on the single
+   * field the client's accounts payable matches against.
+   */
+  const effectivePo = co.poNumber || jobPoNumber || '';
+  const poInherited = !co.poNumber && !!jobPoNumber;
 
   const linesHtml = lineItems.map(li => `
     <tr>
@@ -156,7 +165,11 @@ function render(data) {
 
         <div class="field-group">
           <label for="signPo">Purchase order number <span class="sign-optional">(if your organization requires one)</span></label>
-          <input type="text" id="signPo" placeholder="${esc(co.poNumber || 'PO number for this change')}" value="${esc(co.poNumber || '')}">
+          <input type="text" id="signPo" placeholder="PO number for this change" value="${esc(effectivePo)}">
+          ${poInherited ? `<p style="color:#8A98AC; font-size:0.78rem; margin:6px 0 0;">
+            This is the PO already on your job. If your accounts payable issued a separate one for this
+            change, replace it here.
+          </p>` : ''}
         </div>
 
         <div class="sign-tabs">
@@ -226,10 +239,10 @@ function render(data) {
           <div class="est-label" style="font-size:0.75rem;">PROJECT</div>
           <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(projectName)}</p>
         </div>` : ''}
-        ${co.poNumber ? `
+        ${effectivePo ? `
         <div>
           <div class="est-label" style="font-size:0.75rem;">PO NUMBER</div>
-          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(co.poNumber)}</p>
+          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(effectivePo)}</p>
         </div>` : ''}
       </div>
 
