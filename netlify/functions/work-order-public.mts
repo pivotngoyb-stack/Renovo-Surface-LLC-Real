@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
+import { clientLineItems } from './_shared/clientView.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, notFound, badRequest, getClientIp } from './_shared/http.mts'
 import { sendSignedWorkOrderConfirmation } from './_shared/email.mts'
@@ -37,7 +38,7 @@ export default async (request: Request, context: Context) => {
     // Only a signed-in admin gets a preview. The page draws its banner and
     // disables the client's controls off this, never off the query string.
     const preview = new URL(request.url).searchParams.get('preview') === '1' && isAuthenticated(request)
-    return json({ workOrder, client, signature: signature || null, lineItems, photos, poNumber: estimate?.poNumber || null, preview })
+    return json({ workOrder, client, signature: signature || null, lineItems: clientLineItems(lineItems), photos, poNumber: estimate?.poNumber || null, preview })
   }
 
   if (request.method === 'POST') {

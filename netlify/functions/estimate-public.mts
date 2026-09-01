@@ -1,6 +1,7 @@
 import { eq, asc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
+import { clientLineItems } from './_shared/clientView.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined, notifyAdminWorkOrderCreationFailed } from './_shared/email.mts'
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
@@ -97,7 +98,9 @@ export default async (request: Request, context: Context) => {
     return json({
       estimate,
       client,
-      lineItems,
+      // Stripped of the cost basis. The whole row used to go out, carrying
+      // the sub cost and the labour estimate to anyone who opened devtools.
+      lineItems: clientLineItems(lineItems),
       proposal,
       // Everything a recurring or multi-site bid needs to be comparable:
       // what it costs per year, what happens on which day, and which site
