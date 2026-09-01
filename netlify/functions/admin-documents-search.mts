@@ -4,7 +4,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
 
 interface DocRow {
-  type: 'estimate' | 'workOrder' | 'invoice' | 'subcontractorAgreement' | 'contract'
+  type: 'estimate' | 'workOrder' | 'changeOrder' | 'invoice' | 'subcontractorAgreement' | 'contract'
   id: number
   title: string
   name: string
@@ -128,6 +128,60 @@ export default async (request: Request) => {
         status: r.status,
         date: r.createdAt.toISOString(),
         detailUrl: `/admin/work-order-detail.html?id=${r.id}`,
+      })
+    }
+  }
+
+  /*
+   * Change orders are searchable in their own right.
+   *
+   * They are the document a dispute turns on -- "why is this invoice larger
+   * than the job I signed for" -- and finding one meant knowing which work
+   * order it hung off. Searchable by client, by project, and by the text of
+   * what changed, because that last one is how anybody actually remembers it.
+   */
+  if (!typeFilter || typeFilter === 'changeOrder') {
+    const rows = await db
+      .select({
+        id: schema.changeOrders.id,
+        workOrderId: schema.changeOrders.workOrderId,
+        sequence: schema.changeOrders.sequence,
+        status: schema.changeOrders.status,
+        description: schema.changeOrders.description,
+        poNumber: schema.changeOrders.poNumber,
+        createdAt: schema.changeOrders.createdAt,
+        clientName: schema.clients.name,
+      })
+      .from(schema.changeOrders)
+      .leftJoin(schema.workOrders, eq(schema.changeOrders.workOrderId, schema.workOrders.id))
+      .leftJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
+      .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
+      .where(and(
+        eq(schema.estimates.archived, false),
+        eq(schema.changeOrders.archived, false),
+        pattern ? or(
+          ilike(schema.clients.name, pattern),
+          ilike(sql`coalesce(${schema.clients.company}, '')`, pattern),
+          ilike(sql`coalesce(${schema.estimates.projectName}, '')`, pattern),
+          ilike(schema.changeOrders.description, pattern),
+          ilike(sql`coalesce(${schema.changeOrders.poNumber}, '')`, pattern),
+          ids.length ? inArray(schema.changeOrders.workOrderId, ids) : undefined,
+        ) : undefined,
+      ))
+      .orderBy(desc(schema.changeOrders.createdAt))
+      .limit(LIMIT_PER_TYPE)
+
+    for (const r of rows) {
+      results.push({
+        type: 'changeOrder',
+        id: r.id,
+        title: `CO-${r.workOrderId}-${r.sequence} - ${r.description.split('\n')[0].slice(0, 60)}`,
+        name: r.clientName || '—',
+        status: r.status,
+        date: r.createdAt.toISOString(),
+        // The change order lives on its work order, which is where it can be
+        // sent, deleted, or seen next to the rest of the job.
+        detailUrl: `/admin/work-order-detail.html?id=${r.workOrderId}`,
       })
     }
   }

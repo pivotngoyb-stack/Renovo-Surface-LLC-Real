@@ -37,7 +37,7 @@ async function logout() {
   window.location.href = '/client/login.html';
 }
 
-const TYPE_LABELS = { estimate: 'Estimate', workOrder: 'Work Order', invoice: 'Invoice', contract: 'Recurring Contract' };
+const TYPE_LABELS = { estimate: 'Estimate', workOrder: 'Work Order', changeOrder: 'Change Order', invoice: 'Invoice', contract: 'Recurring Contract' };
 
 async function load() {
   const res = await fetch('/api/client/documents');

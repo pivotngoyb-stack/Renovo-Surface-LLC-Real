@@ -1,11 +1,11 @@
-import { eq, desc } from 'drizzle-orm'
+import { eq, and, ne, desc } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { getClientSession } from './_shared/client-auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
 interface DocRow {
-  type: 'estimate' | 'workOrder' | 'invoice' | 'contract'
+  type: 'estimate' | 'workOrder' | 'changeOrder' | 'invoice' | 'contract'
   title: string
   status: string
   date: string
@@ -58,6 +58,46 @@ export default withErrorHandling('client-documents', async (request: Request) =>
     .orderBy(desc(schema.invoices.createdAt))
   for (const i of invoices) {
     results.push({ type: 'invoice', title: `INV-${1000 + i.id}`, status: i.status, date: i.createdAt.toISOString(), detailUrl: `/invoice.html?t=${i.token}` })
+  }
+
+  /*
+   * Change orders the client has been sent.
+   *
+   * These are the documents most likely to be looked up months later: a client
+   * querying why an invoice was larger than the job they signed for needs to
+   * find the amendment they approved, and until now it existed nowhere they
+   * could reach except the original email.
+   *
+   * Drafts are excluded. One that has not been sent is Renovo still writing,
+   * and a client finding it in their portal would be reading a document that
+   * has not been put to them yet.
+   */
+  const changeOrders = await db
+    .select({
+      id: schema.changeOrders.id,
+      workOrderId: schema.changeOrders.workOrderId,
+      sequence: schema.changeOrders.sequence,
+      token: schema.changeOrders.token,
+      status: schema.changeOrders.status,
+      createdAt: schema.changeOrders.createdAt,
+      sentAt: schema.changeOrders.sentAt,
+    })
+    .from(schema.changeOrders)
+    .innerJoin(schema.workOrders, eq(schema.changeOrders.workOrderId, schema.workOrders.id))
+    .innerJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
+    .where(and(
+      eq(schema.estimates.clientId, session.clientId),
+      ne(schema.changeOrders.status, 'draft'),
+    ))
+    .orderBy(desc(schema.changeOrders.createdAt))
+  for (const c of changeOrders) {
+    results.push({
+      type: 'changeOrder',
+      title: `Change Order CO-${c.workOrderId}-${c.sequence}`,
+      status: c.status,
+      date: (c.sentAt || c.createdAt).toISOString(),
+      detailUrl: `/change-order.html?t=${c.token}`,
+    })
   }
 
   // Recurring contracts have no public token/detail page today -- listed read-only.
