@@ -84,6 +84,27 @@ const CONFIDENCE = {
  * itself. A job shown as 34% that ran 65% long was never a 34% job, and the
  * only way to find that out is to see the two numbers side by side.
  */
+/**
+ * What a standing contract has actually consumed so far.
+ *
+ * Deliberately apart from the variance columns. A recurring estimate prices one
+ * visit and the contract runs dozens, so measuring fifty visits' hours against
+ * a single visit's estimate would read as a 5,000% overrun -- not a variance,
+ * a category error. This is a plain count of what has happened.
+ *
+ * The gap between visits scheduled and visits logged is the number worth
+ * seeing: unlogged visits are exactly why a contract's real cost is unknown.
+ */
+function visitsCell(v) {
+  if (!v || !v.visits) return '';
+  const missing = v.visits - v.logged;
+  const hours = v.hours ? ` &middot; ${v.hours.toFixed(1)} hrs logged` : '';
+  return `<div style="font-size:0.78rem; color:#8A98AC;">
+    ${v.logged} of ${v.visits} visits logged${hours}
+    ${missing > 0 ? `<span style="color:#B7791F; font-weight:600;"> &middot; ${missing} not logged</span>` : ''}
+  </div>`;
+}
+
 function hoursCell(j) {
   if (!j.estimatedHours) return '<span style="color:#8A98AC;">&mdash;</span>';
   if (j.actualHours == null) {
@@ -218,6 +239,7 @@ function contractSection(jobs) {
       <td>
         <div style="font-weight:600; color:var(--navy);">${esc(j.company || j.clientName)}</div>
         <div style="font-size:0.78rem; color:#8A98AC;">${c.visitsPerYear} visits a year</div>
+        ${visitsCell(j.visits)}
       </td>
       <td>${billingCell(j)}</td>
       <td style="text-align:right;">${money(c.revenuePerVisit)}

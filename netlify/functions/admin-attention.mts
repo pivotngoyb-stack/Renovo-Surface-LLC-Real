@@ -1,4 +1,4 @@
-import { eq, and, isNull, inArray, sql } from 'drizzle-orm'
+import { eq, and, isNull, inArray, lt, desc, sql } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
@@ -30,7 +30,13 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
     })
     .from(schema.estimates)
     .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
-    .leftJoin(schema.workOrders, eq(schema.workOrders.estimateId, schema.estimates.id))
+    // Authorizations only: a contract that has generated visits still needs
+    // the document the client signs, and matching any work order on the
+    // estimate would quietly call that job handled.
+    .leftJoin(schema.workOrders, and(
+      eq(schema.workOrders.estimateId, schema.estimates.id),
+      eq(schema.workOrders.kind, 'authorization'),
+    ))
     .where(and(
       eq(schema.estimates.status, 'approved'),
       eq(schema.estimates.archived, false),
@@ -101,16 +107,89 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
 
   const openValue = estimateValues.reduce((sum, r) => sum + Number(r.value || 0), 0)
 
+  /*
+   * Change orders sent and never answered.
+   *
+   * The crew is usually waiting on one of these: the extra work does not start
+   * until it is signed, and a client sitting on it for a week stalls the job
+   * without anyone noticing. Nothing surfaced them outside the work order page.
+   */
+  const unansweredChangeOrders = await db
+    .select({
+      id: schema.changeOrders.id,
+      workOrderId: schema.changeOrders.workOrderId,
+      sequence: schema.changeOrders.sequence,
+      description: schema.changeOrders.description,
+      sentAt: schema.changeOrders.sentAt,
+      viewedAt: schema.changeOrders.viewedAt,
+      clientName: schema.clients.name,
+    })
+    .from(schema.changeOrders)
+    .leftJoin(schema.workOrders, eq(schema.workOrders.id, schema.changeOrders.workOrderId))
+    .leftJoin(schema.estimates, eq(schema.estimates.id, schema.workOrders.estimateId))
+    .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
+    .where(and(
+      eq(schema.changeOrders.status, 'sent'),
+      eq(schema.changeOrders.archived, false),
+    ))
+    .orderBy(schema.changeOrders.sentAt)
+
+  /*
+   * Visits whose date has passed with no hours against them.
+   *
+   * Either the crew did not go, or nobody wrote it down. Both are worth knowing
+   * before the contract is invoiced for a month that includes them, and the
+   * second is what quietly makes the profitability figures wrong.
+   */
+  const unloggedVisits = await db
+    .select({
+      id: schema.workOrders.id,
+      scheduledDate: schema.workOrders.scheduledDate,
+      visitSequence: schema.workOrders.visitSequence,
+      recurringContractId: schema.workOrders.recurringContractId,
+      contractDescription: schema.recurringContracts.description,
+      clientName: schema.clients.name,
+    })
+    .from(schema.workOrders)
+    .leftJoin(schema.recurringContracts, eq(schema.recurringContracts.id, schema.workOrders.recurringContractId))
+    .leftJoin(schema.clients, eq(schema.clients.id, schema.recurringContracts.clientId))
+    .where(and(
+      eq(schema.workOrders.kind, 'visit'),
+      isNull(schema.workOrders.actualHours),
+      lt(schema.workOrders.scheduledDate, today),
+    ))
+    .orderBy(desc(schema.workOrders.scheduledDate))
+    .limit(50)
+
+  /*
+   * Authorizations only.
+   *
+   * This counted every work order with status 'pending', which once visits
+   * existed meant every scheduled visit as well -- a quarter of a weekly
+   * contract putting thirteen rows into a number that is supposed to mean
+   * "jobs waiting on a client signature". It read 101 when 8 were real.
+   */
   const [pendingWorkOrders] = await db
     .select({ count: sql<string>`count(*)` })
     .from(schema.workOrders)
-    .where(eq(schema.workOrders.status, 'pending'))
+    .leftJoin(schema.estimates, eq(schema.estimates.id, schema.workOrders.estimateId))
+    .where(and(
+      eq(schema.workOrders.status, 'pending'),
+      eq(schema.workOrders.kind, 'authorization'),
+      // Archived work is filed away, not pipeline. Everything else on this
+      // panel excludes it and this did not, so the figure disagreed with the
+      // list it sits above.
+      eq(schema.estimates.archived, false),
+    ))
 
   return json({
     approvedWithoutWorkOrder,
     signedWithoutInvoice,
     expiredUnanswered,
-    total: approvedWithoutWorkOrder.length + signedWithoutInvoice.length + expiredUnanswered.length,
+    unansweredChangeOrders,
+    unloggedVisits,
+    total: approvedWithoutWorkOrder.length + signedWithoutInvoice.length + expiredUnanswered.length
+      + unansweredChangeOrders.length + unloggedVisits.length,
     pipeline: {
       openEstimates: liveEstimates.length,
       openValue: Math.round(openValue * 100) / 100,

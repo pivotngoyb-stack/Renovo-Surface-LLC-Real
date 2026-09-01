@@ -124,6 +124,30 @@ async function loadAttention() {
       `/admin/estimate-detail.html?id=${e.id}`,
       'Follow up',
     )),
+    /*
+     * A change order the client has not answered usually means a crew waiting:
+     * the extra work does not start until it is signed. Whether they have even
+     * opened it is the difference between chasing and nudging.
+     */
+    ...(data.unansweredChangeOrders || []).map(c => item(
+      'urgent',
+      `<strong>${escAttn(c.clientName || 'Client')}</strong> has not answered change order CO-${c.workOrderId}-${c.sequence}` +
+      ` ${c.viewedAt ? '(they have read it)' : '(not opened yet)'} — ${escAttn(String(c.description).split('\n')[0]).slice(0, 70)}`,
+      `/admin/work-order-detail.html?id=${c.workOrderId}`,
+      'Chase it',
+    )),
+    /*
+     * A past visit with no hours is either work nobody did or work nobody wrote
+     * down. The second is what makes the profitability figures wrong, and both
+     * are worth catching before the month is invoiced.
+     */
+    ...(data.unloggedVisits || []).map(v => item(
+      'stale',
+      `Visit ${v.visitSequence || ''} on ${v.scheduledDate} for <strong>${escAttn(v.clientName || 'Client')}</strong>` +
+      ` has no hours logged — ${escAttn(String(v.contractDescription || 'contract')).slice(0, 50)}`,
+      `/admin/work-order-detail.html?id=${v.id}`,
+      'Log hours',
+    )),
   ].join('');
 
   box.innerHTML = `
