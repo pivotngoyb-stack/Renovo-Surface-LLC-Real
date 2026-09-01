@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Change Order | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+  <div id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+
+/* ---------- Preview ----------
+ *
+ * Renovo needs to see what the client sees before sending. The only other way
+ * is to open the client's own link, and on a document that stamps a viewedAt
+ * that fabricates a record of the client having read it.
+ *
+ * The client's controls render exactly as they will, disabled. What is being
+ * checked is the page the client gets, and the buttons are part of it.
+ */
+const wantPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+
+/*
+ * Set from the server's answer, never from the URL. The server honours
+ * ?preview=1 only for a signed-in admin; trusting the address bar here would
+ * show a client the admin banner and then disable the controls they need.
+ */
+let isPreview = false;
+
+function previewBanner(who) {
+  if (!isPreview) return '';
+  return `
+    <div class="preview-bar no-print">
+      <strong>Preview</strong>
+      <span>This is the change order exactly as ${esc(who || 'your client')} will see it. Nothing is recorded, and their buttons are disabled here.</span>
+    </div>`;
+}
+
+/**
+ * Turn off every control the client would act on. Structural rather than a
+ * list of ids, so a control added later is locked by default. Printing stays
+ * live: it records nothing, and the printed copy is part of what is previewed.
+ */
+function applyPreviewLock() {
+  if (!isPreview) return;
+  document.body.classList.add('is-preview');
+  document.querySelectorAll('#content button, #content input, #content textarea, #content select')
+    .forEach(el => { if (!el.closest('.print-btn-row, .preview-bar')) el.disabled = true; });
+  document.querySelectorAll('#content canvas').forEach(c => { c.style.pointerEvents = 'none'; });
+}
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+const money = (n) => (Number(n) < 0 ? '-' : '') + '$' + Math.abs(Number(n))
+  .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+function showError(msg) {
+  document.getElementById('content').innerHTML =
+    `<div class="state-banner"><div class="icon">⚠️</div><p>${esc(msg)}</p></div>`;
+}
+
+async function load() {
+  if (!token) return showError('This link is missing its code. Please use the link from your email.');
+  const res = await fetch(`/api/change-order/${token}` + (wantPreview ? '?preview=1' : ''));
+  if (!res.ok) {
+    return showError(res.status === 404
+      ? 'We could not find this change order. Please use the link from your email.'
+      : 'Something went wrong loading this change order.');
+  }
+  const data = await res.json();
+  isPreview = data.preview === true;
+  render(data);
+  initSignaturePad();
+  applyPreviewLock();
+}
+
+function render(data) {
+  const { changeOrder: co, lineItems, client, projectName, siteAddress, reasonLabel, terms } = data;
+
+  const linesHtml = lineItems.map(li => `
+    <tr>
+      <td>${esc(li.description)}</td>
+      <td style="text-align:center;">${Number(li.quantity)}</td>
+      <td style="text-align:right;">${money(li.unitPrice)}</td>
+      <td style="text-align:right;">${money(Number(li.quantity) * Number(li.unitPrice))}</td>
+    </tr>`).join('');
+
+  const isCredit = co.total < 0;
+
+  /*
+   * A decided change order shows the decision instead of the form. A second
+   * signature box on a document already signed invites a client to sign twice
+   * and wonder which one counts.
+   */
+  let actionHtml = '';
+  if (co.status === 'approved') {
+    actionHtml = `
+      <div class="state-banner" style="padding:32px 24px;">
+        <div class="icon">✅</div>
+        <p><strong>Approved</strong>${co.signerName ? ` by ${esc(co.signerName)}` : ''}${co.respondedAt ? ` on ${fmtDate(new Date(co.respondedAt))}` : ''}.</p>
+      </div>
+      ${co.signatureData ? `
+        <div class="prop-signed">
+          <div class="prop-signed-mark">
+            ${co.signatureType === 'drawn'
+              ? `<img src="${esc(co.signatureData)}" alt="Signature of ${esc(co.signerName)}">`
+              : `<span class="prop-signed-typed">${esc(co.signatureData)}</span>`}
+          </div>
+          <div class="prop-signed-meta">
+            <strong>${esc(co.signerName)}</strong>${co.signerTitle ? `, ${esc(co.signerTitle)}` : ''}<br>
+            Approved ${co.respondedAt ? fmtDate(new Date(co.respondedAt)) : ''}
+          </div>
+        </div>` : ''}
+      <div class="print-btn-row no-print" style="margin-top:20px;">
+        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
+      </div>`;
+  } else if (co.status === 'declined') {
+    actionHtml = `
+      <div class="state-banner" style="padding:32px 24px;">
+        <div class="icon">🚫</div>
+        <p><strong>Declined</strong>${co.respondedAt ? ` on ${fmtDate(new Date(co.respondedAt))}` : ''}. We will not do this work.</p>
+        ${co.declineReason ? `<p style="color:#4A5A72; font-size:0.9rem;">${esc(co.declineReason)}</p>` : ''}
+        <p style="color:#4A5A72; font-size:0.9rem;">If this was a mistake, call us on 801-369-2330.</p>
+      </div>`;
+  } else {
+    actionHtml = `
+      <div class="sign-box no-print">
+        <h4>Approve this change order</h4>
+        <p class="sign-intro">
+          Signing below authorizes the work above and ${isCredit ? 'reduces' : 'adds'} ${money(Math.abs(co.total))}
+          ${isCredit ? 'from' : 'to'} your contract. Nothing here is done until you sign.
+        </p>
+
+        <div class="sign-fields">
+          <div class="field-group">
+            <label for="signName">Your full name</label>
+            <input type="text" id="signName" placeholder="As it should appear on the approval" autocomplete="name">
+          </div>
+          <div class="field-group">
+            <label for="signTitle">Title <span class="sign-optional">(optional)</span></label>
+            <input type="text" id="signTitle" placeholder="e.g. Facilities Manager">
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="signPo">Purchase order number <span class="sign-optional">(if your organization requires one)</span></label>
+          <input type="text" id="signPo" placeholder="${esc(co.poNumber || 'PO number for this change')}" value="${esc(co.poNumber || '')}">
+        </div>
+
+        <div class="sign-tabs">
+          <button type="button" class="sign-tab is-active" id="tabDraw" onclick="signTab('draw')">Draw it</button>
+          <button type="button" class="sign-tab" id="tabType" onclick="signTab('type')">Type it</button>
+        </div>
+
+        <div id="panelDraw" class="sign-panel is-active">
+          <canvas id="signCanvas" class="sign-canvas" width="620" height="150"></canvas>
+          <button type="button" class="sign-clear" onclick="clearSignature()">Clear</button>
+        </div>
+        <div id="panelType" class="sign-panel">
+          <input type="text" id="signTyped" class="sign-typed" placeholder="Type your name to sign">
+        </div>
+
+        <label class="sign-consent">
+          <input type="checkbox" id="signConsent">
+          <span>I agree that typing or drawing my name above is my electronic signature, and that it is as binding as a signature on paper.</span>
+        </label>
+      </div>
+
+      <p id="respondError" class="form-error"></p>
+
+      ${isPreview ? '<p class="preview-hint no-print">The client approves or declines here. Disabled in preview so it cannot be answered on their behalf.</p>' : ''}
+      <div class="doc-actions no-print">
+        <button class="btn btn-primary" onclick="respond('approve')">Approve This Change</button>
+        <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;" onclick="respond('decline')">Decline</button>
+      </div>
+      <div class="print-btn-row no-print" style="margin-top:18px;">
+        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
+      </div>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    ${previewBanner(client && client.name)}
+    <div class="doc-card" style="max-width:840px;">
+      <div class="est-header">
+        <div>
+          <div class="est-company-name">Renovo Surface Solutions LLC</div>
+          <div style="margin-top:10px;">
+            <span class="est-label">CHANGE ORDER</span>
+            <span style="color:#8A98AC; font-size:0.9rem; margin-left:8px;">${esc(co.number)}</span>
+          </div>
+          <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">
+            Amends Work Order #${co.workOrderId}<br>
+            Issued ${fmtDate(new Date(co.sentAt || co.createdAt))}
+          </p>
+        </div>
+        <div class="est-company-info">
+          801-369-2330<br>
+          Pngoy@renovosurface.com<br>
+          30 N Orange Street<br>
+          Salt Lake City, UT 84116
+        </div>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:24px 48px; margin-bottom:24px;">
+        <div>
+          <div class="est-label" style="font-size:0.75rem;">FOR</div>
+          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">
+            ${esc(client ? client.name : '')}${client && client.company ? `<br>${esc(client.company)}` : ''}
+            ${siteAddress ? `<br>${esc(siteAddress)}` : ''}
+          </p>
+        </div>
+        ${projectName ? `
+        <div>
+          <div class="est-label" style="font-size:0.75rem;">PROJECT</div>
+          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(projectName)}</p>
+        </div>` : ''}
+        ${co.poNumber ? `
+        <div>
+          <div class="est-label" style="font-size:0.75rem;">PO NUMBER</div>
+          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(co.poNumber)}</p>
+        </div>` : ''}
+      </div>
+
+      <h3 style="font-size:1rem; margin-bottom:8px;">What changed</h3>
+      <p style="color:#4A5A72; font-size:0.9rem; line-height:1.6; white-space:pre-wrap;">${esc(co.description)}</p>
+      ${reasonLabel ? `<p style="color:#8A98AC; font-size:0.85rem; margin-top:8px;"><strong>Reason:</strong> ${esc(reasonLabel)}</p>` : ''}
+
+      <table style="margin-top:22px;">
+        <thead>
+          <tr><th>DESCRIPTION</th><th style="text-align:center;">QTY</th><th style="text-align:right;">PRICE</th><th style="text-align:right;">TOTAL</th></tr>
+        </thead>
+        <tbody>${linesHtml}</tbody>
+      </table>
+
+      <p style="text-align:right; font-size:1.15rem; font-weight:700; color:var(--navy); margin-top:16px;">
+        ${isCredit ? 'Credit to your contract' : 'Added to your contract'}: ${money(Math.abs(co.total))}
+      </p>
+      ${co.scheduleImpactDays > 0 ? `
+        <p style="text-align:right; color:#4A5A72; font-size:0.88rem;">
+          Completion moves out by ${co.scheduleImpactDays} ${co.scheduleImpactDays === 1 ? 'day' : 'days'}
+        </p>` : ''}
+
+      <h3 style="font-size:1rem; margin:26px 0 8px;">Authorization</h3>
+      <p style="color:#4A5A72; font-size:0.85rem; line-height:1.6; white-space:pre-wrap;">${esc(terms)}</p>
+
+      ${actionHtml}
+    </div>`;
+}
+
+/* ---------- Signature capture ----------
+ *
+ * Draw or type, matching the proposal and the work order. The canvas is sized
+ * to its rendered width so the stroke lands under the finger rather than
+ * offset by the device pixel ratio.
+ */
+let signMode = 'draw';
+let signDrawn = false;
+
+function signTab(mode) {
+  if (isPreview) return;
+  signMode = mode;
+  document.getElementById('tabDraw').classList.toggle('is-active', mode === 'draw');
+  document.getElementById('tabType').classList.toggle('is-active', mode === 'type');
+  document.getElementById('panelDraw').classList.toggle('is-active', mode === 'draw');
+  document.getElementById('panelType').classList.toggle('is-active', mode === 'type');
+}
+
+function initSignaturePad() {
+  const canvas = document.getElementById('signCanvas');
+  if (!canvas) return;
+
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * ratio);
+  canvas.height = Math.round(rect.height * ratio);
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0D1F38';
+
+  let drawing = false;
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  };
+  const start = (e) => { e.preventDefault(); drawing = true; signDrawn = true; const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y); };
+  const move = (e) => { if (!drawing) return; e.preventDefault(); const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke(); };
+  const end = () => { drawing = false; };
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function clearSignature() {
+  const canvas = document.getElementById('signCanvas');
+  if (!canvas) return;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  signDrawn = false;
+}
+
+function signError(msg) {
+  const el = document.getElementById('respondError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+  return null;
+}
+
+function collectSignature() {
+  const name = (document.getElementById('signName')?.value || '').trim();
+  if (!name) return signError('Please enter your name as it should appear on the approval.');
+  if (!document.getElementById('signConsent')?.checked) {
+    return signError('Please confirm you agree to sign electronically.');
+  }
+  if (signMode === 'type') {
+    const typed = (document.getElementById('signTyped')?.value || '').trim();
+    if (!typed) return signError('Please type your name to sign.');
+    return { signatureType: 'typed', signatureData: typed };
+  }
+  if (!signDrawn) return signError('Please draw your signature in the box.');
+  return { signatureType: 'drawn', signatureData: document.getElementById('signCanvas').toDataURL('image/png') };
+}
+
+async function respond(action) {
+  let payload = { action };
+
+  // Declining needs no signature. A client saying no has not agreed to
+  // anything, and asking them to sign to refuse would be absurd.
+  if (action === 'approve') {
+    const sig = collectSignature();
+    if (!sig) return;
+    payload = {
+      action,
+      signerName: (document.getElementById('signName').value || '').trim(),
+      signerTitle: (document.getElementById('signTitle')?.value || '').trim() || undefined,
+      poNumber: (document.getElementById('signPo')?.value || '').trim() || undefined,
+      consentConfirmed: true,
+      ...sig,
+    };
+  } else {
+    const why = window.prompt('Optional: tell us why, so we can put it right.');
+    if (why === null) return;   // cancelled the dialog, not the change order
+    payload.declineReason = why;
+  }
+
+  const res = await fetch(`/api/change-order/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return signError(data.error || 'Something went wrong. Please try again.');
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

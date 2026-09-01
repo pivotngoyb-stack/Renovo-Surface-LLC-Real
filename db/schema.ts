@@ -1,7 +1,13 @@
 import { pgTable, serial, text, integer, numeric, timestamp, boolean, pgEnum, date } from 'drizzle-orm/pg-core'
 
 export const estimateStatusEnum = pgEnum('estimate_status', ['draft', 'sent', 'viewed', 'approved', 'declined'])
-export const workOrderStatusEnum = pgEnum('work_order_status', ['pending', 'signed'])
+// 'signed' is the client authorising a one-off job. 'completed' is a visit
+// under a standing contract, which nobody signs each time -- the contract was
+// the authorisation, and the visit is dispatch.
+export const workOrderStatusEnum = pgEnum('work_order_status', ['pending', 'signed', 'completed'])
+// An authorization is the document a client signs to approve a one-off job.
+// A visit is one occurrence under a contract they already signed.
+export const workOrderKindEnum = pgEnum('work_order_kind', ['authorization', 'visit'])
 export const signatureTypeEnum = pgEnum('signature_type', ['drawn', 'typed'])
 export const invoiceStatusEnum = pgEnum('invoice_status', ['unpaid', 'partially_paid', 'paid'])
 export const contractStatusEnum = pgEnum('contract_status', ['active', 'paused', 'cancelled'])
@@ -12,6 +18,9 @@ export const photoCategoryEnum = pgEnum('photo_category', ['before', 'after'])
 // A project with a deposit bills twice: the deposit holds the crew, the
 // balance falls due on completion. 'full' is everything else.
 export const invoiceKindEnum = pgEnum('invoice_kind', ['full', 'deposit', 'balance'])
+// A change order is sent, then either signed or turned down. Draft is the
+// window in which Renovo can still fix the wording.
+export const changeOrderStatusEnum = pgEnum('change_order_status', ['draft', 'sent', 'approved', 'declined'])
 
 export const clients = pgTable('clients', {
   id: serial('id').primaryKey(),
@@ -47,6 +56,12 @@ export const estimates = pgTable('estimates', {
   // revision -- a $4,000 deposit on a job that grew to $12,000 is not a
   // deposit any more, it is a rounding error.
   depositPct: numeric('deposit_pct'),
+  // The client's purchase order. Institutional buyers -- school districts,
+  // hospitals, municipalities -- issue one before work starts, and their AP
+  // department will not pay an invoice that does not quote it. Captured here
+  // and carried to every document downstream, because the number the client
+  // gave at acceptance is the number that has to appear on the invoice.
+  poNumber: text('po_number'),
   walkthroughDate: date('walkthrough_date'),
   siteConditions: text('site_conditions'),
   validUntil: date('valid_until'),
@@ -96,6 +111,14 @@ export const estimateLineItems = pgTable('estimate_line_items', {
 export const workOrders = pgTable('work_orders', {
   id: serial('id').primaryKey(),
   estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  // Set when this work order is one visit under a standing contract. Null on
+  // a one-off job, which is authorised by the estimate alone.
+  recurringContractId: integer('recurring_contract_id').references(() => recurringContracts.id),
+  // Which visit this is in the contract's run, 1-based. Gives the crew and the
+  // client a stable reference ("visit 14") that a date alone does not when a
+  // visit gets moved.
+  visitSequence: integer('visit_sequence'),
+  kind: workOrderKindEnum('kind').notNull().default('authorization'),
   token: text('token').notNull().unique(),
   termsText: text('terms_text').notNull(),
   status: workOrderStatusEnum('status').notNull().default('pending'),
@@ -146,6 +169,14 @@ export const recurringContracts = pgTable('recurring_contracts', {
   description: text('description').notNull(),
   amount: numeric('amount').notNull(),
   billingDay: integer('billing_day').notNull(),
+  // A blanket PO covering the contract term. Institutional clients issue one
+  // per fiscal year rather than one per invoice, so it lives on the contract
+  // and every invoice raised under it inherits the number.
+  poNumber: text('po_number'),
+  // How often the crew is on site. Distinct from billingDay, which is when the
+  // client is charged: a weekly contract billed monthly has four visits behind
+  // one invoice. Without this a contract cannot say what work it owes.
+  visitFrequency: text('visit_frequency').notNull().default('monthly'),
   status: contractStatusEnum('status').notNull().default('active'),
   lastBilledAt: timestamp('last_billed_at'),
   autoChargeEnabled: boolean('auto_charge_enabled').notNull().default(false),
@@ -168,6 +199,10 @@ export const invoices = pgTable('invoices', {
   taxApplied: boolean('tax_applied').notNull().default(false),
   taxAmount: numeric('tax_amount').notNull().default('0'),
   kind: invoiceKindEnum('kind').notNull().default('full'),
+  // Copied forward from the estimate or the contract when the invoice is
+  // raised, and editable after -- a PO can be amended, or issued late, and an
+  // invoice already sent may need the new number before AP will release it.
+  poNumber: text('po_number'),
   reminderStage: integer('reminder_stage').notNull().default(0),
   lastReminderSentAt: timestamp('last_reminder_sent_at'),
   archived: boolean('archived').notNull().default(false),
@@ -286,4 +321,65 @@ export const estimatePhotos = pgTable('estimate_photos', {
   sizeBytes: integer('size_bytes').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
   uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+})
+
+/**
+ * A signed amendment to a work order already in progress.
+ *
+ * Scope grows on almost every job of any size -- a floor strips down to a
+ * substrate that needs a second pass, a client adds two restrooms while the
+ * crew is on site. Without a document for it there are only two options, and
+ * both are bad: absorb the cost, or put a line on the final invoice that the
+ * client never agreed to. The second is where disputes come from.
+ *
+ * Amounts may be negative. Scope shrinks too, and a change order that can only
+ * add is a document Renovo would quietly avoid using on the jobs where it is
+ * most needed.
+ *
+ * Signature columns are inline rather than a separate table. The work order and
+ * the proposal both keep theirs apart, but only because those tables already
+ * held live rows when signing was added. This one is new, so the record can sit
+ * where it belongs.
+ */
+export const changeOrders = pgTable('change_orders', {
+  id: serial('id').primaryKey(),
+  workOrderId: integer('work_order_id').notNull().references(() => workOrders.id),
+  // 1-based within the work order. What the client and the crew call it, and
+  // what the invoice line has to cite: "Change Order #2".
+  sequence: integer('sequence').notNull(),
+  token: text('token').notNull().unique(),
+  status: changeOrderStatusEnum('status').notNull().default('draft'),
+  // What changed and, separately, why. The reason is what makes this defensible
+  // a year later: "client requested" and "condition found on site" are very
+  // different conversations, and the document should not blur them.
+  description: text('description').notNull(),
+  reason: text('reason'),
+  // A change order frequently needs its own PO amendment; AP will reject the
+  // extra against the original number.
+  poNumber: text('po_number'),
+  // Days added to the schedule, if any. A change that adds work usually adds
+  // time, and a client who signed for the extra cost but not the extra day is
+  // still going to be surprised.
+  scheduleImpactDays: integer('schedule_impact_days').notNull().default(0),
+  signerName: text('signer_name'),
+  signerTitle: text('signer_title'),
+  signatureType: signatureTypeEnum('signature_type'),
+  signatureData: text('signature_data'),
+  consentConfirmed: boolean('consent_confirmed').notNull().default(false),
+  ipAddress: text('ip_address'),
+  declineReason: text('decline_reason'),
+  sentAt: timestamp('sent_at'),
+  viewedAt: timestamp('viewed_at'),
+  respondedAt: timestamp('responded_at'),
+  archived: boolean('archived').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const changeOrderLineItems = pgTable('change_order_line_items', {
+  id: serial('id').primaryKey(),
+  changeOrderId: integer('change_order_id').notNull().references(() => changeOrders.id),
+  description: text('description').notNull(),
+  quantity: numeric('quantity').notNull().default('1'),
+  unitPrice: numeric('unit_price').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
 })

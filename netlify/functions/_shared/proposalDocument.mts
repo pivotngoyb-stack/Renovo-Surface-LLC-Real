@@ -100,6 +100,7 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     expiresDate: fmtDate(new Date(expiresOn + 'T12:00:00')),
     walkthroughDate: estimate.walkthroughDate ? fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00')) : null,
     solicitationNumber: estimate.bidMode === 'government' ? estimate.solicitationNumber : null,
+    poNumber: estimate.poNumber,
     company: COMPANY,
     client: client || null,
     projectName: estimate.projectName || client?.company || 'Service Proposal',

@@ -47,6 +47,15 @@
       <p style="color:#8A98AC; font-size:0.82rem; margin-top:-6px; margin-bottom:12px;">On construction and multi-site work the client and the jobsite are not the same thing. This is what prints on the proposal.</p>
       <div class="field-group"><label>Project / Job Name</label><input type="text" id="projectName" placeholder="e.g. Research Park Tower — 3-Story Office Shell &amp; TI"></div>
       <div class="field-group"><label>Jobsite Address</label><input type="text" id="siteAddress" placeholder="Leave blank to use the client address"></div>
+      <div class="field-group">
+        <label>Purchase Order Number</label>
+        <input type="text" id="poNumber" placeholder="Leave blank &mdash; the client can enter theirs when they accept">
+        <p style="color:#8A98AC; font-size:0.78rem; margin:6px 0 0;">
+          School districts, hospitals and municipalities issue one before work starts, and their
+          accounts payable will not pay an invoice that does not quote it. It carries to the work
+          order and the invoice on its own.
+        </p>
+      </div>
       <div style="display:grid; grid-template-columns:200px 1fr; gap:0 16px;">
         <div class="field-group"><label>Walk-Through Date</label><input type="date" id="walkthroughDate"></div>
         <div class="field-group"><label>Site Conditions Observed</label><input type="text" id="siteConditions" placeholder="e.g. Heavy drywall dust throughout, elevator available, water on 1st floor only"></div>
@@ -2048,6 +2057,7 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
         depositPct: val('depositPct') || null,
         projectName: document.getElementById('projectName').value || undefined,
         siteAddress: document.getElementById('siteAddress').value || undefined,
+        poNumber: document.getElementById('poNumber').value || undefined,
         walkthroughDate: document.getElementById('walkthroughDate').value || undefined,
         siteConditions: document.getElementById('siteConditions').value || undefined,
         validUntil: document.getElementById('validUntil').value || undefined,

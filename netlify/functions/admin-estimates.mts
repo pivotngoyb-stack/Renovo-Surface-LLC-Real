@@ -29,6 +29,8 @@ interface CreateEstimateBody {
   validUntil?: string
   projectName?: string
   siteAddress?: string
+  /** The client's purchase order, when they issued one before the work was quoted. */
+  poNumber?: string
   walkthroughDate?: string
   siteConditions?: string
   bidMode?: string
@@ -114,6 +116,7 @@ export default async (request: Request) => {
         notes: body.notes,
         projectName: body.projectName,
         siteAddress: body.siteAddress,
+        poNumber: body.poNumber?.trim() ? body.poNumber.trim().slice(0, 60) : null,
         bidMode: body.bidMode === 'government' ? 'government' : 'standard',
         solicitationNumber: body.solicitationNumber,
         optionYears: Math.max(0, Math.min(Number(body.optionYears) || 0, 9)),

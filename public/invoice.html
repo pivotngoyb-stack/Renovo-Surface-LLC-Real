@@ -27,7 +27,14 @@ const token = new URLSearchParams(window.location.search).get('t');
  * is being checked is the page the customer gets, and the buttons are part of
  * it -- hiding them would preview a different page.
  */
-const isPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+const wantPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+
+/*
+ * Set from the server's answer, never from the URL. The server honours
+ * ?preview=1 only for a signed-in admin; trusting the address bar here would
+ * show a client the admin banner and then disable the controls they need.
+ */
+let isPreview = false;
 
 function previewBanner(who, backHref) {
   if (!isPreview) return '';
@@ -65,9 +72,10 @@ function money(n) {
 
 async function load() {
   if (!token) { showError('Missing invoice link.'); return; }
-  const res = await fetch(`/api/invoice/${token}`);
+  const res = await fetch(`/api/invoice/${token}` + (wantPreview ? '?preview=1' : ''));
   if (!res.ok) { showError('This invoice could not be found.'); return; }
   const data = await res.json();
+  isPreview = data.preview === true;
   render(data);
   applyPreviewLock();
 }
@@ -90,7 +98,7 @@ function photoGalleryHtml(photos) {
   `;
 }
 
-function render({ invoice, client, lineItems, subtotal, total, amountPaid, balanceDue, invoiceNumber, stripeEnabled, recurring, photos }) {
+function render({ invoice, client, lineItems, subtotal, total, amountPaid, balanceDue, invoiceNumber, stripeEnabled, recurring, photos, poNumber }) {
   const itemsHtml = lineItems.map(li => `
     <tr><td>${li.description}</td><td>${li.quantity}</td><td>${money(li.unitPrice)}</td><td>${money(li.quantity * li.unitPrice)}</td></tr>
   `).join('');
@@ -170,6 +178,7 @@ function render({ invoice, client, lineItems, subtotal, total, amountPaid, balan
         <div style="text-align:right;">
           <h1 style="font-size:1.3rem;">${invoiceNumber}</h1>
           <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+          ${poNumber ? `<p style="color:#8A98AC; font-size:0.85rem;">PO Number: ${poNumber}</p>` : ''}
         </div>
       </div>
       <table class="doc-items-table">

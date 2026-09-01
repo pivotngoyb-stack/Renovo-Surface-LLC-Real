@@ -1,5 +1,6 @@
 import { eq, desc } from 'drizzle-orm'
 import { depositSplit } from './_shared/deposit.mts'
+import { changeOrderTotal, changeOrderNumber, billable as billableChanges } from './_shared/changeOrders.mts'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
@@ -24,8 +25,45 @@ interface CreateInvoiceBody {
   notes?: string
   dueDate?: string
   lineItems?: LineItemInput[]
+  /** The client purchase order to quote on the invoice. Overrides the estimate. */
+  poNumber?: string
   /** 'deposit' or 'balance' on a project that carries a deposit; 'full' otherwise. */
   kind?: 'full' | 'deposit' | 'balance'
+}
+
+/**
+ * Approved change orders as invoice lines.
+ *
+ * Cited by number, not folded silently into the total. A client looking at an
+ * invoice larger than the one they signed for should be able to see which
+ * document they signed to make it so -- that is the whole reason the change
+ * order exists.
+ *
+ * Only approved ones. A sent-but-unanswered change order is a proposal, and
+ * billing it would bill for work the client never authorised.
+ */
+async function approvedChangeLines(workOrderId: number) {
+  const changeOrders = await db
+    .select()
+    .from(schema.changeOrders)
+    .where(eq(schema.changeOrders.workOrderId, workOrderId))
+    .orderBy(schema.changeOrders.sequence)
+
+  const lines: { description: string; quantity: number; unitPrice: number }[] = []
+  for (const co of billableChanges(changeOrders)) {
+    const items = await db
+      .select()
+      .from(schema.changeOrderLineItems)
+      .where(eq(schema.changeOrderLineItems.changeOrderId, co.id))
+      .orderBy(schema.changeOrderLineItems.sortOrder)
+
+    lines.push({
+      description: `${changeOrderNumber(workOrderId, co.sequence)} - ${co.description.split('\n')[0].slice(0, 160)}`,
+      quantity: 1,
+      unitPrice: changeOrderTotal(items),
+    })
+  }
+  return lines
 }
 
 export default async (request: Request) => {
@@ -84,6 +122,11 @@ export default async (request: Request) => {
     let taxAmount = '0'
     // Which half of a split project this invoice is, or 'full' for everything else.
     let kind: 'full' | 'deposit' | 'balance' = 'full'
+    // The client's purchase order. Their AP department will not pay an invoice
+    // that does not quote it, and the number is known long before this point --
+    // it just had nowhere to travel.
+    let poNumber: string | null =
+      typeof body.poNumber === 'string' && body.poNumber.trim() ? body.poNumber.trim().slice(0, 60) : null
 
     if (body.workOrderId) {
       const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, body.workOrderId)).limit(1)
@@ -135,11 +178,15 @@ export default async (request: Request) => {
 
       clientId = estimate.clientId
       workOrderId = workOrder.id
+      // The estimate's PO unless this request overrode it. A PO issued late,
+      // or amended, is entered on the invoice and wins.
+      poNumber = poNumber || estimate.poNumber || null
 
       if (kind === 'full') {
         taxApplied = estimate.taxApplied
         taxAmount = estimate.taxAmount
         lineItems = billable.map((li) => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice }))
+        lineItems.push(...(await approvedChangeLines(workOrder.id)))
       } else {
         // The deposit is a percentage of the total INCLUDING tax, the way the
         // proposal states it, so these two invoices carry no separate tax line.
@@ -160,6 +207,12 @@ export default async (request: Request) => {
                 unitPrice: split.balanceDue,
               },
         ]
+        /*
+         * Change orders ride on the balance, never the deposit. The deposit is
+         * a share of the total quoted at signing; a change signed weeks later
+         * was not part of that number.
+         */
+        if (kind === 'balance') lineItems.push(...(await approvedChangeLines(workOrder.id)))
       }
     } else {
       if (!body.client?.name || !body.client?.email) return badRequest('Client name and email are required')
@@ -196,6 +249,7 @@ export default async (request: Request) => {
         taxApplied,
         taxAmount,
         kind,
+        poNumber,
       })
       .returning()
 

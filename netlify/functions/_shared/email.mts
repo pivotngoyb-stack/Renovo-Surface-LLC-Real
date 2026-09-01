@@ -352,3 +352,71 @@ export async function notifyAdminWorkOrderCreationFailed(
     `),
   })
 }
+
+/**
+ * A change order sent for signature.
+ *
+ * Deliberately states the amount in the email body rather than only behind the
+ * link. This is a request for more money than the client agreed to, and making
+ * them click through to find out how much reads as though it is being hidden.
+ */
+export async function sendChangeOrderToClient(
+  clientEmail: string,
+  clientName: string,
+  token: string,
+  number: string,
+  total: string,
+  summary: string,
+): Promise<boolean> {
+  const url = `${SITE_URL}/change-order.html?t=${token}`
+  const isCredit = total.trim().startsWith('-')
+  return sendEmail({
+    to: clientEmail,
+    subject: `${number} for your approval — ${isCredit ? 'credit' : 'additional work'}`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">Hi ${clientName},</h2>
+      <p style="color:#4A5A72; line-height:1.6;">
+        We have run into something on your job that changes the scope, and we need your approval
+        before we go any further.
+      </p>
+      <p style="color:#4A5A72; line-height:1.6; margin:0 0 4px;"><strong>${number}</strong></p>
+      <p style="color:#4A5A72; line-height:1.6; margin:0 0 4px;">${summary}</p>
+      <p style="color:#0D1F38; font-size:18px; font-weight:bold; margin:12px 0 0;">
+        ${isCredit ? 'Credit' : 'Additional cost'}: ${total}
+      </p>
+      <p style="color:#4A5A72; line-height:1.6;">
+        Nothing under this change order is done until you sign it. If you would rather talk it
+        through first, call us on 801-369-2330.
+      </p>
+      ${button('Review & Sign', url)}
+    `),
+  })
+}
+
+export async function notifyAdminChangeOrderSigned(clientName: string, number: string, total: string) {
+  return sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `${number} approved by ${clientName}`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">${number} approved</h2>
+      <p style="color:#4A5A72; line-height:1.6;">
+        ${clientName} signed ${number} for ${total}. The revised contract sum is on the work order.
+      </p>
+    `),
+  })
+}
+
+export async function notifyAdminChangeOrderDeclined(clientName: string, number: string, reason: string) {
+  return sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `${number} declined by ${clientName}`,
+    html: wrapper(`
+      <h2 style="color:#0D1F38; margin-top:0;">${number} declined</h2>
+      <p style="color:#4A5A72; line-height:1.6;">${clientName} turned down ${number}.</p>
+      ${reason ? `<p style="color:#4A5A72; line-height:1.6;"><strong>What they said:</strong> ${reason}</p>` : ''}
+      <p style="color:#4A5A72; line-height:1.6;">
+        The crew should not do this work. If it has already started, stop and call them.
+      </p>
+    `),
+  })
+}

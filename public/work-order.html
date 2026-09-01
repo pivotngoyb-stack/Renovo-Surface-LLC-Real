@@ -27,7 +27,14 @@ const token = new URLSearchParams(window.location.search).get('t');
  * is being checked is the page the customer gets, and the buttons are part of
  * it -- hiding them would preview a different page.
  */
-const isPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+const wantPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+
+/*
+ * Set from the server's answer, never from the URL. The server honours
+ * ?preview=1 only for a signed-in admin; trusting the address bar here would
+ * show a client the admin banner and then disable the controls they need.
+ */
+let isPreview = false;
 
 function previewBanner(who, backHref) {
   if (!isPreview) return '';
@@ -273,10 +280,11 @@ function toggleSigningEnabled() {
 
 async function load() {
   if (!token) { showError('Missing work order link.'); return; }
-  const res = await fetch(`/api/work-order/${token}`);
+  const res = await fetch(`/api/work-order/${token}` + (wantPreview ? '?preview=1' : ''));
   if (!res.ok) { showError('This work order could not be found.'); return; }
-  const { workOrder, client, signature, lineItems, photos } = await res.json();
-  render(workOrder, client, signature, lineItems, photos || []);
+  const { workOrder, client, signature, lineItems, photos, poNumber, preview } = await res.json();
+  isPreview = preview === true;
+  render(workOrder, client, signature, lineItems, photos || [], poNumber);
   applyPreviewLock();
 }
 
@@ -294,13 +302,21 @@ function photoGalleryHtml(photos) {
   `;
 }
 
-function render(workOrder, client, signature, lineItems, photos) {
+function render(workOrder, client, signature, lineItems, photos, poNumber) {
+  // Printed on both states. A client checking a signed work order against
+  // their own paperwork is looking for exactly this number.
+  const poLine = poNumber
+    ? `<p style="color:#8A98AC; font-size:0.85rem;">PO Number: ${poNumber}</p>`
+    : '';
   if (workOrder.status === 'signed' && signature) {
     document.getElementById('content').innerHTML = previewBanner(client && client.name) + `
       <div class="doc-card">
         <div class="doc-header">
           <img src="images/logo.png" alt="Renovo Surface Solutions">
-          <h1 style="font-size:1.3rem;">Work Order #${workOrder.id}</h1>
+          <div style="text-align:right;">
+            <h1 style="font-size:1.3rem;">Work Order #${workOrder.id}</h1>
+            ${poLine}
+          </div>
         </div>
         <div class="state-banner">
           <div class="icon">✅</div>
@@ -316,6 +332,32 @@ function render(workOrder, client, signature, lineItems, photos) {
     return;
   }
 
+  if (workOrder.kind === 'visit') {
+    document.getElementById('content').innerHTML = previewBanner(client && client.name) + `
+      <div class="doc-card">
+        <div class="doc-header">
+          <img src="images/logo.png" alt="Renovo Surface Solutions">
+          <div style="text-align:right;">
+            <h1 style="font-size:1.3rem;">Service Visit${workOrder.visitSequence ? ' #' + workOrder.visitSequence : ''}</h1>
+            <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+            ${workOrder.scheduledDate ? `<p style="color:#8A98AC; font-size:0.85rem;">${workOrder.scheduledDate}</p>` : ''}
+            ${poLine}
+          </div>
+        </div>
+        <div class="state-banner" style="padding:28px 24px;">
+          <div class="icon">${workOrder.status === 'completed' ? '✅' : '📋'}</div>
+          <p>${workOrder.status === 'completed'
+            ? 'This visit is complete.'
+            : 'This visit is scheduled under your existing service agreement.'}</p>
+          <p style="color:#8A98AC; font-size:0.85rem;">Nothing to sign &mdash; your agreement already covers it.</p>
+        </div>
+        ${photoGalleryHtml(photos)}
+        <div class="doc-terms">${workOrder.termsText}</div>
+        <div class="print-btn-row no-print"><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Visit</button></div>
+      </div>`;
+    return;
+  }
+
   document.getElementById('content').innerHTML = previewBanner(client && client.name) + `
     <div class="doc-card">
       <div class="doc-header">
@@ -323,6 +365,7 @@ function render(workOrder, client, signature, lineItems, photos) {
         <div style="text-align:right;">
           <h1 style="font-size:1.3rem;">Work Order #${workOrder.id}</h1>
           <p style="color:#8A98AC; font-size:0.85rem;">${client?.name || ''}</p>
+          ${poLine}
         </div>
       </div>
       ${photoGalleryHtml(photos)}

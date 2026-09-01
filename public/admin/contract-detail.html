@@ -80,6 +80,16 @@ async function load() {
       <tbody>
         <tr><td style="font-weight:700; width:200px;">Monthly Amount</td><td>${money(contract.amount)}</td></tr>
         <tr><td style="font-weight:700;">Bills On</td><td>Day ${contract.billingDay} of each month</td></tr>
+        <tr>
+          <td style="font-weight:700;">Service Frequency</td>
+          <td>
+            <select id="visitFreq" onchange="saveVisitFrequency()" style="padding:6px 8px; border:1.5px solid #DCE4EF; border-radius:6px;">
+              ${VISIT_FREQUENCIES.map(([k, l]) =>
+                `<option value="${k}"${k === (contract.visitFrequency || 'monthly') ? ' selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <span style="color:#8A98AC; font-size:0.8rem; margin-left:8px;">how often the crew is on site &mdash; not the same as when they are billed</span>
+          </td>
+        </tr>
         <tr><td style="font-weight:700;">Payment Method</td><td>${autoPay}</td></tr>
         <tr><td style="font-weight:700;">Last Billed</td><td>${contract.lastBilledAt ? new Date(contract.lastBilledAt).toLocaleDateString() : 'Never'}</td></tr>
         <tr><td style="font-weight:700;">Created</td><td>${new Date(contract.createdAt).toLocaleDateString()}</td></tr>
@@ -87,6 +97,8 @@ async function load() {
     </table>
 
     ${statusActions ? `<div style="margin-top:16px;">${statusActions}</div>` : ''}
+
+    <div id="visits" style="margin-top:28px;">Loading visits…</div>
 
     <h3 style="margin:28px 0 12px;">Billing History</h3>
     ${invoices.length ? `
@@ -96,6 +108,8 @@ async function load() {
       </table>
     ` : '<div class="empty-state">No invoices generated yet.</div>'}
   `;
+
+  loadVisits();
 }
 
 async function setStatus(status) {
@@ -115,6 +129,122 @@ async function archiveContract(archived) {
 }
 
 load();
+
+/* ---------- Visits ----------
+ *
+ * A recurring contract used to produce exactly one work order, so a weekly
+ * account had a single work order covering a year, one completedAt and one set
+ * of actual hours. The profitability report was grading fifty-two visits from
+ * one data point, and the schedule could not say who was going where.
+ *
+ * A visit is internal dispatch. The client signed the contract; nobody signs
+ * again every Wednesday. So these are created silently -- no email, and nothing
+ * for the client to do.
+ */
+// Must mirror FREQUENCIES in netlify/functions/_shared/serviceSchedule.mts.
+const VISIT_FREQUENCIES = [
+  ['one_time', 'One-time'], ['daily', 'Daily (Mon-Fri)'], ['3x_week', '3x per week'],
+  ['2x_week', '2x per week'], ['weekly', 'Weekly'], ['biweekly', 'Every 2 weeks'],
+  ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['semiannual', 'Twice per year'],
+  ['annual', 'Annually'],
+];
+
+async function saveVisitFrequency() {
+  const res = await adminFetch(`/api/admin/contracts/${id}/visits`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visitFrequency: document.getElementById('visitFreq').value }),
+  });
+  if (!res.ok) { adminToast('Could not change the service frequency.'); return; }
+  load();
+}
+
+async function loadVisits() {
+  const res = await adminFetch(`/api/admin/contracts/${id}/visits`);
+  if (!res.ok) {
+    document.getElementById('visits').innerHTML =
+      '<p style="color:#C0392B; font-size:0.85rem;">Could not load visits.</p>';
+    return;
+  }
+  renderVisits(await res.json());
+}
+
+function renderVisits({ visits, frequency }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = visits.filter(v => v.scheduledDate && v.scheduledDate >= today && v.status !== 'completed');
+  const done = visits.filter(v => v.status === 'completed');
+  // A visit whose date has passed with no hours against it is the thing worth
+  // surfacing: it is either work nobody logged or work nobody did.
+  const missed = visits.filter(v => v.scheduledDate && v.scheduledDate < today && v.status !== 'completed');
+
+  const row = (v) => `
+    <tr>
+      <td>${v.visitSequence ? 'Visit ' + v.visitSequence : '&mdash;'}</td>
+      <td>${v.scheduledDate || 'Unscheduled'}</td>
+      <td>${v.status === 'completed'
+        ? '<span style="color:#1B7A3C; font-weight:700;">Done</span>'
+        : v.scheduledDate && v.scheduledDate < today
+          ? '<span style="color:#C0392B; font-weight:700;">Not logged</span>'
+          : '<span style="color:#8A98AC;">Scheduled</span>'}</td>
+      <td>${v.actualHours ? Number(v.actualHours) + ' hrs' : '&mdash;'}</td>
+      <td style="text-align:right;"><a href="/admin/work-order-detail.html?id=${v.id}" style="font-size:0.82rem;">Open</a></td>
+    </tr>`;
+
+  const table = (rows, label) => rows.length ? `
+    <h4 style="margin:18px 0 8px; font-size:0.9rem; color:#4A5A72;">${label}</h4>
+    <table class="dash-table">
+      <thead><tr><th>Visit</th><th>Date</th><th>Status</th><th>Hours</th><th></th></tr></thead>
+      <tbody>${rows.map(row).join('')}</tbody>
+    </table>` : '';
+
+  document.getElementById('visits').innerHTML = `
+    <h3 style="margin:0 0 6px;">Service Visits</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:640px;">
+      One work order per visit, so hours can be logged against the visit that used them.
+      These are internal &mdash; the client signed the contract and gets nothing to sign here.
+      ${frequency && frequency.recurring ? '' : 'Set a service frequency above to schedule any.'}
+    </p>
+
+    ${visits.length ? '' : '<p style="color:#8A98AC; font-size:0.85rem;">No visits scheduled yet.</p>'}
+    ${table(missed, 'Past, no hours logged')}
+    ${table(upcoming, 'Upcoming')}
+    ${table(done.slice(0, 12), 'Completed' + (done.length > 12 ? ' (most recent 12 of ' + done.length + ')' : ''))}
+
+    ${frequency && frequency.recurring ? `
+      <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <label style="font-size:0.85rem; color:var(--navy); font-weight:600;">Schedule the next</label>
+        <select id="visitMonths" style="padding:8px 10px; border:1.5px solid #DCE4EF; border-radius:6px;">
+          <option value="1">1 month</option>
+          <option value="3" selected>3 months</option>
+          <option value="6">6 months</option>
+          <option value="12">12 months</option>
+        </select>
+        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);"
+          onclick="generateVisits()">Generate visits</button>
+        <span id="visitMsg" style="font-size:0.85rem;"></span>
+      </div>
+      <p style="color:#8A98AC; font-size:0.78rem; margin-top:6px;">
+        Starts the day after the last visit already scheduled, so running this twice will not double anything.
+        Capped at 90 at a time.
+      </p>` : ''}`;
+}
+
+async function generateVisits() {
+  const msg = document.getElementById('visitMsg');
+  msg.style.color = '#8A98AC';
+  msg.textContent = 'Working…';
+  const res = await adminFetch(`/api/admin/contracts/${id}/visits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ months: Number(document.getElementById('visitMonths').value) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.style.color = '#C0392B'; msg.textContent = data.error || 'Could not generate visits.'; return; }
+  msg.style.color = '#1B7A3C';
+  msg.textContent = 'Scheduled ' + data.created + '.';
+  loadVisits();
+}
+
 </script>
 </body>
 </html>

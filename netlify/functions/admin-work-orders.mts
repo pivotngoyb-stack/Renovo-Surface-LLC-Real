@@ -7,11 +7,27 @@ export default async (request: Request) => {
   if (!isAuthenticated(request)) return unauthorized()
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 })
 
-  const statusFilter = new URL(request.url).searchParams.get('status')
+  const params = new URL(request.url).searchParams
+  const statusFilter = params.get('status')
 
   const conditions = [eq(schema.estimates.archived, false)]
-  if (statusFilter === 'pending' || statusFilter === 'signed') {
+  if (statusFilter === 'pending' || statusFilter === 'signed' || statusFilter === 'completed') {
     conditions.push(eq(schema.workOrders.status, statusFilter))
+  }
+
+  /*
+   * Authorizations only unless visits are asked for.
+   *
+   * A weekly contract generates fifty-two visits a year. Listed alongside the
+   * one-off jobs they bury them, and this page is where Renovo looks to see
+   * what has been sold and what is waiting on a signature. Visits are dispatch:
+   * they belong on the schedule and on their contract.
+   */
+  const kindFilter = params.get('kind')
+  if (kindFilter === 'visit' || kindFilter === 'authorization') {
+    conditions.push(eq(schema.workOrders.kind, kindFilter))
+  } else if (kindFilter !== 'all') {
+    conditions.push(eq(schema.workOrders.kind, 'authorization'))
   }
 
   const rows = await db
@@ -20,6 +36,9 @@ export default async (request: Request) => {
       estimateId: schema.workOrders.estimateId,
       token: schema.workOrders.token,
       status: schema.workOrders.status,
+      kind: schema.workOrders.kind,
+      visitSequence: schema.workOrders.visitSequence,
+      recurringContractId: schema.workOrders.recurringContractId,
       scheduledDate: schema.workOrders.scheduledDate,
       scheduledStart: schema.workOrders.scheduledStart,
       completedAt: schema.workOrders.completedAt,

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db, schema } from './db.mts'
 import { generateToken } from './tokens.mts'
 import { sendWorkOrderToClient, notifyAdminEmailDeliveryFailed } from './email.mts'
@@ -16,7 +16,17 @@ export async function createWorkOrderForEstimate(estimateId: number) {
   const [estimate] = await db.select().from(schema.estimates).where(eq(schema.estimates.id, estimateId)).limit(1)
   if (!estimate || estimate.status !== 'approved') return null
 
-  const [existingWO] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.estimateId, estimateId)).limit(1)
+  /*
+   * Only an existing *authorization* blocks this. Visits under a recurring
+   * contract are work orders on the same estimate, and counting those would
+   * mean a contract that had already scheduled a visit could never produce the
+   * authorization the client signs.
+   */
+  const [existingWO] = await db
+    .select()
+    .from(schema.workOrders)
+    .where(and(eq(schema.workOrders.estimateId, estimateId), eq(schema.workOrders.kind, 'authorization')))
+    .limit(1)
   if (existingWO) return null
 
   const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, estimate.clientId)).limit(1)

@@ -126,6 +126,12 @@ async function load() {
     ${estimate.notes ? `<p style="margin-top:16px; color:#4A5A72;"><strong>Notes:</strong> ${estimate.notes}</p>` : ''}
     ${estimate.validUntil ? `<p style="color:#4A5A72;"><strong>Valid Until:</strong> ${estimate.validUntil}</p>` : ''}
 
+    ${estimate.poNumber ? `
+      <h3 style="margin:28px 0 6px;">Purchase Order</h3>
+      <p style="font-size:0.95rem;"><strong>${escapeAttr(estimate.poNumber)}</strong></p>
+      <p style="color:#8A98AC; font-size:0.82rem;">Carried onto the work order and every invoice raised from this job.</p>
+    ` : ''}
+
     <h3 style="margin:28px 0 6px;">What the client sees</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
       Preview opens the proposal exactly as they will read it, without recording a view or notifying you.

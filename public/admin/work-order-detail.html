@@ -132,6 +132,8 @@ async function load() {
 
     <div id="jobPlan" style="margin-top:28px;">Loading job plan…</div>
 
+    <div id="changeOrders" style="margin-top:28px;">Loading change orders…</div>
+
     ${invoiceLinks(invoices || (invoice ? [invoice] : []), estimate)}
 
     <h3 style="margin:28px 0 6px;">What the client sees</h3>
@@ -147,6 +149,7 @@ async function load() {
   `;
 
   loadPhotos();
+  loadChangeOrders();
   // Estimated crew hours come from the lines Renovo works itself: a
   // subcontracted line consumed the sub's time, not ours, so counting it
   // here would make every subbed job look wildly under estimate.
@@ -475,6 +478,220 @@ async function clearActuals() {
   if (!res.ok) { adminToast('Could not clear the hours.'); return; }
   renderActuals({ actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null });
 }
+
+/* ---------- Change orders ----------
+ *
+ * Scope moves on almost every job past a couple of hours. Without a document
+ * for it the only options are to absorb the cost or to put a line on the final
+ * invoice the client never agreed to, and the second is where disputes start.
+ *
+ * Drafted here, sent deliberately, and billed only once signed.
+ */
+let changeOrderLines = [{ description: '', quantity: 1, unitPrice: '' }];
+
+const CHANGE_REASONS = [
+  ['condition_found', 'Condition found on site'],
+  ['client_request', 'Client requested additional work'],
+  ['access', 'Access or scheduling restriction'],
+  ['scope_clarification', 'Scope clarification'],
+  ['quantity_correction', 'Measured quantity differs from estimate'],
+  ['reduction', 'Scope removed at client request'],
+];
+
+const coStatusPill = (status) => {
+  const map = {
+    draft: ['Draft', '#8A98AC'],
+    sent: ['Awaiting client', '#B7791F'],
+    approved: ['Approved', '#1B7A3C'],
+    declined: ['Declined', '#C0392B'],
+  };
+  const [label, color] = map[status] || [status, '#8A98AC'];
+  return `<span style="font-size:0.75rem; font-weight:700; color:${color};">${label}</span>`;
+};
+
+async function loadChangeOrders() {
+  const res = await adminFetch(`/api/admin/work-orders/${id}/change-orders`);
+  if (!res.ok) {
+    document.getElementById('changeOrders').innerHTML =
+      '<p style="color:#C0392B; font-size:0.85rem;">Could not load change orders.</p>';
+    return;
+  }
+  const { changeOrders } = await res.json();
+  renderChangeOrders(changeOrders);
+}
+
+function renderChangeOrders(cos) {
+  const approved = cos.filter(c => c.status === 'approved');
+  const approvedTotal = approved.reduce((s, c) => s + Number(c.total), 0);
+
+  const rows = cos.map(co => `
+    <tr>
+      <td style="font-weight:700;">${co.number}</td>
+      <td>${escAttr(co.description).slice(0, 80)}${co.description.length > 80 ? '…' : ''}</td>
+      <td style="text-align:right; white-space:nowrap;">${money(co.total)}</td>
+      <td>${coStatusPill(co.status)}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <a href="/change-order.html?t=${co.token}&preview=1" target="_blank" style="font-size:0.82rem;">Preview</a>
+        ${co.status === 'draft' ? `
+          &middot; <a href="#" onclick="sendChangeOrder(${co.id}); return false;" style="font-size:0.82rem;">Send</a>
+          &middot; <a href="#" onclick="deleteChangeOrder(${co.id}); return false;" style="font-size:0.82rem; color:#C0392B;">Delete</a>` : ''}
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('changeOrders').innerHTML = `
+    <h3 style="margin:0 0 6px;">Change Orders</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+      Scope that grew after the client signed. Only an approved change order is billed, and the
+      invoice cites it by number so the client can see where the extra came from.
+    </p>
+
+    ${cos.length ? `
+      <table class="dash-table">
+        <thead><tr><th>Number</th><th>What changed</th><th style="text-align:right;">Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${approved.length ? `<div class="totals-row">Approved changes: ${money(approvedTotal)}</div>` : ''}
+    ` : '<p style="color:#8A98AC; font-size:0.85rem;">No change orders on this job.</p>'}
+
+    <button type="button" class="btn btn-outline btn-sm" style="margin-top:12px; color:var(--navy); border-color:var(--navy);"
+      onclick="toggleChangeOrderForm()">+ New change order</button>
+
+    <div id="coForm" style="display:none; margin-top:16px; padding:18px; border:1.5px solid #DCE4EF; border-radius:12px; background:#F8FAFD;">
+      <div class="field-group">
+        <label for="coDescription">What changed</label>
+        <textarea id="coDescription" rows="3" placeholder="The substrate under the vinyl needs a second strip pass before we can seal it."></textarea>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+        <div class="field-group">
+          <label for="coReason">Reason</label>
+          <select id="coReason">
+            <option value="">&mdash;</option>
+            ${CHANGE_REASONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="coDays">Extra days needed</label>
+          <input type="number" id="coDays" min="0" max="365" value="0">
+        </div>
+      </div>
+      <div class="field-group">
+        <label for="coPo">PO number for this change <span style="color:#8A98AC; font-weight:400;">(if they issue a separate one)</span></label>
+        <input type="text" id="coPo" placeholder="Leave blank if the original PO covers it">
+      </div>
+
+      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:6px; color:var(--navy);">Lines</label>
+      <p style="color:#8A98AC; font-size:0.78rem; margin:0 0 8px;">
+        A negative price removes scope and credits the client.
+      </p>
+      <div id="coLines"></div>
+      <button type="button" class="btn btn-sm" style="color:var(--blue);" onclick="addChangeOrderLine()">+ Add line</button>
+
+      <div class="totals-row" id="coTotal" style="margin-top:10px;">Total: $0.00</div>
+      <p class="error-text" id="coError"></p>
+      <div style="margin-top:10px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveChangeOrder()">Save as draft</button>
+        <button type="button" class="btn btn-sm" style="color:#8A98AC;" onclick="toggleChangeOrderForm()">Cancel</button>
+      </div>
+    </div>`;
+
+  renderChangeOrderLines();
+}
+
+function toggleChangeOrderForm() {
+  const el = document.getElementById('coForm');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function addChangeOrderLine() {
+  changeOrderLines.push({ description: '', quantity: 1, unitPrice: '' });
+  renderChangeOrderLines();
+}
+
+function removeChangeOrderLine(i) {
+  changeOrderLines.splice(i, 1);
+  if (!changeOrderLines.length) changeOrderLines = [{ description: '', quantity: 1, unitPrice: '' }];
+  renderChangeOrderLines();
+}
+
+function updateChangeOrderLine(i, field, value) {
+  changeOrderLines[i][field] = value;
+  updateChangeOrderTotal();
+}
+
+function renderChangeOrderLines() {
+  const host = document.getElementById('coLines');
+  if (!host) return;
+  host.innerHTML = changeOrderLines.map((l, i) => `
+    <div style="display:grid; grid-template-columns:1fr 70px 110px 30px; gap:8px; margin-bottom:8px; align-items:center;">
+      <input type="text" placeholder="Description" value="${escAttr(l.description)}"
+        oninput="updateChangeOrderLine(${i}, 'description', this.value)">
+      <input type="number" step="any" placeholder="Qty" value="${l.quantity}"
+        oninput="updateChangeOrderLine(${i}, 'quantity', this.value)">
+      <input type="number" step="any" placeholder="Price" value="${l.unitPrice}"
+        oninput="updateChangeOrderLine(${i}, 'unitPrice', this.value)">
+      <button type="button" style="background:none; border:none; color:#C0392B; cursor:pointer; font-size:1.1rem;"
+        onclick="removeChangeOrderLine(${i})" title="Remove line">&times;</button>
+    </div>`).join('');
+  updateChangeOrderTotal();
+}
+
+function updateChangeOrderTotal() {
+  const el = document.getElementById('coTotal');
+  if (!el) return;
+  const total = changeOrderLines.reduce(
+    (s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), 0);
+  el.textContent = 'Total: ' + money(total);
+}
+
+function coError(msg) {
+  const el = document.getElementById('coError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+}
+
+async function saveChangeOrder() {
+  coError('');
+  const payload = {
+    description: document.getElementById('coDescription').value.trim(),
+    reason: document.getElementById('coReason').value || undefined,
+    poNumber: document.getElementById('coPo').value.trim() || undefined,
+    scheduleImpactDays: Number(document.getElementById('coDays').value) || 0,
+    lineItems: changeOrderLines
+      .filter(l => l.description.trim())
+      .map(l => ({ description: l.description.trim(), quantity: Number(l.quantity) || 0, unitPrice: Number(l.unitPrice) || 0 })),
+  };
+
+  const res = await adminFetch(`/api/admin/work-orders/${id}/change-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return coError(data.error || 'Could not save this change order.');
+
+  changeOrderLines = [{ description: '', quantity: 1, unitPrice: '' }];
+  loadChangeOrders();
+}
+
+async function sendChangeOrder(coId) {
+  if (!confirm('Email this change order to the client for signature?')) return;
+  const res = await adminFetch(`/api/admin/change-orders/${coId}?action=send`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data.error || 'Could not send it.'); return; }
+  if (!data.emailed) alert('Saved as sent, but the email did not go out. Send them the link yourself.');
+  loadChangeOrders();
+}
+
+async function deleteChangeOrder(coId) {
+  if (!confirm('Delete this draft change order?')) return;
+  const res = await adminFetch(`/api/admin/change-orders/${coId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Could not delete it.');
+    return;
+  }
+  loadChangeOrders();
+}
+
 </script>
 </body>
 </html>

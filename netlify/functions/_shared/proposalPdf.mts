@@ -194,6 +194,8 @@ export interface ProposalPdfArgs {
   statusLine: string
   walkthroughDate?: string | null
   solicitationNumber?: string | null
+  /** The client's purchase order, when one has been issued. */
+  poNumber?: string | null
   company: {
     legalName: string; owner: string; ownerTitle: string; phone: string; email: string
     website: string; addressLine: string; city: string; state: string; zip: string
@@ -268,6 +270,8 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
     ['Valid Through', a.expiresDate, true],
   ]
   if (a.solicitationNumber) meta.push(['Solicitation', a.solicitationNumber, true])
+  // Bold: this is the number their accounts payable matches the invoice against.
+  if (a.poNumber) meta.push(['PO Number', a.poNumber, true])
   for (const [k, v, strong] of meta) {
     const vw = (strong ? bold : font).widthOfTextAtSize(ascii(v), 8.4)
     d.right(v, my, 8.4, strong ? bold : font, strong ? NAVY : INK)
@@ -492,7 +496,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
     d.y -= 28
   }
   signRow('Accepted by (signature)', 'Date')
-  signRow('Print name & title', 'PO / Reference')
+  signRow('Print name & title', a.poNumber ? 'Date' : 'PO / Reference')
 
   return pdf.save()
 }

@@ -127,6 +127,19 @@ async function load() {
 
     ${paymentsLedger}
 
+    <h3 style="margin:28px 0 6px;">Purchase Order</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:10px; max-width:620px;">
+      Institutional clients will not pay an invoice that does not quote their PO. If accounts
+      payable rejects this one and quotes a number, put it here and send the invoice again.
+    </p>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input type="text" id="poInput" value="${escAttr(invoice.poNumber || '')}" placeholder="No PO on this invoice"
+        style="max-width:280px; padding:10px 12px; border:1.5px solid #DCE4EF; border-radius:8px;">
+      <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);"
+        onclick="savePo()">Save PO</button>
+      <span id="poSaved" style="color:#1B7A3C; font-size:0.85rem;"></span>
+    </div>
+
     <h3 style="margin:28px 0 6px;">What the client sees</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px;">
       Preview opens the invoice exactly as they will read it, with the payment and auto-pay controls
@@ -203,6 +216,30 @@ function showError(msg) {
 }
 
 load();
+
+function escAttr(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+async function savePo() {
+  const el = document.getElementById('poSaved');
+  el.textContent = '';
+  const res = await adminFetch(`/api/admin/invoices/${id}/po`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ poNumber: document.getElementById('poInput').value }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    el.style.color = '#C0392B';
+    el.textContent = data.error || 'Could not save it.';
+    return;
+  }
+  el.style.color = '#1B7A3C';
+  el.textContent = 'Saved';
+  load();
+}
+
 </script>
 </body>
 </html>

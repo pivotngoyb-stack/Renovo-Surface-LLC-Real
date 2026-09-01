@@ -145,6 +145,7 @@ export default async (request: Request, context: Context) => {
     let body: {
       action?: 'approve' | 'decline'
       signerName?: unknown
+      poNumber?: unknown
       signerTitle?: unknown
       signatureType?: unknown
       signatureData?: unknown
@@ -206,7 +207,18 @@ export default async (request: Request, context: Context) => {
         })
       }
 
-      await db.update(schema.estimates).set({ status: 'approved', approvedAt: new Date() }).where(eq(schema.estimates.id, estimate.id))
+      /*
+       * A PO given at acceptance wins over anything Renovo typed in earlier.
+       * The client is the only party who knows what their own AP department
+       * will accept, and acceptance is usually the moment the number exists.
+       */
+      const acceptedPo = typeof body.poNumber === 'string' && body.poNumber.trim()
+        ? body.poNumber.trim().slice(0, 60)
+        : estimate.poNumber
+
+      await db.update(schema.estimates)
+        .set({ status: 'approved', approvedAt: new Date(), poNumber: acceptedPo })
+        .where(eq(schema.estimates.id, estimate.id))
       if (client) await notifyAdminEstimateApproved(client.name, estimate.id)
       // The client has just been told we will contact them within two hours.
       // If the work order does not get created, that promise is outstanding and

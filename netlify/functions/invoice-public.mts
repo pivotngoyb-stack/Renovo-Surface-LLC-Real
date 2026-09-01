@@ -4,6 +4,7 @@ import { db, schema } from './_shared/db.mts'
 import { invoiceNumber } from './_shared/money.mts'
 import { getInvoiceTotals } from './_shared/invoices.mts'
 import { isStripeConfigured } from './_shared/stripe.mts'
+import { isAuthenticated } from './_shared/auth.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 
 export default async (request: Request, context: Context) => {
@@ -42,6 +43,10 @@ export default async (request: Request, context: Context) => {
       payments: publicPayments,
       photos,
       invoiceNumber: invoiceNumber(invoice.id),
+      poNumber: invoice.poNumber || null,
+      // Only a signed-in admin gets a preview. The page draws its banner and
+      // disables the pay and auto-pay controls off this, never off the URL.
+      preview: new URL(request.url).searchParams.get('preview') === '1' && isAuthenticated(request),
       stripeEnabled: isStripeConfigured(),
       recurring: contract
         ? {

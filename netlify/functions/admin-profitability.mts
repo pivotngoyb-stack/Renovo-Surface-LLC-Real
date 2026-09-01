@@ -1,4 +1,4 @@
-import { eq, inArray, or, sql } from 'drizzle-orm'
+import { eq, and, inArray, or, sql } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
@@ -73,7 +73,16 @@ export default withErrorHandling('admin-profitability', async (request: Request,
     })
     .from(schema.estimates)
     .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
-    .leftJoin(schema.workOrders, eq(schema.workOrders.estimateId, schema.estimates.id))
+    .leftJoin(
+      schema.workOrders,
+      and(
+        eq(schema.workOrders.estimateId, schema.estimates.id),
+        // Authorizations only. Visits are counted separately below, because
+        // hours across eight visits measured against a price quoted for one
+        // is not a variance, it is a category error.
+        eq(schema.workOrders.kind, 'authorization'),
+      ),
+    )
     .where(sql`${schema.estimates.status} = 'approved' and ${schema.estimates.archived} = false`)
 
   /*
@@ -94,6 +103,40 @@ export default withErrorHandling('admin-profitability', async (request: Request,
   }
 
   const estimateIds = jobs.map(j => j.estimateId)
+
+  /*
+   * Visit actuals, kept apart from the one-off variance.
+   *
+   * A recurring estimate prices one visit; the contract runs dozens. Adding
+   * fifty visits' hours to a single visit's estimate would read as a 5,000%
+   * overrun. So these are reported as their own figures -- what the contract
+   * has actually consumed so far -- and the variance columns stay about the
+   * job that was quoted.
+   */
+  const visitRows = await db
+    .select({
+      estimateId: schema.workOrders.estimateId,
+      actualHours: schema.workOrders.actualHours,
+      actualMaterialsCost: schema.workOrders.actualMaterialsCost,
+      completedAt: schema.workOrders.completedAt,
+    })
+    .from(schema.workOrders)
+    .where(and(
+      eq(schema.workOrders.kind, 'visit'),
+      inArray(schema.workOrders.estimateId, estimateIds),
+    ))
+
+  const visitTotals = new Map<number, { visits: number; logged: number; hours: number; materials: number }>()
+  for (const v of visitRows) {
+    const t = visitTotals.get(v.estimateId) || { visits: 0, logged: 0, hours: 0, materials: 0 }
+    t.visits += 1
+    if (v.actualHours != null) {
+      t.logged += 1
+      t.hours += Number(v.actualHours)
+    }
+    t.materials += Number(v.actualMaterialsCost || 0)
+    visitTotals.set(v.estimateId, t)
+  }
 
   const allLines = await db
     .select()
@@ -256,6 +299,10 @@ export default withErrorHandling('admin-profitability', async (request: Request,
       invoiceStatus: billing?.status || null,
       invoiceCount: billing?.count || 0,
       billingSetUp: contractIdByEstimate.has(j.estimateId),
+      // What the standing contract has actually consumed so far, kept out of
+      // the variance columns because those compare against a price quoted for
+      // a single visit.
+      visits: visitTotals.get(j.estimateId) || null,
       quoted: econ.revenue,
       invoiced: billing ? billing.invoiced : null,
       collected: billing ? billing.collected : null,

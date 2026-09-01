@@ -82,6 +82,22 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
 
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, MAX_NOTE) : null
 
+  /*
+   * Logging hours on a visit is what marks it done.
+   *
+   * A visit has nothing to sign, so 'signed' can never arrive and the status
+   * would sit at 'pending' forever -- every past visit reading as work nobody
+   * did. Hours against it are the only evidence the crew was there, so that is
+   * the signal. Clearing the hours takes it back to pending, because the
+   * evidence has been withdrawn.
+   *
+   * An authorization keeps its own status. That one really is about a
+   * signature, and hours must not stand in for the client's agreement.
+   */
+  const visitStatus = workOrder.kind === 'visit'
+    ? { status: clearing ? ('pending' as const) : ('completed' as const), completedAt: clearing ? null : new Date() }
+    : {}
+
   await db
     .update(schema.workOrders)
     .set({
@@ -89,6 +105,7 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
       actualCrewSize: crew,
       actualMaterialsCost: materials,
       actualHoursNote: note || null,
+      ...visitStatus,
     })
     .where(eq(schema.workOrders.id, id))
 
@@ -98,6 +115,7 @@ export default withErrorHandling('admin-work-order-actuals', async (request: Req
     actualCrewSize: crew,
     actualMaterialsCost: materials,
     actualHoursNote: note || null,
+    ...visitStatus,
   })
 })
 

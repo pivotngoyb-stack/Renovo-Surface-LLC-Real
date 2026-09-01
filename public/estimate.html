@@ -389,6 +389,11 @@ function render(data) {
           </div>
         </div>
 
+        <div class="field-group">
+          <label for="signPo">Purchase order number <span class="sign-optional">(if your organization requires one)</span></label>
+          <input type="text" id="signPo" placeholder="We will quote this on every invoice" value="${esc(estimate.poNumber || '')}">
+        </div>
+
         <div class="sign-tabs">
           <button type="button" class="sign-tab is-active" id="tabDraw" onclick="signTab('draw')">Draw it</button>
           <button type="button" class="sign-tab" id="tabType" onclick="signTab('type')">Type it</button>
@@ -443,7 +448,7 @@ function render(data) {
           </div>
           <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">
             Date Issued: ${fmtDate(issuedDate)}<br>
-            Valid Through: ${fmtDate(expiresDate)}
+            Valid Through: ${fmtDate(expiresDate)}${estimate.poNumber ? `<br>PO Number: ${esc(estimate.poNumber)}` : ''}
           </p>
         </div>
         <div class="est-company-info">
@@ -672,6 +677,7 @@ async function respond(action) {
       action,
       signerName: (document.getElementById('signName').value || '').trim(),
       signerTitle: (document.getElementById('signTitle')?.value || '').trim() || undefined,
+      poNumber: (document.getElementById('signPo')?.value || '').trim() || undefined,
       consentConfirmed: true,
       ...sig,
     };
