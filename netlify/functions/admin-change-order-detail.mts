@@ -5,6 +5,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { sendChangeOrderToClient, notifyAdminEmailDeliveryFailed } from './_shared/email.mts'
+import { buildChangeOrderPdf, changeOrderFilename } from './_shared/changeOrderDocument.mts'
 import {
   changeOrderTotal, changeOrderNumber, canSend, canEdit, changeOrderTerms, reasonLabel,
 } from './_shared/changeOrders.mts'
@@ -107,6 +108,25 @@ export default withErrorHandling('admin-change-order-detail', async (request: Re
     .where(eq(schema.changeOrders.id, id))
     .returning()
 
+  /*
+   * The PDF goes with it, as the proposal's does.
+   *
+   * The link is how most clients will read and sign it. The attachment is for
+   * the ones who cannot use one: a facilities manager forwarding it to whoever
+   * raises the purchase order, or a portal that wants a document uploaded. A
+   * failure to build it must not stop the change order going out -- the link
+   * still works, and an unsent change order is the worse outcome.
+   */
+  let pdf: { filename: string; bytes: Uint8Array } | null = null
+  try {
+    pdf = {
+      filename: changeOrderFilename(updated.workOrderId, updated.sequence),
+      bytes: await buildChangeOrderPdf(updated),
+    }
+  } catch {
+    pdf = null
+  }
+
   const sent = await sendChangeOrderToClient(
     client.email,
     client.name,
@@ -114,6 +134,7 @@ export default withErrorHandling('admin-change-order-detail', async (request: Re
     number,
     money(total),
     changeOrder.description.slice(0, 300),
+    pdf,
   )
   if (!sent) {
     await notifyAdminEmailDeliveryFailed(

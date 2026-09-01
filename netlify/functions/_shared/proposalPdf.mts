@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
+import { ascii } from './pdfText.mts'
 
 /**
  * The proposal as a PDF, in Renovo's document house style.
@@ -58,17 +59,13 @@ const money = (n: number) =>
  * The standard PDF fonts are WinAnsi and throw outright on anything outside it.
  * The scope library is full of em dashes and curly quotes, so every string is
  * folded to ASCII before it reaches pdf-lib.
+ *
+ * The rule itself now lives in pdfText.mts, shared with the change order, which
+ * carries free text typed at a job site and is if anything more likely to
+ * contain something unprintable. Two copies would drift, and the failure mode
+ * is not one wrong character -- pdf-lib throws and the document does not render
+ * at all.
  */
-function ascii(text: string): string {
-  return String(text ?? '')
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, '-')
-    .replace(/•/g, '-')
-    .replace(/ /g, ' ')
-    .replace(/…/g, '...')
-    .replace(/[^\x20-\x7E\n]/g, '')
-}
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = []

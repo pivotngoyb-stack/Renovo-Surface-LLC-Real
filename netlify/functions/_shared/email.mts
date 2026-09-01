@@ -367,6 +367,7 @@ export async function sendChangeOrderToClient(
   number: string,
   total: string,
   summary: string,
+  pdf?: { filename: string; bytes: Uint8Array } | null,
 ): Promise<boolean> {
   const url = `${SITE_URL}/change-order.html?t=${token}`
   const isCredit = total.trim().startsWith('-')
@@ -389,7 +390,9 @@ export async function sendChangeOrderToClient(
         through first, call us on 801-369-2330.
       </p>
       ${button('Review & Sign', url)}
+      ${pdf ? `<p style="color:#8A98AC; line-height:1.6; font-size:14px;">A PDF copy is attached, for your records or to send to whoever raises the purchase order.</p>` : ''}
     `),
+    attachments: pdf ? [{ filename: pdf.filename, content: Buffer.from(pdf.bytes).toString('base64') }] : undefined,
   })
 }
 

@@ -151,7 +151,7 @@ function render(data) {
           </div>
         </div>` : ''}
       <div class="print-btn-row no-print" style="margin-top:20px;">
-        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
+        <a href="/api/change-order/${token}/pdf" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); text-decoration:none; margin-right:8px;">⬇ Download PDF</a><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
       </div>`;
   } else if (co.status === 'declined') {
     actionHtml = `
@@ -160,6 +160,9 @@ function render(data) {
         <p><strong>Declined</strong>${co.respondedAt ? ` on ${fmtDate(new Date(co.respondedAt))}` : ''}. We will not do this work.</p>
         ${co.declineReason ? `<p style="color:#4A5A72; font-size:0.9rem;">${esc(co.declineReason)}</p>` : ''}
         <p style="color:#4A5A72; font-size:0.9rem;">If this was a mistake, call us on 801-369-2330.</p>
+      </div>
+      <div class="print-btn-row no-print" style="margin-top:16px;">
+        <a href="/api/change-order/${token}/pdf" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); text-decoration:none; margin-right:8px;">⬇ Download PDF</a><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
       </div>`;
   } else {
     actionHtml = `
@@ -217,7 +220,7 @@ function render(data) {
         <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;" onclick="respond('decline')">Decline</button>
       </div>
       <div class="print-btn-row no-print" style="margin-top:18px;">
-        <button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
+        <a href="/api/change-order/${token}/pdf" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy); text-decoration:none; margin-right:8px;">⬇ Download PDF</a><button type="button" class="btn btn-outline btn-sm" style="color:var(--navy); border-color:var(--navy);" onclick="window.print()">🖨️ Print This Change Order</button>
       </div>`;
   }
 
