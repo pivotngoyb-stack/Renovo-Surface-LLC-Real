@@ -1,12 +1,14 @@
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull, gte } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, notFound, badRequest, getClientIp } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { notifyAdminChangeOrderSigned, notifyAdminChangeOrderDeclined } from './_shared/email.mts'
+import { frequencyOf } from './_shared/serviceSchedule.mts'
 import {
-  changeOrderTotal, changeOrderNumber, canRespond, changeOrderTerms, reasonLabel,
+  changeOrderTotal, canRespond, changeOrderTerms, reasonLabel,
+  changeOrderRef, contractChangeEffect, contractChangeTerms,
 } from './_shared/changeOrders.mts'
 
 const money = (n: number) =>
@@ -56,19 +58,46 @@ export default withErrorHandling('change-order-public', async (request: Request,
     .orderBy(schema.changeOrderLineItems.sortOrder)
 
   const total = changeOrderTotal(lineItems)
-  const number = changeOrderNumber(changeOrder.workOrderId, changeOrder.sequence)
+  const number = changeOrderRef(changeOrder)
 
-  const [workOrder] = await db
-    .select()
-    .from(schema.workOrders)
-    .where(eq(schema.workOrders.id, changeOrder.workOrderId))
-    .limit(1)
+  /*
+   * A contract change order amends a standing rate rather than a job total, so
+   * there is no work order to walk back through. The client, the wording and
+   * what approval does are all different; everything else is the same document.
+   */
+  const [contract] = changeOrder.recurringContractId != null
+    ? await db.select().from(schema.recurringContracts)
+        .where(eq(schema.recurringContracts.id, changeOrder.recurringContractId)).limit(1)
+    : []
+
+  const [workOrder] = changeOrder.workOrderId != null
+    ? await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, changeOrder.workOrderId)).limit(1)
+    : []
   const [estimate] = workOrder
     ? await db.select().from(schema.estimates).where(eq(schema.estimates.id, workOrder.estimateId)).limit(1)
     : []
-  const [client] = estimate
-    ? await db.select().from(schema.clients).where(eq(schema.clients.id, estimate.clientId)).limit(1)
-    : []
+  const [client] = contract
+    ? await db.select().from(schema.clients).where(eq(schema.clients.id, contract.clientId)).limit(1)
+    : estimate
+      ? await db.select().from(schema.clients).where(eq(schema.clients.id, estimate.clientId)).limit(1)
+      : []
+
+  const freq = contract ? frequencyOf(contract.visitFrequency) : null
+
+  /*
+   * The effect shown to the client is recomputed against the contract as it
+   * stands, but the figure that will actually take effect is the one stored on
+   * the change order when it was drafted. They agree unless the contract moved
+   * in between, and in that case what the client signs is what binds.
+   */
+  const effect = contract && freq
+    ? {
+        ...contractChangeEffect(total, freq.visitsPerYear, Number(contract.amount)),
+        newMonthly: changeOrder.newMonthlyAmount != null
+          ? Number(changeOrder.newMonthlyAmount)
+          : contractChangeEffect(total, freq.visitsPerYear, Number(contract.amount)).newMonthly,
+      }
+    : null
 
   if (request.method === 'GET') {
     if (!changeOrder.viewedAt && !preview && changeOrder.status === 'sent') {
@@ -93,12 +122,24 @@ export default withErrorHandling('change-order-public', async (request: Request,
       jobPoNumber: estimate?.poNumber || null,
       reasonLabel: reasonLabel(changeOrder.reason),
       preview,
-      terms: changeOrderTerms({
-        number,
-        workOrderLabel: `Work Order #${changeOrder.workOrderId}`,
-        total,
-        scheduleImpactDays: changeOrder.scheduleImpactDays,
-      }),
+      // A contract change is quoted per visit and billed monthly; the client
+      // needs both numbers or the figure on their invoice appears from nowhere.
+      contract: contract ? { id: contract.id, description: contract.description } : null,
+      frequencyLabel: freq ? freq.label : null,
+      effect,
+      terms: contract && effect && freq
+        ? contractChangeTerms({
+            number,
+            contractDescription: contract.description,
+            effect,
+            frequencyLabel: freq.label,
+          })
+        : changeOrderTerms({
+            number,
+            workOrderLabel: `Work Order #${changeOrder.workOrderId}`,
+            total,
+            scheduleImpactDays: changeOrder.scheduleImpactDays,
+          }),
     })
   }
 
@@ -169,6 +210,49 @@ export default withErrorHandling('change-order-public', async (request: Request,
       poNumber,
     })
     .where(eq(schema.changeOrders.id, changeOrder.id))
+
+  /*
+   * Approving a contract change order is the moment the rate actually moves.
+   *
+   * The stored figure is used, not a fresh calculation: the client signed a
+   * document naming a monthly amount, and recomputing it here against a
+   * contract that has since changed would bill them something they never saw.
+   *
+   * Future visits are re-scoped too. A visit's terms text is what the crew
+   * reads on site, and one generated before the change would send them out
+   * with the old scope. Only unlogged future visits are touched -- a visit that
+   * has happened is a record, not a plan.
+   */
+  if (contract && changeOrder.newMonthlyAmount != null) {
+    await db
+      .update(schema.recurringContracts)
+      .set({ amount: String(changeOrder.newMonthlyAmount) })
+      .where(eq(schema.recurringContracts.id, contract.id))
+
+    const today = new Date().toISOString().slice(0, 10)
+    const upcoming = await db
+      .select()
+      .from(schema.workOrders)
+      .where(and(
+        eq(schema.workOrders.recurringContractId, contract.id),
+        eq(schema.workOrders.kind, 'visit'),
+        isNull(schema.workOrders.actualHours),
+        gte(schema.workOrders.scheduledDate, today),
+      ))
+
+    const addition = `
+
+AMENDED BY ${number} (${new Date().toISOString().slice(0, 10)}):
+${lineItems.map(li => `  - ${li.description}`).join('\n')}`
+
+    for (const v of upcoming) {
+      if (v.termsText.includes(`AMENDED BY ${number}`)) continue
+      await db
+        .update(schema.workOrders)
+        .set({ termsText: v.termsText + addition })
+        .where(eq(schema.workOrders.id, v.id))
+    }
+  }
 
   if (client) await notifyAdminChangeOrderSigned(client.name, number, money(total))
   return json({ status: 'approved' })

@@ -141,3 +141,100 @@ contract sum by ${money(Math.abs(opts.total))}.${schedule}
 
 Work under this change order does not begin until it is signed.`
 }
+
+/* ============================================================================
+ * Contract change orders
+ *
+ * A one-off job is amended through its work order: the change adds to a total
+ * that gets invoiced once. A standing contract has no such total. Adding a
+ * floor to a weekly route changes what the client pays every month, for as
+ * long as the agreement runs, and that is a different document even though it
+ * looks the same on the page.
+ * ========================================================================= */
+
+/** How a change order is identified, whichever thing it amends. */
+export function changeOrderRef(opts: {
+  workOrderId?: number | null
+  recurringContractId?: number | null
+  sequence: number
+}): string {
+  if (opts.recurringContractId != null) return `CO-C${opts.recurringContractId}-${opts.sequence}`
+  return `CO-${opts.workOrderId}-${opts.sequence}`
+}
+
+/**
+ * The monthly effect of a per-visit change.
+ *
+ * Contract lines are priced per visit, the way the estimate prices them, but
+ * the contract bills monthly. A weekly line at $140 is not $140 a month -- it
+ * is $606.67, and quoting the smaller number would under-bill by three
+ * quarters for as long as the contract runs.
+ *
+ * visitsPerYear / 12 rather than "about four", because 52 weeks is not 48.
+ */
+export function monthlyFromPerVisit(perVisit: number, visitsPerYear: number): number {
+  if (!Number.isFinite(perVisit) || !Number.isFinite(visitsPerYear) || visitsPerYear <= 0) return 0
+  return Math.round((perVisit * visitsPerYear / 12) * 100) / 100
+}
+
+export interface ContractChangeEffect {
+  /** Sum of the change order's lines, per visit. May be negative. */
+  perVisit: number
+  /** What that does to the monthly charge. */
+  monthlyDelta: number
+  currentMonthly: number
+  newMonthly: number
+}
+
+/**
+ * What a contract change order does to the money.
+ *
+ * Returned as all four numbers rather than just the new total, because the
+ * document has to show the client the arithmetic: a monthly figure that moves
+ * with no explanation is the thing that generates a phone call.
+ */
+export function contractChangeEffect(
+  perVisit: number,
+  visitsPerYear: number,
+  currentMonthly: number,
+): ContractChangeEffect {
+  const monthlyDelta = monthlyFromPerVisit(perVisit, visitsPerYear)
+  const current = Math.round((Number(currentMonthly) || 0) * 100) / 100
+  // Never below zero: a credit larger than the contract would otherwise bill a
+  // negative amount every month, which is a refund schedule nobody agreed to.
+  const newMonthly = Math.max(0, Math.round((current + monthlyDelta) * 100) / 100)
+  return { perVisit, monthlyDelta, currentMonthly: current, newMonthly }
+}
+
+/**
+ * The authorisation paragraph for a contract change order.
+ *
+ * Says plainly that this is ongoing. The work-order wording talks about a
+ * one-time contract sum, which would badly misdescribe a rate change that
+ * applies every month until the agreement ends.
+ */
+export function contractChangeTerms(opts: {
+  number: string
+  contractDescription: string
+  effect: ContractChangeEffect
+  frequencyLabel: string
+}): string {
+  const money = (n: number) =>
+    `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  const direction = opts.effect.monthlyDelta < 0 ? 'reduce' : 'increase'
+
+  return `CHANGE ORDER ${opts.number}
+
+This change order amends the service agreement for ${opts.contractDescription}.
+All other terms of that agreement remain in force.
+
+The change is priced at ${money(Math.abs(opts.effect.perVisit))} per visit. At
+${opts.frequencyLabel.toLowerCase()} service that will ${direction} the monthly
+charge by ${money(Math.abs(opts.effect.monthlyDelta))}, from
+${money(opts.effect.currentMonthly)} to ${money(opts.effect.newMonthly)}.
+
+This is an ongoing change. It applies to every invoice from the next billing
+date until the agreement is changed again or ends. Work under this change order
+does not begin until it is signed.`
+}

@@ -343,9 +343,20 @@ export const estimatePhotos = pgTable('estimate_photos', {
  */
 export const changeOrders = pgTable('change_orders', {
   id: serial('id').primaryKey(),
-  workOrderId: integer('work_order_id').notNull().references(() => workOrders.id),
-  // 1-based within the work order. What the client and the crew call it, and
-  // what the invoice line has to cite: "Change Order #2".
+  /*
+   * What this change order amends: exactly one of these is set.
+   *
+   * A one-off job is amended through its work order. A standing contract has
+   * no work order to hang off -- adding a floor to a weekly route changes the
+   * agreement itself, and the visits underneath it are dispatch, not the thing
+   * being renegotiated. Nullable rather than a second table because everything
+   * else about the document is identical: the same lines, the same signature,
+   * the same refusal to bill until it is signed.
+   */
+  workOrderId: integer('work_order_id').references(() => workOrders.id),
+  recurringContractId: integer('recurring_contract_id').references(() => recurringContracts.id),
+  // 1-based within whatever it amends. What the client and the crew call it,
+  // and what the invoice line has to cite: "Change Order #2".
   sequence: integer('sequence').notNull(),
   token: text('token').notNull().unique(),
   status: changeOrderStatusEnum('status').notNull().default('draft'),
@@ -357,6 +368,16 @@ export const changeOrders = pgTable('change_orders', {
   // A change order frequently needs its own PO amendment; AP will reject the
   // extra against the original number.
   poNumber: text('po_number'),
+  /*
+   * The monthly amount the contract becomes, on a contract change order.
+   *
+   * Stored rather than derived at approval. The client signs a document naming
+   * a figure, and that figure is what must take effect -- recomputing it later
+   * against a contract that has moved in the meantime would bill them something
+   * they never agreed to. Null on a work order change order, which changes a
+   * job total rather than a standing rate.
+   */
+  newMonthlyAmount: numeric('new_monthly_amount'),
   // Days added to the schedule, if any. A change that adds work usually adds
   // time, and a client who signed for the extra cost but not the extra day is
   // still going to be surprised.

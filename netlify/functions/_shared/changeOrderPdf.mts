@@ -56,6 +56,19 @@ export interface ChangeOrderPdfArgs {
   projectName?: string | null
   siteAddress?: string | null
   terms: string
+  /*
+   * Set on a contract change order. It amends a standing rate rather than a
+   * job total, so "Added to your contract: $585" would badly misdescribe it --
+   * the client is agreeing to a different bill every month.
+   */
+  contractEffect?: {
+    perVisit: number
+    monthlyDelta: number
+    currentMonthly: number
+    newMonthly: number
+    frequencyLabel: string
+    contractDescription: string
+  } | null
   signature?: {
     signerName: string
     signerTitle?: string | null
@@ -162,7 +175,7 @@ export async function generateChangeOrderPdf(a: ChangeOrderPdfArgs): Promise<Uin
 
   let ry = blockTop
   const meta: Array<[string, string]> = [
-    ['Amends', `Work Order #${a.workOrderId}`],
+    ['Amends', a.contractEffect ? a.contractEffect.contractDescription : `Work Order #${a.workOrderId}`],
     ['Issued', a.issuedDate],
   ]
   if (a.poNumber) meta.push(['PO Number', a.poNumber])
@@ -197,7 +210,7 @@ export async function generateChangeOrderPdf(a: ChangeOrderPdfArgs): Promise<Uin
   need(40)
   page.drawText('DESCRIPTION', { x: M, y, size: 8, font: bold, color: MUTED })
   page.drawText('QTY', { x: colQty, y, size: 8, font: bold, color: MUTED })
-  page.drawText('PRICE', { x: colPrice, y, size: 8, font: bold, color: MUTED })
+  page.drawText(a.contractEffect ? 'PER VISIT' : 'PRICE', { x: colPrice, y, size: 8, font: bold, color: MUTED })
   page.drawText('TOTAL', { x: colTotal, y, size: 8, font: bold, color: MUTED })
   y -= 8
   rule()
@@ -221,10 +234,25 @@ export async function generateChangeOrderPdf(a: ChangeOrderPdfArgs): Promise<Uin
   rule()
   y -= 18
 
-  const isCredit = a.total < 0
-  const totalLabel = isCredit ? 'Credit to your contract' : 'Added to your contract'
-  const totalValue = pdfMoney(Math.abs(a.total))
-  need(24)
+  const ce = a.contractEffect
+  const isCredit = (ce ? ce.monthlyDelta : a.total) < 0
+  const totalLabel = ce
+    ? 'New monthly charge'
+    : isCredit ? 'Credit to your contract' : 'Added to your contract'
+  const totalValue = pdfMoney(ce ? ce.newMonthly : Math.abs(a.total))
+
+  need(ce ? 52 : 24)
+  if (ce) {
+    // The arithmetic, spelled out. A monthly figure that moves with no
+    // explanation is the thing that generates a phone call.
+    right(
+      `${pdfMoney(Math.abs(ce.perVisit))} ${ce.perVisit < 0 ? 'less' : 'more'} per visit at ${ce.frequencyLabel.toLowerCase()} service`,
+      9.5, font, GRAY,
+    )
+    y -= 14
+    right(`${pdfMoney(ce.currentMonthly)} per month becomes`, 9.5, font, GRAY)
+    y -= 16
+  }
   page.drawText(ascii(totalLabel), {
     x: PAGE_W - M - bold.widthOfTextAtSize(ascii(totalValue), 14) - 12 - bold.widthOfTextAtSize(ascii(totalLabel), 11),
     y, size: 11, font: bold, color: NAVY,
@@ -234,6 +262,10 @@ export async function generateChangeOrderPdf(a: ChangeOrderPdfArgs): Promise<Uin
     y: y - 1, size: 14, font: bold, color: isCredit ? GREEN : NAVY,
   })
   y -= 22
+  if (ce) {
+    right('Ongoing, from the next invoice until the agreement changes again', 8.5, font, MUTED)
+    y -= 18
+  }
 
   if (a.scheduleImpactDays > 0) {
     const s = `Completion moves out by ${a.scheduleImpactDays} ${a.scheduleImpactDays === 1 ? 'day' : 'days'}`

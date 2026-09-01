@@ -95,7 +95,16 @@ async function load() {
 }
 
 function render(data) {
-  const { changeOrder: co, lineItems, client, projectName, siteAddress, reasonLabel, terms, jobPoNumber } = data;
+  const { changeOrder: co, lineItems, client, projectName, siteAddress, reasonLabel, terms, jobPoNumber,
+          contract, frequencyLabel, effect } = data;
+
+  /*
+   * A contract change order amends a standing rate. The client is not agreeing
+   * to a one-off sum, they are agreeing to a different monthly bill for as long
+   * as the agreement runs -- which has to read differently or they will think
+   * it is a single charge.
+   */
+  const isContract = !!contract && !!effect;
 
   /*
    * The PO this change is under. Renovo's own, if they entered one while
@@ -169,8 +178,14 @@ function render(data) {
       <div class="sign-box no-print">
         <h4>Approve this change order</h4>
         <p class="sign-intro">
-          Signing below authorizes the work above and ${isCredit ? 'reduces' : 'adds'} ${money(Math.abs(co.total))}
-          ${isCredit ? 'from' : 'to'} your contract. Nothing here is done until you sign.
+          ${isContract
+            ? `Signing below changes your service and your monthly charge, from
+               ${money(effect.currentMonthly)} to ${money(effect.newMonthly)}, starting with your next
+               invoice. It applies every month until the agreement changes again. Nothing here is done
+               until you sign.`
+            : `Signing below authorizes the work above and ${isCredit ? 'reduces' : 'adds'}
+               ${money(Math.abs(co.total))} ${isCredit ? 'from' : 'to'} your contract. Nothing here is
+               done until you sign.`}
         </p>
 
         <div class="sign-fields">
@@ -235,7 +250,7 @@ function render(data) {
             <span style="color:#8A98AC; font-size:0.9rem; margin-left:8px;">${esc(co.number)}</span>
           </div>
           <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">
-            Amends Work Order #${co.workOrderId}<br>
+            ${isContract ? `Amends ${esc(contract.description)}` : `Amends Work Order #${co.workOrderId}`}<br>
             Issued ${fmtDate(new Date(co.sentAt || co.createdAt))}
           </p>
         </div>
@@ -278,14 +293,27 @@ function render(data) {
 
       <table style="margin-top:22px;">
         <thead>
-          <tr><th>DESCRIPTION</th><th style="text-align:center;">QTY</th><th style="text-align:right;">PRICE</th><th style="text-align:right;">TOTAL</th></tr>
+          <tr><th>DESCRIPTION</th><th style="text-align:center;">QTY</th><th style="text-align:right;">${isContract ? 'PER VISIT' : 'PRICE'}</th><th style="text-align:right;">TOTAL</th></tr>
         </thead>
         <tbody>${linesHtml}</tbody>
       </table>
 
+      ${isContract ? `
+      <div style="text-align:right; margin-top:16px;">
+        <p style="color:#4A5A72; font-size:0.9rem; margin:0;">
+          ${money(Math.abs(effect.perVisit))} ${effect.perVisit < 0 ? 'less' : 'more'} per visit,
+          at ${esc(String(frequencyLabel || '').toLowerCase())} service
+        </p>
+        <p style="font-size:1.15rem; font-weight:700; color:var(--navy); margin:6px 0 0;">
+          Your monthly charge: ${money(effect.currentMonthly)} &rarr; ${money(effect.newMonthly)}
+        </p>
+        <p style="color:#8A98AC; font-size:0.82rem; margin:4px 0 0;">
+          An ongoing change, from your next invoice until the agreement changes again.
+        </p>
+      </div>` : `
       <p style="text-align:right; font-size:1.15rem; font-weight:700; color:var(--navy); margin-top:16px;">
         ${isCredit ? 'Credit to your contract' : 'Added to your contract'}: ${money(Math.abs(co.total))}
-      </p>
+      </p>`}
       ${co.scheduleImpactDays > 0 ? `
         <p style="text-align:right; color:#4A5A72; font-size:0.88rem;">
           Completion moves out by ${co.scheduleImpactDays} ${co.scheduleImpactDays === 1 ? 'day' : 'days'}

@@ -1,7 +1,8 @@
-import { eq, and, or, ilike, inArray, desc, sql } from 'drizzle-orm'
+import { eq, and, or, isNull, ilike, inArray, desc, sql } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
+import { changeOrderRef } from './_shared/changeOrders.mts'
 
 interface DocRow {
   type: 'estimate' | 'workOrder' | 'changeOrder' | 'invoice' | 'subcontractorAgreement' | 'contract'
@@ -145,6 +146,7 @@ export default async (request: Request) => {
       .select({
         id: schema.changeOrders.id,
         workOrderId: schema.changeOrders.workOrderId,
+        recurringContractId: schema.changeOrders.recurringContractId,
         sequence: schema.changeOrders.sequence,
         status: schema.changeOrders.status,
         description: schema.changeOrders.description,
@@ -153,11 +155,20 @@ export default async (request: Request) => {
         clientName: schema.clients.name,
       })
       .from(schema.changeOrders)
+      // Both paths: a change order amends a work order or a contract, and
+      // joining only through work orders dropped every contract one from the
+      // search entirely.
       .leftJoin(schema.workOrders, eq(schema.changeOrders.workOrderId, schema.workOrders.id))
       .leftJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
-      .leftJoin(schema.clients, eq(schema.estimates.clientId, schema.clients.id))
+      .leftJoin(schema.recurringContracts, eq(schema.changeOrders.recurringContractId, schema.recurringContracts.id))
+      .leftJoin(schema.clients, eq(
+        sql`coalesce(${schema.estimates.clientId}, ${schema.recurringContracts.clientId})`,
+        schema.clients.id,
+      ))
       .where(and(
-        eq(schema.estimates.archived, false),
+        // An archived estimate hides its change orders; a contract one has no
+        // estimate, so the check must allow a null rather than exclude it.
+        or(isNull(schema.estimates.id), eq(schema.estimates.archived, false)),
         eq(schema.changeOrders.archived, false),
         pattern ? or(
           ilike(schema.clients.name, pattern),
@@ -175,13 +186,17 @@ export default async (request: Request) => {
       results.push({
         type: 'changeOrder',
         id: r.id,
-        title: `CO-${r.workOrderId}-${r.sequence} - ${r.description.split('\n')[0].slice(0, 60)}`,
+        title: `${changeOrderRef(r)} - ${r.description.split('\n')[0].slice(0, 60)}`,
         name: r.clientName || '—',
         status: r.status,
         date: r.createdAt.toISOString(),
         // The change order lives on its work order, which is where it can be
         // sent, deleted, or seen next to the rest of the job.
-        detailUrl: `/admin/work-order-detail.html?id=${r.workOrderId}`,
+        // A contract change order lives on its contract, which is where it can
+        // be sent, deleted, or read next to the rest of the agreement.
+        detailUrl: r.recurringContractId != null
+          ? `/admin/contract-detail.html?id=${r.recurringContractId}`
+          : `/admin/work-order-detail.html?id=${r.workOrderId}`,
       })
     }
   }

@@ -1,6 +1,7 @@
-import { eq, and, ne, desc } from 'drizzle-orm'
+import { eq, and, or, ne, desc } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { getClientSession } from './_shared/client-auth.mts'
+import { changeOrderRef } from './_shared/changeOrders.mts'
 import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
@@ -72,28 +73,41 @@ export default withErrorHandling('client-documents', async (request: Request) =>
    * and a client finding it in their portal would be reading a document that
    * has not been put to them yet.
    */
+  /*
+   * Left-joined through both paths, because a change order hangs off a work
+   * order OR a contract. An inner join on work orders silently dropped every
+   * contract change order -- the client would never see the document that put
+   * their monthly bill up.
+   */
   const changeOrders = await db
     .select({
       id: schema.changeOrders.id,
       workOrderId: schema.changeOrders.workOrderId,
+      recurringContractId: schema.changeOrders.recurringContractId,
       sequence: schema.changeOrders.sequence,
       token: schema.changeOrders.token,
       status: schema.changeOrders.status,
       createdAt: schema.changeOrders.createdAt,
       sentAt: schema.changeOrders.sentAt,
+      jobClientId: schema.estimates.clientId,
+      contractClientId: schema.recurringContracts.clientId,
     })
     .from(schema.changeOrders)
-    .innerJoin(schema.workOrders, eq(schema.changeOrders.workOrderId, schema.workOrders.id))
-    .innerJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
+    .leftJoin(schema.workOrders, eq(schema.changeOrders.workOrderId, schema.workOrders.id))
+    .leftJoin(schema.estimates, eq(schema.workOrders.estimateId, schema.estimates.id))
+    .leftJoin(schema.recurringContracts, eq(schema.changeOrders.recurringContractId, schema.recurringContracts.id))
     .where(and(
-      eq(schema.estimates.clientId, session.clientId),
+      or(
+        eq(schema.estimates.clientId, session.clientId),
+        eq(schema.recurringContracts.clientId, session.clientId),
+      ),
       ne(schema.changeOrders.status, 'draft'),
     ))
     .orderBy(desc(schema.changeOrders.createdAt))
   for (const c of changeOrders) {
     results.push({
       type: 'changeOrder',
-      title: `Change Order CO-${c.workOrderId}-${c.sequence}`,
+      title: `Change Order ${changeOrderRef(c)}`,
       status: c.status,
       date: (c.sentAt || c.createdAt).toISOString(),
       detailUrl: `/change-order.html?t=${c.token}`,

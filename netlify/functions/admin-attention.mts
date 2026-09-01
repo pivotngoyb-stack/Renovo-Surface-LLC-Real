@@ -118,6 +118,7 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
     .select({
       id: schema.changeOrders.id,
       workOrderId: schema.changeOrders.workOrderId,
+      recurringContractId: schema.changeOrders.recurringContractId,
       sequence: schema.changeOrders.sequence,
       description: schema.changeOrders.description,
       sentAt: schema.changeOrders.sentAt,
@@ -125,9 +126,15 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
       clientName: schema.clients.name,
     })
     .from(schema.changeOrders)
+    // Both paths: joining only through work orders left every contract change
+    // order with no client name against it on the dashboard.
     .leftJoin(schema.workOrders, eq(schema.workOrders.id, schema.changeOrders.workOrderId))
     .leftJoin(schema.estimates, eq(schema.estimates.id, schema.workOrders.estimateId))
-    .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
+    .leftJoin(schema.recurringContracts, eq(schema.recurringContracts.id, schema.changeOrders.recurringContractId))
+    .leftJoin(schema.clients, eq(
+      schema.clients.id,
+      sql`coalesce(${schema.estimates.clientId}, ${schema.recurringContracts.clientId})`,
+    ))
     .where(and(
       eq(schema.changeOrders.status, 'sent'),
       eq(schema.changeOrders.archived, false),

@@ -98,6 +98,8 @@ async function load() {
 
     ${statusActions ? `<div style="margin-top:16px;">${statusActions}</div>` : ''}
 
+    <div id="contractChangeOrders" style="margin-top:28px;">Loading change orders…</div>
+
     <div id="visits" style="margin-top:28px;">Loading visits…</div>
 
     <h3 style="margin:28px 0 12px;">Billing History</h3>
@@ -110,6 +112,7 @@ async function load() {
   `;
 
   loadVisits();
+  loadContractChangeOrders();
 }
 
 async function setStatus(status) {
@@ -301,6 +304,241 @@ async function clearFutureVisits() {
     msg.style.color = '#1B7A3C';
     msg.textContent = 'Removed ' + data.removed + (data.kept ? ', kept ' + data.kept + ' with a record against them.' : '.');
   }
+}
+
+
+/* ---------- Contract change orders ----------
+ *
+ * A one-off job is amended through its work order. A contract has none: adding
+ * a floor to a weekly route changes the agreement itself, and the visits under
+ * it are dispatch rather than the thing being renegotiated. Without this the
+ * only way to reprice a contract was to edit the amount by hand, with nothing
+ * recording what the client agreed to.
+ *
+ * Lines are priced per visit, the way the estimate prices recurring work. The
+ * monthly effect is derived from the service frequency and shown before you
+ * send it, because that is the number the client will actually see billed.
+ */
+let contractCoLines = [{ description: '', quantity: 1, unitPrice: '' }];
+let contractCoState = { visitsPerYear: 0, currentMonthly: 0, frequencyLabel: '' };
+
+const CO_REASONS = [
+  ['client_request', 'Client requested additional work'],
+  ['scope_clarification', 'Scope clarification'],
+  ['condition_found', 'Condition found on site'],
+  ['reduction', 'Scope removed at client request'],
+];
+
+const coStatusPill = (status) => {
+  const map = {
+    draft: ['Draft', '#8A98AC'],
+    sent: ['Awaiting client', '#B7791F'],
+    approved: ['Approved', '#1B7A3C'],
+    declined: ['Declined', '#C0392B'],
+  };
+  const [label, color] = map[status] || [status, '#8A98AC'];
+  return `<span style="font-size:0.75rem; font-weight:700; color:${color};">${label}</span>`;
+};
+
+async function loadContractChangeOrders() {
+  const res = await adminFetch(`/api/admin/contracts/${id}/change-orders`);
+  if (!res.ok) {
+    document.getElementById('contractChangeOrders').innerHTML =
+      '<p style="color:#C0392B; font-size:0.85rem;">Could not load change orders.</p>';
+    return;
+  }
+  const data = await res.json();
+  contractCoState = {
+    visitsPerYear: data.frequency?.visitsPerYear || 0,
+    currentMonthly: data.currentMonthly || 0,
+    frequencyLabel: data.frequency?.label || '',
+    recurring: !!data.frequency?.recurring,
+  };
+  renderContractChangeOrders(data.changeOrders || []);
+}
+
+function renderContractChangeOrders(cos) {
+  const rows = cos.map(co => `
+    <tr>
+      <td style="font-weight:700; white-space:nowrap;">${co.number}</td>
+      <td>${escAttrC(co.description).slice(0, 70)}${co.description.length > 70 ? '…' : ''}</td>
+      <td style="text-align:right; white-space:nowrap;">${money(co.total)}<div style="font-size:0.72rem; color:#8A98AC;">per visit</div></td>
+      <td style="text-align:right; white-space:nowrap;">${co.newMonthlyAmount != null ? money(co.newMonthlyAmount) : '—'}<div style="font-size:0.72rem; color:#8A98AC;">new monthly</div></td>
+      <td>${coStatusPill(co.status)}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <a href="/change-order.html?t=${co.token}&preview=1" target="_blank" style="font-size:0.82rem;">Preview</a>
+        &middot; <a href="/api/change-order/${co.token}/pdf?view=1" target="_blank" style="font-size:0.82rem;">PDF</a>
+        ${co.status === 'draft' ? `
+          &middot; <a href="#" onclick="sendContractChangeOrder(${co.id}); return false;" style="font-size:0.82rem;">Send</a>
+          &middot; <a href="#" onclick="deleteContractChangeOrder(${co.id}); return false;" style="font-size:0.82rem; color:#C0392B;">Delete</a>` : ''}
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('contractChangeOrders').innerHTML = `
+    <h3 style="margin:0 0 6px;">Change Orders</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:640px;">
+      For changing what this contract covers and what it charges. Priced per visit; the monthly
+      figure follows from the service frequency. Approving one moves the contract amount, so every
+      invoice after it bills the new rate.
+    </p>
+
+    ${cos.length ? `
+      <table class="dash-table">
+        <thead><tr><th>Number</th><th>What changed</th><th style="text-align:right;">Per visit</th><th style="text-align:right;">Monthly</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    ` : '<p style="color:#8A98AC; font-size:0.85rem;">No change orders on this contract.</p>'}
+
+    ${contractCoState.recurring ? `
+      <button type="button" class="btn btn-outline btn-sm" style="margin-top:12px; color:var(--navy); border-color:var(--navy);"
+        onclick="toggleContractCoForm()">+ New change order</button>` : `
+      <p style="color:#B7791F; font-size:0.82rem; margin-top:10px;">
+        Set a service frequency above before changing the rate &mdash; without one there is no way to turn
+        a per-visit price into a monthly charge.
+      </p>`}
+
+    <div id="contractCoForm" style="display:none; margin-top:16px; padding:18px; border:1.5px solid #DCE4EF; border-radius:12px; background:#F8FAFD;">
+      <div class="field-group">
+        <label for="ccoDescription">What is changing</label>
+        <textarea id="ccoDescription" rows="3" placeholder="Adding the third-floor break room to the nightly route."></textarea>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+        <div class="field-group">
+          <label for="ccoReason">Reason</label>
+          <select id="ccoReason">
+            <option value="">&mdash;</option>
+            ${CO_REASONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="ccoPo">PO number for this change</label>
+          <input type="text" id="ccoPo" placeholder="Leave blank if the contract PO covers it">
+        </div>
+      </div>
+
+      <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:6px; color:var(--navy);">Lines, priced per visit</label>
+      <p style="color:#8A98AC; font-size:0.78rem; margin:0 0 8px;">
+        A negative price removes scope and lowers the monthly charge.
+      </p>
+      <div id="ccoLines"></div>
+      <button type="button" class="btn btn-sm" style="color:var(--blue);" onclick="addContractCoLine()">+ Add line</button>
+
+      <div id="ccoEffect" class="totals-row" style="margin-top:10px;"></div>
+      <p class="error-text" id="ccoError"></p>
+      <div style="margin-top:10px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveContractChangeOrder()">Save as draft</button>
+        <button type="button" class="btn btn-sm" style="color:#8A98AC;" onclick="toggleContractCoForm()">Cancel</button>
+      </div>
+    </div>`;
+
+  renderContractCoLines();
+}
+
+function escAttrC(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function toggleContractCoForm() {
+  const el = document.getElementById('contractCoForm');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function addContractCoLine() {
+  contractCoLines.push({ description: '', quantity: 1, unitPrice: '' });
+  renderContractCoLines();
+}
+
+function removeContractCoLine(i) {
+  contractCoLines.splice(i, 1);
+  if (!contractCoLines.length) contractCoLines = [{ description: '', quantity: 1, unitPrice: '' }];
+  renderContractCoLines();
+}
+
+function updateContractCoLine(i, field, value) {
+  contractCoLines[i][field] = value;
+  updateContractCoEffect();
+}
+
+function renderContractCoLines() {
+  const host = document.getElementById('ccoLines');
+  if (!host) return;
+  host.innerHTML = contractCoLines.map((l, i) => `
+    <div style="display:grid; grid-template-columns:1fr 70px 110px 30px; gap:8px; margin-bottom:8px; align-items:center;">
+      <input type="text" placeholder="Description" value="${escAttrC(l.description)}"
+        oninput="updateContractCoLine(${i}, 'description', this.value)">
+      <input type="number" step="any" placeholder="Qty" value="${l.quantity}"
+        oninput="updateContractCoLine(${i}, 'quantity', this.value)">
+      <input type="number" step="any" placeholder="Per visit" value="${l.unitPrice}"
+        oninput="updateContractCoLine(${i}, 'unitPrice', this.value)">
+      <button type="button" style="background:none; border:none; color:#C0392B; cursor:pointer; font-size:1.1rem;"
+        onclick="removeContractCoLine(${i})" title="Remove line">&times;</button>
+    </div>`).join('');
+  updateContractCoEffect();
+}
+
+/*
+ * Mirrors contractChangeEffect on the server, so the figure shown while typing
+ * is the one that ends up on the document. If these two ever disagree the
+ * client signs something the admin did not see.
+ */
+function updateContractCoEffect() {
+  const el = document.getElementById('ccoEffect');
+  if (!el) return;
+  const perVisit = contractCoLines.reduce(
+    (s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), 0);
+  const vpy = contractCoState.visitsPerYear || 0;
+  const monthlyDelta = vpy > 0 ? Math.round((perVisit * vpy / 12) * 100) / 100 : 0;
+  const newMonthly = Math.max(0, Math.round((contractCoState.currentMonthly + monthlyDelta) * 100) / 100);
+
+  el.innerHTML = `${money(perVisit)} per visit
+    <span style="font-weight:400; color:#8A98AC;">
+      &middot; ${money(contractCoState.currentMonthly)} &rarr; <strong style="color:var(--navy);">${money(newMonthly)}</strong> a month
+    </span>`;
+}
+
+function ccoError(msg) {
+  const el = document.getElementById('ccoError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+}
+
+async function saveContractChangeOrder() {
+  ccoError('');
+  const res = await adminFetch(`/api/admin/contracts/${id}/change-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      description: document.getElementById('ccoDescription').value.trim(),
+      reason: document.getElementById('ccoReason').value || undefined,
+      poNumber: document.getElementById('ccoPo').value.trim() || undefined,
+      lineItems: contractCoLines
+        .filter(l => l.description.trim())
+        .map(l => ({ description: l.description.trim(), quantity: Number(l.quantity) || 0, unitPrice: Number(l.unitPrice) || 0 })),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return ccoError(data.error || 'Could not save this change order.');
+  contractCoLines = [{ description: '', quantity: 1, unitPrice: '' }];
+  loadContractChangeOrders();
+}
+
+async function sendContractChangeOrder(coId) {
+  if (!(await adminConfirm('Email this change order to the client for signature?', 'Send'))) return;
+  const res = await adminFetch(`/api/admin/change-orders/${coId}?action=send`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { adminToast(data.error || 'Could not send it.'); return; }
+  if (!data.emailed) adminToast('Saved as sent, but the email did not go out. Send them the link yourself.');
+  loadContractChangeOrders();
+}
+
+async function deleteContractChangeOrder(coId) {
+  if (!(await adminConfirm('Delete this draft change order?', 'Delete'))) return;
+  const res = await adminFetch(`/api/admin/change-orders/${coId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    adminToast(data.error || 'Could not delete it.');
+    return;
+  }
+  loadContractChangeOrders();
 }
 
 </script>

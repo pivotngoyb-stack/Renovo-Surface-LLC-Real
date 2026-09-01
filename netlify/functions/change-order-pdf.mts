@@ -32,7 +32,7 @@ export default withErrorHandling('change-order-pdf', async (request: Request, co
   if (changeOrder.status === 'draft' && !isAuthenticated(request)) return notFound()
 
   const bytes = await buildChangeOrderPdf(changeOrder)
-  const filename = changeOrderFilename(changeOrder.workOrderId, changeOrder.sequence)
+  const filename = changeOrderFilename(changeOrder)
 
   // Attachment by default, so it lands in a file where a client's own records
   // live. ?view=1 renders it in the browser for someone who would rather read.
