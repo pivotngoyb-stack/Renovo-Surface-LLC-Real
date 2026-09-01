@@ -531,7 +531,8 @@ function renderChangeOrders(cos) {
       <td style="font-weight:700;">${co.number}</td>
       <td>${escAttr(co.description).slice(0, 80)}${co.description.length > 80 ? '…' : ''}</td>
       <td style="text-align:right; white-space:nowrap;">${money(co.total)}</td>
-      <td>${coStatusPill(co.status)}</td>
+      <td>${coStatusPill(co.status)}${co.status === 'approved' && !co.poNumber && window.__jobPo
+        ? '<br><span style="font-size:0.72rem; color:#B7791F; font-weight:700;">no PO</span>' : ''}</td>
       <td style="text-align:right; white-space:nowrap;">
         <a href="/change-order.html?t=${co.token}&preview=1" target="_blank" style="font-size:0.82rem;">Preview</a>
         ${co.status === 'draft' ? `
@@ -553,6 +554,13 @@ function renderChangeOrders(cos) {
         <tbody>${rows}</tbody>
       </table>
       ${approved.length ? `<div class="totals-row">Approved changes: ${money(approvedTotal)}</div>` : ''}
+      ${approved.some(c => !c.poNumber) && window.__jobPo ? `
+        <p style="color:#B7791F; font-size:0.82rem; margin-top:8px; max-width:620px;">
+          A change marked <strong>no PO</strong> was approved with the purchase order box cleared, so nothing
+          says which PO covers it. The invoice will still quote the job's PO
+          (<strong>${escAttr(window.__jobPo)}</strong>), but if that order has no headroom for the extra,
+          accounts payable will reject the whole invoice. Worth a call before you send it.
+        </p>` : ''}
     ` : '<p style="color:#8A98AC; font-size:0.85rem;">No change orders on this job.</p>'}
 
     <button type="button" class="btn btn-outline btn-sm" style="margin-top:12px; color:var(--navy); border-color:var(--navy);"

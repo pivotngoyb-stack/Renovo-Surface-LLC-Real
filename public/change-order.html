@@ -35,6 +35,14 @@ const wantPreview = new URLSearchParams(window.location.search).get('preview') =
  */
 let isPreview = false;
 
+/*
+ * The PO already on the job, kept here so the approval path can tell a blank
+ * field apart from a job that never had one.
+ */
+let jobPo = null;
+/* Set once the client has been warned that they are approving without a PO. */
+let poWarningAcknowledged = false;
+
 function previewBanner(who) {
   if (!isPreview) return '';
   return `
@@ -95,8 +103,18 @@ function render(data) {
    * usually covers a change and retyping it invites a typo on the single
    * field the client's accounts payable matches against.
    */
+  jobPo = jobPoNumber || null;
   const effectivePo = co.poNumber || jobPoNumber || '';
   const poInherited = !co.poNumber && !!jobPoNumber;
+
+  /*
+   * Before a decision the header shows the PO this change would go under, which
+   * is useful context. After one it must show only what was recorded: a client
+   * who cleared the box deliberately should not be handed a printed document
+   * that names a purchase order they just removed.
+   */
+  const decided = co.status === 'approved' || co.status === 'declined';
+  const headerPo = decided ? (co.poNumber || '') : effectivePo;
 
   const linesHtml = lineItems.map(li => `
     <tr>
@@ -239,10 +257,15 @@ function render(data) {
           <div class="est-label" style="font-size:0.75rem;">PROJECT</div>
           <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(projectName)}</p>
         </div>` : ''}
-        ${effectivePo ? `
+        ${headerPo ? `
         <div>
           <div class="est-label" style="font-size:0.75rem;">PO NUMBER</div>
-          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(effectivePo)}</p>
+          <p style="color:#4A5A72; font-size:0.9rem; margin-top:6px;">${esc(headerPo)}</p>
+        </div>` : ''}
+        ${decided && !co.poNumber && jobPoNumber ? `
+        <div>
+          <div class="est-label" style="font-size:0.75rem;">PO NUMBER</div>
+          <p style="color:#8A98AC; font-size:0.9rem; margin-top:6px;">None recorded for this change</p>
         </div>` : ''}
       </div>
 
@@ -360,6 +383,24 @@ async function respond(action) {
   if (action === 'approve') {
     const sig = collectSignature();
     if (!sig) return;
+
+    /*
+     * Clearing a PO the job already has is almost always a slip, not a
+     * decision -- and it is one nobody notices until accounts payable rejects
+     * the invoice thirty days later. So it is confirmed rather than either
+     * silently accepted or silently overridden: quietly putting the job PO
+     * back would record the client citing a number they had just deleted.
+     */
+    const typedPo = (document.getElementById('signPo')?.value || '').trim();
+    if (!typedPo && jobPo && !poWarningAcknowledged) {
+      poWarningAcknowledged = true;
+      return signError(
+        'Your job is under PO ' + jobPo + '. Approving with the box empty means no purchase order '
+        + 'is recorded against this change, which can hold up payment. Put the number back, or press '
+        + 'Approve again to continue without one.',
+      );
+    }
+
     payload = {
       action,
       signerName: (document.getElementById('signName').value || '').trim(),
