@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
@@ -47,6 +47,81 @@ export default withErrorHandling('admin-contract-visits', async (request: Reques
       frequency: frequencyOf(contract.visitFrequency),
       contract,
     })
+  }
+
+  if (request.method === 'DELETE') {
+    /*
+     * Taking visits back off the calendar.
+     *
+     * Generation can put ninety rows on the schedule in one click, and until
+     * now there was no way to take any of them off again -- a client skipping
+     * a week, or a contract changing, left work orders nobody could remove.
+     *
+     * Two things are never deleted. A visit with hours against it is the
+     * record that a crew was there, and a visit that has been invoiced is
+     * behind a number the client has been billed. Both are evidence, and this
+     * endpoint is for tidying a schedule, not for erasing history.
+     */
+    const params = new URL(request.url).searchParams
+    const visitId = params.get('visitId')
+
+    const candidates = await db
+      .select()
+      .from(schema.workOrders)
+      .where(and(
+        eq(schema.workOrders.recurringContractId, contractId),
+        eq(schema.workOrders.kind, 'visit'),
+      ))
+
+    let targets = candidates
+    if (visitId) {
+      const id = Number(visitId)
+      if (!Number.isInteger(id)) return badRequest('Invalid visit id')
+      targets = candidates.filter(v => v.id === id)
+      /*
+       * Deliberately a 400 with a specific message rather than a 404.
+       *
+       * A 404 from a function here does not reach the caller: it falls through
+       * to the next matching route, and this one surfaces as the parent
+       * contract handler's "Invalid contract id" -- an error about the wrong
+       * thing entirely. Asking to remove a visit that is not on this contract
+       * is a mismatched pair anyway, which is a bad request more than a
+       * missing one.
+       */
+      if (!targets.length) {
+        return badRequest('That work order is not a scheduled visit on this contract. Only visits generated from the contract can be removed here.')
+      }
+    } else {
+      // No id: clear the rest of the run, from today forward. Past visits stay
+      // whether or not anyone logged them -- a gap in the record is itself
+      // worth seeing.
+      const today = isoDate(new Date())
+      targets = candidates.filter(v => v.scheduledDate && v.scheduledDate >= today)
+    }
+
+    const invoiced = await db
+      .select({ workOrderId: schema.invoices.workOrderId })
+      .from(schema.invoices)
+      .where(inArray(schema.invoices.workOrderId, targets.length ? targets.map(t => t.id) : [-1]))
+    const invoicedIds = new Set(invoiced.map(i => i.workOrderId))
+
+    const removable = targets.filter(v => v.actualHours == null && v.status !== 'completed' && !invoicedIds.has(v.id))
+    const kept = targets.length - removable.length
+
+    if (visitId && !removable.length) {
+      return badRequest(
+        invoicedIds.has(Number(visitId))
+          ? 'This visit has been invoiced. Leave it in place.'
+          : 'This visit has hours logged against it, so it is a record that the crew was there. Clear the hours first if it really did not happen.',
+      )
+    }
+
+    for (const v of removable) {
+      await db.delete(schema.workOrderPhotos).where(eq(schema.workOrderPhotos.workOrderId, v.id))
+      await db.delete(schema.workOrders).where(eq(schema.workOrders.id, v.id))
+    }
+
+    return json({ removed: removable.length, kept })
   }
 
   if (request.method === 'PATCH') {

@@ -42,7 +42,7 @@
 
     <div class="sched-legend">
       <span><span class="sched-key" style="background:#E8A317;"></span>Awaiting signature</span>
-      <span><span class="sched-key" style="background:#1B7FE8;"></span>Signed, not yet done</span>
+      <span><span class="sched-key" style="background:#1B7FE8;"></span>Booked, not yet done</span>
       <span><span class="sched-key" style="background:#1B7A3C;"></span>Completed</span>
     </div>
 
@@ -92,14 +92,32 @@ function fmtTime(hhmm) {
 }
 
 function chipClass(job) {
-  if (job.completedAt) return 'is-completed';
+  if (job.completedAt || job.status === 'completed') return 'is-completed';
+  /*
+   * A contract visit is never signed -- the contract was the authorisation --
+   * so a scheduled one is booked, not awaiting anything. Left on the pending
+   * colour it read as "awaiting signature" against a document nobody will ever
+   * sign, which is a whole calendar of work looking like it is stuck.
+   */
+  if (job.kind === 'visit') return 'is-signed';
   return job.status === 'signed' ? 'is-signed' : 'is-pending';
 }
 
 function chipHtml(job) {
   const time = fmtTime(job.scheduledStart);
-  return `<a class="sched-chip ${chipClass(job)}" href="/admin/work-order-detail.html?id=${job.id}" title="${job.summary.replace(/"/g, '&quot;')}">
+  /*
+   * A contract visit is marked. The crew is dispatched to it the same way, but
+   * nobody signs one and it bills through the contract rather than the job --
+   * a calendar that shows both as the same thing invites the wrong paperwork.
+   */
+  const visit = job.kind === 'visit';
+  const label = visit
+    ? (job.visitSequence ? 'Visit ' + job.visitSequence : 'Contract visit')
+    : '';
+  const title = (visit ? 'Contract visit — ' : '') + job.summary;
+  return `<a class="sched-chip ${chipClass(job)}" href="/admin/work-order-detail.html?id=${job.id}" title="${title.replace(/"/g, '&quot;')}">
     ${time ? `<span class="sched-chip-time">${time}</span> ` : ''}<span class="sched-chip-name">${job.clientName || 'Work Order #' + job.id}</span>
+    ${visit ? `<span class="sched-chip-visit" title="One visit under a standing contract">${label}</span>` : ''}
   </a>`;
 }
 

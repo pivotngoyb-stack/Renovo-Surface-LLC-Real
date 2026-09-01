@@ -187,7 +187,12 @@ function renderVisits({ visits, frequency }) {
           ? '<span style="color:#C0392B; font-weight:700;">Not logged</span>'
           : '<span style="color:#8A98AC;">Scheduled</span>'}</td>
       <td>${v.actualHours ? Number(v.actualHours) + ' hrs' : '&mdash;'}</td>
-      <td style="text-align:right;"><a href="/admin/work-order-detail.html?id=${v.id}" style="font-size:0.82rem;">Open</a></td>
+      <td style="text-align:right; white-space:nowrap;">
+        <a href="/admin/work-order-detail.html?id=${v.id}" style="font-size:0.82rem;">Open</a>
+        ${v.status !== 'completed' && v.actualHours == null
+          ? ` &middot; <a href="#" onclick="removeVisit(${v.id}); return false;" style="font-size:0.82rem; color:#C0392B;">Remove</a>`
+          : ''}
+      </td>
     </tr>`;
 
   const table = (rows, label) => rows.length ? `
@@ -226,6 +231,16 @@ function renderVisits({ visits, frequency }) {
       <p style="color:#8A98AC; font-size:0.78rem; margin-top:6px;">
         Starts the day after the last visit already scheduled, so running this twice will not double anything.
         Capped at 90 at a time.
+      </p>` : ''}
+
+    ${upcoming.length ? `
+      <p style="margin-top:14px;">
+        <button type="button" class="btn btn-sm" style="color:#C0392B;" onclick="clearFutureVisits()">
+          Clear the ${upcoming.length} upcoming ${upcoming.length === 1 ? 'visit' : 'visits'}
+        </button>
+        <span style="color:#8A98AC; font-size:0.78rem; margin-left:6px;">
+          for when the contract changes. Anything with hours logged or already invoiced stays.
+        </span>
       </p>` : ''}`;
 }
 
@@ -249,6 +264,42 @@ async function generateVisits() {
   if (after) {
     after.style.color = '#1B7A3C';
     after.textContent = 'Scheduled ' + data.created + '.';
+  }
+}
+
+
+/**
+ * Take a planned visit back off the calendar.
+ *
+ * Refused by the server for anything with hours against it or an invoice
+ * behind it -- those are records, not plans. The link is hidden in those cases
+ * too, but the server is the one that decides.
+ */
+async function removeVisit(visitId) {
+  if (!(await adminConfirm('Remove this visit from the schedule?', 'Remove'))) return;
+  const res = await adminFetch(`/api/admin/contracts/${id}/visits?visitId=${visitId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    adminToast(data.error || 'Could not remove that visit.');
+    return;
+  }
+  loadVisits();
+}
+
+/** Clear the remaining run, for when a contract is cancelled or rescheduled. */
+async function clearFutureVisits() {
+  if (!(await adminConfirm(
+    'Remove every upcoming visit on this contract? Visits with hours logged or already invoiced will stay.',
+    'Clear upcoming',
+  ))) return;
+  const res = await adminFetch(`/api/admin/contracts/${id}/visits`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { adminToast(data.error || 'Could not clear the visits.'); return; }
+  await loadVisits();
+  const msg = document.getElementById('visitMsg');
+  if (msg) {
+    msg.style.color = '#1B7A3C';
+    msg.textContent = 'Removed ' + data.removed + (data.kept ? ', kept ' + data.kept + ' with a record against them.' : '.');
   }
 }
 

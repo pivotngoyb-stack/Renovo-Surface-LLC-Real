@@ -354,6 +354,15 @@ body.admin-body {
 .sched-chip.is-pending { border-left-color: #E8A317; }
 .sched-chip.is-signed { border-left-color: var(--blue); }
 .sched-chip.is-completed { border-left-color: #1B7A3C; background: #F1F8F3; }
+/* One visit under a standing contract, rather than a job the client signed
+   for. Quiet on purpose: it is a qualifier on the row, not the headline. */
+.sched-chip-visit {
+  display: block;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: #6B7A90;
+  margin-top: 1px;
+}
 .sched-chip-time { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; color: #4A5A72; }
 .sched-chip-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

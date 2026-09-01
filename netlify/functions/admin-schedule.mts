@@ -31,6 +31,12 @@ export default async (request: Request) => {
       scheduledDate: schema.workOrders.scheduledDate,
       scheduledStart: schema.workOrders.scheduledStart,
       completedAt: schema.workOrders.completedAt,
+      // A crew looking at Thursday needs to know whether this is a one-off job
+      // the client signed for or one visit of a standing contract. They are
+      // dispatched differently and the paperwork is different.
+      kind: schema.workOrders.kind,
+      visitSequence: schema.workOrders.visitSequence,
+      recurringContractId: schema.workOrders.recurringContractId,
       clientName: schema.clients.name,
       clientPhone: schema.clients.phone,
       propertyAddress: schema.clients.propertyAddress,
