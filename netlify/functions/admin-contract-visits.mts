@@ -6,6 +6,7 @@ import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { frequencyOf, FREQUENCIES } from './_shared/serviceSchedule.mts'
+import { changeOrderRef } from './_shared/changeOrders.mts'
 import { visitDates, visitsInMonths, parseIsoDate, isoDate, MAX_VISITS_PER_RUN } from './_shared/visitSchedule.mts'
 
 /**
@@ -219,9 +220,41 @@ export default withErrorHandling('admin-contract-visits', async (request: Reques
     .orderBy(schema.estimateLineItems.sortOrder)
 
   const recurringLines = lineItems.filter(li => !li.isOptional && frequencyOf(li.frequency).recurring)
-  const scopeLines = (recurringLines.length ? recurringLines : lineItems.filter(li => !li.isOptional))
+  const baseScope = (recurringLines.length ? recurringLines : lineItems.filter(li => !li.isOptional))
     .map(li => `  - ${li.description}`)
-    .join('\n')
+
+  /*
+   * Scope the client has since added, by signed change order.
+   *
+   * Without this, a visit generated after a change order was approved would be
+   * built from the estimate alone and miss it -- so the crew would do the added
+   * work on the visits that existed when it was signed, and then quietly stop.
+   * Exactly the wrong way round, and invisible until the client rang.
+   *
+   * Approved only. A change order still out with the client authorises nothing.
+   */
+  const approvedChanges = await db
+    .select({ id: schema.changeOrders.id, sequence: schema.changeOrders.sequence })
+    .from(schema.changeOrders)
+    .where(and(
+      eq(schema.changeOrders.recurringContractId, contractId),
+      eq(schema.changeOrders.status, 'approved'),
+      eq(schema.changeOrders.archived, false),
+    ))
+    .orderBy(schema.changeOrders.sequence)
+
+  const changeScope: string[] = []
+  for (const c of approvedChanges) {
+    const lines = await db
+      .select({ description: schema.changeOrderLineItems.description })
+      .from(schema.changeOrderLineItems)
+      .where(eq(schema.changeOrderLineItems.changeOrderId, c.id))
+      .orderBy(schema.changeOrderLineItems.sortOrder)
+    const ref = changeOrderRef({ recurringContractId: contractId, sequence: c.sequence })
+    for (const l of lines) changeScope.push(`  - ${l.description} (added by ${ref})`)
+  }
+
+  const scopeLines = [...baseScope, ...changeScope].join('\n')
 
   const created = []
   for (const visit of plan) {
