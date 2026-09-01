@@ -4,7 +4,7 @@ import { getStore } from '@netlify/blobs'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const MAX_BYTES = 4 * 1024 * 1024
@@ -25,8 +25,8 @@ const ALLOWED_TYPES: Record<string, string> = {
 export default withErrorHandling('admin-estimate-photos', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const estimateId = Number(context.params.id)
-  if (!Number.isInteger(estimateId)) return badRequest('Invalid estimate id')
+  const estimateId = pathId(context.params.id)
+  if (estimateId === null) return notFound()
 
   const [estimate] = await db.select().from(schema.estimates).where(eq(schema.estimates.id, estimateId)).limit(1)
   if (!estimate) return notFound()

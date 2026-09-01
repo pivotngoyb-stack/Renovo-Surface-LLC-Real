@@ -3,7 +3,7 @@ import type { Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const MAX_CAPTION = 200
@@ -12,9 +12,9 @@ const MAX_CAPTION = 200
 export default withErrorHandling('admin-estimate-photo', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const estimateId = Number(context.params.id)
-  const photoId = Number(context.params.photoId)
-  if (!Number.isInteger(estimateId) || !Number.isInteger(photoId)) return badRequest('Invalid id')
+  const estimateId = pathId(context.params.id)
+  const photoId = pathId(context.params.photoId)
+  if (estimateId === null || photoId === null) return notFound()
 
   const [photo] = await db.select().from(schema.estimatePhotos).where(eq(schema.estimatePhotos.id, photoId)).limit(1)
   // Ownership as well as existence: a photo id alone must not be enough to

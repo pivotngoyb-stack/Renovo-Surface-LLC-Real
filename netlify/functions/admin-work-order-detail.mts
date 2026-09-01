@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -16,8 +16,8 @@ interface SchedulePatch {
 export default async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const id = Number(context.params.id)
-  if (!Number.isInteger(id)) return badRequest('Invalid work order id')
+  const id = pathId(context.params.id)
+  if (id === null) return notFound()
 
   const [workOrder] = await db.select().from(schema.workOrders).where(eq(schema.workOrders.id, id)).limit(1)
   if (!workOrder) return notFound()

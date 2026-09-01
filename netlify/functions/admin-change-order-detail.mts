@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { sendChangeOrderToClient, notifyAdminEmailDeliveryFailed } from './_shared/email.mts'
 import { buildChangeOrderPdf, changeOrderFilename } from './_shared/changeOrderDocument.mts'
@@ -27,8 +27,8 @@ const money = (n: number) =>
 export default withErrorHandling('admin-change-order-detail', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const id = Number(context.params.id)
-  if (!Number.isInteger(id)) return badRequest('Invalid change order id')
+  const id = pathId(context.params.id)
+  if (id === null) return notFound()
 
   const [changeOrder] = await db
     .select()

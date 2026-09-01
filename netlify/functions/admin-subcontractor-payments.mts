@@ -2,7 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const VALID_METHODS = new Set(['cash', 'check', 'card', 'other'])
@@ -10,8 +10,8 @@ const VALID_METHODS = new Set(['cash', 'check', 'card', 'other'])
 export default withErrorHandling('admin-subcontractor-payments', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const subId = Number(context.params.id)
-  if (!Number.isInteger(subId)) return badRequest('Invalid subcontractor id')
+  const subId = pathId(context.params.id)
+  if (subId === null) return notFound()
 
   const [agreement] = await db.select().from(schema.subcontractorAgreements).where(eq(schema.subcontractorAgreements.id, subId)).limit(1)
   if (!agreement) return notFound()

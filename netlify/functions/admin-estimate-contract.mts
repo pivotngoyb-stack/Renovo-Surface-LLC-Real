@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { contractValue, frequencyOf } from './_shared/serviceSchedule.mts'
 
@@ -22,8 +22,8 @@ export default withErrorHandling('admin-estimate-contract', async (request: Requ
   if (!isAuthenticated(request)) return unauthorized()
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 })
 
-  const estimateId = Number(context.params.id)
-  if (!Number.isInteger(estimateId)) return badRequest('Invalid estimate id')
+  const estimateId = pathId(context.params.id)
+  if (estimateId === null) return notFound()
 
   const [estimate] = await db.select().from(schema.estimates).where(eq(schema.estimates.id, estimateId)).limit(1)
   if (!estimate) return notFound()

@@ -2,7 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { changeOrderTotal, nextSequence, changeOrderNumber } from './_shared/changeOrders.mts'
@@ -24,8 +24,8 @@ interface IncomingLine {
 export default withErrorHandling('admin-change-orders', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const workOrderId = Number(context.params.id)
-  if (!Number.isInteger(workOrderId)) return badRequest('Invalid work order id')
+  const workOrderId = pathId(context.params.id)
+  if (workOrderId === null) return notFound()
 
   const [workOrder] = await db
     .select()

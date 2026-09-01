@@ -2,7 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { frequencyOf } from './_shared/serviceSchedule.mts'
@@ -34,8 +34,8 @@ interface IncomingLine {
 export default withErrorHandling('admin-contract-change-orders', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const contractId = Number(context.params.id)
-  if (!Number.isInteger(contractId)) return badRequest('Invalid contract id')
+  const contractId = pathId(context.params.id)
+  if (contractId === null) return notFound()
 
   const [contract] = await db
     .select()

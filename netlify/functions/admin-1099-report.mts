@@ -2,7 +2,7 @@ import { eq, and, gte, lte } from 'drizzle-orm'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { toCsv } from './_shared/csv.mts'
-import { json, unauthorized, badRequest } from './_shared/http.mts'
+import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 
 const THRESHOLD = 600

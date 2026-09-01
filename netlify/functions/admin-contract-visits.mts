@@ -2,7 +2,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
-import { json, unauthorized, notFound, badRequest } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { frequencyOf, FREQUENCIES } from './_shared/serviceSchedule.mts'
@@ -26,8 +26,8 @@ import { visitDates, visitsInMonths, parseIsoDate, isoDate, MAX_VISITS_PER_RUN }
 export default withErrorHandling('admin-contract-visits', async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
 
-  const contractId = Number(context.params.id)
-  if (!Number.isInteger(contractId)) return badRequest('Invalid contract id')
+  const contractId = pathId(context.params.id)
+  if (contractId === null) return notFound()
 
   const [contract] = await db
     .select()
@@ -76,6 +76,9 @@ export default withErrorHandling('admin-contract-visits', async (request: Reques
 
     let targets = candidates
     if (visitId) {
+      // A query parameter, not a path one. It is not subject to the routing
+      // retry that forces path ids to answer 404, and a malformed ?visitId is
+      // genuinely a bad request.
       const id = Number(visitId)
       if (!Number.isInteger(id)) return badRequest('Invalid visit id')
       targets = candidates.filter(v => v.id === id)
