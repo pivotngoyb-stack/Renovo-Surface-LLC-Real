@@ -29,7 +29,11 @@ async function adminFetch(url, options = {}) {
 }
 
 function money(n) {
-  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // The sign goes outside the symbol: -$310.00, not $-310.00. Nothing showed a
+  // negative here until change orders arrived, and a credit is exactly the
+  // figure a client is most likely to misread.
+  const v = Number(n);
+  return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function statusPill(status) {
