@@ -240,9 +240,16 @@ async function generateVisits() {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { msg.style.color = '#C0392B'; msg.textContent = data.error || 'Could not generate visits.'; return; }
-  msg.style.color = '#1B7A3C';
-  msg.textContent = 'Scheduled ' + data.created + '.';
-  loadVisits();
+
+  // Re-render first, then say what happened. Setting the message before
+  // loadVisits() writes it into a span that the re-render immediately throws
+  // away, so the click appeared to do nothing.
+  await loadVisits();
+  const after = document.getElementById('visitMsg');
+  if (after) {
+    after.style.color = '#1B7A3C';
+    after.textContent = 'Scheduled ' + data.created + '.';
+  }
 }
 
 </script>
