@@ -17,6 +17,29 @@ export function badRequest(message: string): Response {
   return json({ error: message }, { status: 400 })
 }
 
+/**
+ * "You may not do that to this" -- and deliberately NOT a 403.
+ *
+ * Netlify treats 403 from a path-routed function the same way it treats 404:
+ * the response is discarded, the request is retried against the static-file
+ * candidates (`/thing/12.html`, `/thing/12/index.html`, ...), and because those
+ * still match the route pattern the function runs again with a nonsense id and
+ * answers "Not found". The client never sees the 403 or its message -- it sees
+ * a 404 about something else.
+ *
+ * Established by experiment, not inference: the same handler returning 403
+ * produced retries in the dev log and a 404 at the client; returning 409
+ * delivered the message intact and produced no retries. 400 and 401 are
+ * unaffected.
+ *
+ * 409 is the closest surviving status. The request is well-formed and the
+ * caller is known, so 400 would be a lie; the conflict is between what the
+ * caller is asking for and what this link is allowed to touch.
+ */
+export function forbidden(message: string): Response {
+  return json({ error: message }, { status: 409 })
+}
+
 /** Best-effort client IP from Netlify's forwarded headers. */
 export function getClientIp(request: Request): string {
   return (

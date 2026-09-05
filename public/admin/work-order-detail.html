@@ -34,6 +34,7 @@
   </div>
 
 <script src="../js/admin.js"></script>
+<script src="../js/photo-resize.js"></script>
 <script>
 const id = new URLSearchParams(window.location.search).get('id');
 
@@ -341,7 +342,8 @@ function renderJobPlan(plan) {
   </div>`;
 }
 
-// resizeImageFile lives in admin.js -- work orders and estimates both need it.
+// resizeImageFile lives in js/photo-resize.js -- estimates, work orders and the
+// crew job sheet all take photos on a phone.
 
 function triggerUpload(category) {
   const input = document.createElement('input');
@@ -372,9 +374,13 @@ async function deletePhoto(photoId) {
 
 function renderPhotoGrid(category, label, photos) {
   const items = photos.filter(p => p.category === category);
+  // A photo taken on site and one added here afterwards are different evidence.
+  // The badge is small on purpose: useful when you are checking a job, invisible
+  // the rest of the time.
   const thumbs = items.map(p => `
     <div style="position:relative;">
       <img src="/api/photos/${p.token}" class="photo-thumb" alt="${label} photo">
+      ${p.source === 'crew' ? '<span title="Taken on site by the crew" style="position:absolute; bottom:4px; left:4px; background:rgba(13,31,56,0.78); color:#fff; border-radius:4px; padding:1px 5px; font-size:0.62rem; letter-spacing:0.04em;">ON SITE</span>' : ''}
       <button type="button" onclick="deletePhoto(${p.id})" style="position:absolute; top:4px; right:4px; background:rgba(13,31,56,0.75); color:#fff; border:none; border-radius:50%; width:22px; height:22px; cursor:pointer; font-size:0.8rem; line-height:1;">✕</button>
     </div>
   `).join('');

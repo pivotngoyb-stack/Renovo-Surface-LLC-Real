@@ -37,6 +37,31 @@
   .crew-done { background: #E1F7E8; border-color: #A8DCBB; }
   .crew-done h2 { color: #1B7A3C; }
   .crew-hint { font-size: 0.82rem; color: #8A98AC; margin: -8px 0 14px; }
+  /* Photos. Two big targets, because this is done with a glove half off. */
+  .shot-row { display: flex; gap: 10px; margin-bottom: 4px; }
+  /* .btn-outline in the site stylesheet is white-on-transparent, built for the
+     dark hero. On a white card it would be invisible, so this page draws its
+     own. */
+  .shot-row .btn {
+    flex: 1; padding: 15px 8px; font-size: 0.95rem; border-radius: 10px;
+    background: #fff; color: var(--navy); border: 2px solid var(--navy);
+  }
+  .shot-row .btn:disabled { opacity: 0.55; }
+  .shot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .shot { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #EEF2F8; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shot .drop {
+    position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border: 0;
+    border-radius: 50%; background: rgba(13,31,56,0.78); color: #fff; font-size: 0.85rem;
+    line-height: 1; cursor: pointer;
+  }
+  .shot .tag {
+    position: absolute; bottom: 0; left: 0; right: 0; background: rgba(13,31,56,0.7);
+    color: #fff; font-size: 0.6rem; letter-spacing: 0.05em; text-align: center; padding: 2px 0;
+  }
+  .shot-label { font-size: 0.78rem; font-weight: 700; color: #4A5A72; margin: 10px 0 6px; }
+  .shot-nudge { background: #EAF2FF; border-color: #B9D3F5; }
+  .shot-nudge h2 { color: #1B4F8F; }
 </style>
 </head>
 <body class="admin-body">
@@ -44,6 +69,7 @@
     <div class="state-banner"><div class="icon">⏳</div><p>Loading the job sheet…</p></div>
   </div>
 
+<script src="js/photo-resize.js"></script>
 <script>
 const token = new URLSearchParams(window.location.search).get('t');
 
@@ -147,6 +173,11 @@ function render(d) {
     ${site.siteConditions ? `<div class="crew-card"><h2>Site notes</h2><ul><li>${esc(site.siteConditions)}</li></ul></div>` : ''}
     ${compliance}
 
+    <div class="crew-card" id="photoCard">
+      <h2>Photos</h2>
+      <p class="crew-hint">Loading…</p>
+    </div>
+
     <div class="crew-card crew-log${logged ? ' crew-done' : ''}">
       <h2>${logged ? 'Logged' : 'When you are done'}</h2>
       <p class="crew-hint">
@@ -174,6 +205,123 @@ function render(d) {
         ${logged ? 'Update the hours' : 'Log the hours'}
       </button>
     </div>`;
+
+  loadPhotos();
+}
+
+/* ---------- Photos ----------
+ *
+ * The photo system already existed; only the office could add to it, and the
+ * office is not standing in front of the slab. These are what settles a damage
+ * dispute and what a facilities manager forwards to their own boss, so they
+ * should be taken by whoever is there.
+ */
+let photos = [];
+
+async function loadPhotos() {
+  const res = await fetch(`/api/crew/${token}/photos`);
+  if (!res.ok) { renderPhotos(true); return; }
+  photos = (await res.json()).photos || [];
+  renderPhotos(false);
+}
+
+function shots(category) {
+  const items = photos.filter(p => p.category === category);
+  if (!items.length) return '<p class="crew-hint" style="margin:0 0 12px;">None yet.</p>';
+  return `<div class="shot-grid">${items.map(p => `
+    <div class="shot">
+      <img src="/api/photos/${esc(p.token)}" alt="${category} photo" loading="lazy">
+      ${p.source === 'crew'
+        ? `<button type="button" class="drop" title="Delete this photo" onclick="dropPhoto(${p.id})">&times;</button>`
+        : '<span class="tag">OFFICE</span>'}
+    </div>`).join('')}</div>`;
+}
+
+function renderPhotos(failed) {
+  const card = document.getElementById('photoCard');
+  if (!card) return;
+
+  if (failed) {
+    card.innerHTML = '<h2>Photos</h2><p class="crew-hint" style="margin:0;">'
+      + 'Could not load the photos. The rest of the sheet still works.</p>';
+    return;
+  }
+
+  // Leading with the before shot only while there isn't one. Once it is taken
+  // the nudge disappears rather than nagging for the rest of the day.
+  const noBefore = !photos.some(p => p.category === 'before');
+  card.className = 'crew-card' + (noBefore ? ' shot-nudge' : '');
+  card.innerHTML = `
+    <h2>Photos</h2>
+    ${noBefore ? '<p class="crew-hint" style="margin:0 0 12px;">'
+      + 'Take the before shots first &mdash; once the work is done there is no getting them back, '
+      + 'and they are what settles an argument about damage that was already there.</p>' : ''}
+    <div class="shot-row">
+      <button type="button" class="btn" onclick="takePhoto('before', this)">Before photo</button>
+      <button type="button" class="btn" onclick="takePhoto('after', this)">After photo</button>
+    </div>
+    <p class="error-text" id="shotError"></p>
+    <p class="crew-hint" style="margin:8px 0 0;">
+      The client sees these on their work order and on the invoice, so shoot the work,
+      not the crew.
+    </p>
+    <div class="shot-label">Before</div>
+    ${shots('before')}
+    <div class="shot-label">After</div>
+    ${shots('after')}`;
+}
+
+function shotError(msg) {
+  const el = document.getElementById('shotError');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('show', !!msg);
+}
+
+function takePhoto(category, btn) {
+  // A fresh input each time: reusing one means picking the same file twice in a
+  // row fires no change event, and the second photo silently never uploads.
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  // Opens the camera straight away on a phone rather than the photo library.
+  input.capture = 'environment';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    shotError('');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Uploading…';
+    try {
+      const dataUrl = await resizeImageFile(file);
+      const res = await fetch(`/api/crew/${token}/photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, dataUrl }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) shotError(data.error || 'That photo did not upload. Try again.');
+      else await loadPhotos();
+    } catch {
+      shotError('Could not read that photo. Try taking it again.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+  input.click();
+}
+
+async function dropPhoto(id) {
+  if (!window.confirm('Delete this photo?')) return;
+  const res = await fetch(`/api/crew/${token}/photos/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    shotError(data.error || 'Could not delete that photo.');
+    return;
+  }
+  await loadPhotos();
 }
 
 async function logHours() {

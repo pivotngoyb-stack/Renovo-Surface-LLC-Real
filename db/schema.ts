@@ -15,6 +15,16 @@ export const paymentTypeEnum = pgEnum('payment_type', ['flat', 'percentage'])
 export const subAgreementStatusEnum = pgEnum('sub_agreement_status', ['pending', 'signed'])
 export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'check', 'card', 'stripe', 'other'])
 export const photoCategoryEnum = pgEnum('photo_category', ['before', 'after'])
+/*
+ * Who put the photo there.
+ *
+ * A photo taken on site by the crew and a photo the office added afterwards
+ * are different evidence, the same way crew-logged hours differ from hours
+ * typed up later. It also decides what the crew link is allowed to remove:
+ * a crew can retake their own blurry shot, but must never be able to delete
+ * the office's record of what a site looked like before anyone touched it.
+ */
+export const photoSourceEnum = pgEnum('photo_source', ['office', 'crew'])
 // A project with a deposit bills twice: the deposit holds the crew, the
 // balance falls due on completion. 'full' is everything else.
 export const invoiceKindEnum = pgEnum('invoice_kind', ['full', 'deposit', 'balance'])
@@ -289,6 +299,9 @@ export const workOrderPhotos = pgTable('work_order_photos', {
   contentType: text('content_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
+  // Defaults to 'office' so every row that predates the crew link reads as
+  // what it actually was: added from the admin screen.
+  source: photoSourceEnum('source').notNull().default('office'),
   uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
 })
 
