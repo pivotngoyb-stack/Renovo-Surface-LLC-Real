@@ -126,6 +126,15 @@ async function load() {
     </p>
     <div id="actuals"></div>
 
+    <h3 style="margin:28px 0 6px;">Crew Link</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+      What the crew opens on their phone: the address, the scope, the mix and dwell times, the PPE,
+      and the hours box above. No login &mdash; a password in a car park is how hours stop getting
+      logged. No money on it either, and it is a different link from the client's, so a client who
+      edits their own URL still cannot reach the job plan.
+    </p>
+    <div id="crewLink"></div>
+
     <h3 style="margin:28px 0 12px;">Job Photos</h3>
     <div id="beforePhotos"></div>
     <div id="afterPhotos"></div>
@@ -158,6 +167,7 @@ async function load() {
   const estimatedHours = lineItems
     .filter(li => !li.isOptional && !li.subcontracted)
     .reduce((t, li) => t + (Number(li.estimatedDurationHours) || 0), 0);
+  renderCrewLink(workOrder.crewToken);
   renderActuals({
     actualHours: workOrder.actualHours,
     actualCrewSize: workOrder.actualCrewSize,
@@ -235,9 +245,12 @@ function renderJobPlan(plan) {
   }
 
   // Read-this-first band. Anything that changes how the day is scheduled or
-  // what it costs belongs at the top, above the numbers.
-  const flags = plan.warnings.length
-    ? `<div class="jp-band jp-flags">${plan.warnings.map(w => `<div class="jp-flag">${w}</div>`).join('')}</div>`
+  // what it costs belongs at the top, above the numbers. This is the one screen
+  // that sees both sets: the crew's warnings and the ones about margin, which
+  // are kept apart so the crew link cannot carry them.
+  const allWarnings = plan.warnings.concat(plan.internalWarnings || []);
+  const flags = allWarnings.length
+    ? `<div class="jp-band jp-flags">${allWarnings.map(w => `<div class="jp-flag">${w}</div>`).join('')}</div>`
     : '';
 
   const specs = planBand('Dispatch', `<div class="jp-spec">
@@ -479,6 +492,54 @@ async function clearActuals() {
   });
   if (!res.ok) { adminToast('Could not clear the hours.'); return; }
   renderActuals({ actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null });
+}
+
+/* ---------- Crew link ----------
+ *
+ * Issued on the first ask rather than with every work order: most jobs never
+ * need one, and a token that exists is a token that can leak. Once issued it
+ * does not change, so the link already sitting on somebody's phone keeps
+ * working when this page is opened again.
+ *
+ * Built from the current origin rather than the URL the API returns, so the
+ * link opens the site you are actually looking at.
+ */
+let crewUrl = null;
+
+function renderCrewLink(token) {
+  const box = document.getElementById('crewLink');
+  if (!box) return;
+  if (!token) {
+    crewUrl = null;
+    box.innerHTML = '<button type="button" class="btn btn-sm" onclick="makeCrewLink(this)">Create the crew link</button>';
+    return;
+  }
+  crewUrl = window.location.origin + '/crew.html?t=' + token;
+  box.innerHTML = '<p style="font-size:0.85rem; word-break:break-all; margin-bottom:8px;">'
+    + '<a href="' + escAttr(crewUrl) + '" target="_blank">' + escAttr(crewUrl) + '</a></p>'
+    + '<button type="button" class="btn btn-sm" id="copyCrewBtn" onclick="copyCrewLink()">Copy link</button>';
+}
+
+async function makeCrewLink(btn) {
+  btn.disabled = true;
+  const res = await adminFetch('/api/admin/work-orders/' + id + '/crew-link', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  btn.disabled = false;
+  if (!res.ok) { adminToast(data.error || 'Could not create the crew link.'); return; }
+  renderCrewLink(data.crewToken);
+  adminToast('Crew link ready. Text it to whoever is running the job.', 'success');
+}
+
+async function copyCrewLink() {
+  const btn = document.getElementById('copyCrewBtn');
+  try {
+    await navigator.clipboard.writeText(crewUrl);
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+  } catch {
+    // Clipboard access needs a secure context and can be refused outright.
+    adminToast('Copy did not work here — select the link above and copy it by hand.');
+  }
 }
 
 /* ---------- Change orders ----------

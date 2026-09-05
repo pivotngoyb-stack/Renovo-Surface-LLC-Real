@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Sheet | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="images/logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+<style>
+  /* Built for a phone held in one hand, outdoors, possibly with gloves on.
+     Bigger type and bigger targets than the office screens. */
+  .crew-wrap { max-width: 640px; margin: 0 auto; padding: 14px 14px 60px; }
+  .crew-head { background: var(--navy); color: #fff; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .crew-head h1 { font-size: 1.15rem; margin: 0 0 4px; color: #fff; }
+  .crew-head p { margin: 2px 0; font-size: 0.9rem; color: #C3D2E6; }
+  .crew-head a { color: #8FC2FF; font-weight: 600; }
+  .crew-card { background: #fff; border: 1.5px solid #E4EBF4; border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+  .crew-card h2 { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: #8A98AC; margin: 0 0 10px; }
+  .crew-card ul { margin: 0; padding-left: 18px; }
+  .crew-card li { margin-bottom: 6px; font-size: 0.95rem; line-height: 1.45; }
+  .crew-warn { background: #FFF7E8; border-color: #F0D9A8; }
+  .crew-warn h2 { color: #96650B; }
+  .chem { border-top: 1px solid #EEF2F8; padding-top: 10px; margin-top: 10px; }
+  .chem:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .chem-name { font-weight: 700; color: var(--navy); font-size: 0.98rem; }
+  .chem-mix { font-size: 0.9rem; color: #4A5A72; margin-top: 2px; }
+  .chem-meta { font-size: 0.82rem; color: #8A98AC; margin-top: 2px; }
+  .crew-log label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 6px; }
+  .crew-log input, .crew-log textarea {
+    width: 100%; padding: 14px; font-size: 1.05rem; border: 1.5px solid #DCE4EF;
+    border-radius: 10px; margin-bottom: 14px; font-family: inherit;
+  }
+  .crew-log input:focus, .crew-log textarea:focus { outline: 3px solid var(--blue); outline-offset: 1px; }
+  .crew-btn { width: 100%; padding: 16px; font-size: 1.05rem; border-radius: 10px; }
+  .crew-done { background: #E1F7E8; border-color: #A8DCBB; }
+  .crew-done h2 { color: #1B7A3C; }
+  .crew-hint { font-size: 0.82rem; color: #8A98AC; margin: -8px 0 14px; }
+</style>
+</head>
+<body class="admin-body">
+  <div class="crew-wrap" id="content">
+    <div class="state-banner"><div class="icon">⏳</div><p>Loading the job sheet…</p></div>
+  </div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('t');
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+function showError(msg) {
+  document.getElementById('content').innerHTML =
+    `<div class="state-banner"><div class="icon">⚠️</div><p>${esc(msg)}</p></div>`;
+}
+
+async function load() {
+  if (!token) return showError('This link is missing its code. Ask the office to send it again.');
+  const res = await fetch(`/api/crew/${token}`);
+  if (!res.ok) {
+    return showError(res.status === 404
+      ? 'We could not find this job. Ask the office to send the link again.'
+      : 'Something went wrong loading the job sheet.');
+  }
+  render(await res.json());
+}
+
+const list = (items) => items.map(i => `<li>${esc(i)}</li>`).join('');
+
+function render(d) {
+  const { job, site, scope, plan, actuals, contractDescription } = d;
+
+  const title = job.kind === 'visit'
+    ? `Service Visit${job.visitSequence ? ' #' + job.visitSequence : ''}`
+    : `Job #${job.id}`;
+
+  /* Chemicals, with the dilution spelled out. This is the section somebody
+     actually reads standing next to a mixing bucket, so the mix comes first
+     and the reasoning second. */
+  const chemicals = plan.chemicals.length ? `
+    <div class="crew-card">
+      <h2>Mix</h2>
+      ${plan.chemicals.map(c => `
+        <div class="chem">
+          <div class="chem-name">${esc(c.product)}</div>
+          <div class="chem-mix">${esc(c.dilution)} &mdash; ${c.mixedGallons} gal mixed
+            (${c.concentrateGallons} gal concentrate + ${c.waterGallons} gal water)</div>
+          <div class="chem-meta">${esc(c.purpose)}${c.dwellMinutes ? ` &middot; dwell ${c.dwellMinutes} min` : ''}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const phases = plan.phases.length ? `
+    <div class="crew-card">
+      <h2>Order of work</h2>
+      <ul>${plan.phases.map(p => `<li><strong>${esc(p.name || p.label || '')}</strong>${p.detail ? ' &mdash; ' + esc(p.detail) : ''}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const compliance = plan.compliance.length ? `
+    <div class="crew-card">
+      <h2>Rules on this job</h2>
+      <ul>${plan.compliance.map(c => `<li><strong>${esc(c.requirement || '')}</strong>${c.detail ? ' &mdash; ' + esc(c.detail) : ''}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const warnings = plan.warnings.length ? `
+    <div class="crew-card crew-warn">
+      <h2>Read before you start</h2>
+      <ul>${list(plan.warnings)}</ul>
+    </div>` : '';
+
+  const logged = actuals.actualHours != null;
+
+  document.getElementById('content').innerHTML = `
+    <div class="crew-head">
+      <h1>${esc(title)}</h1>
+      <p>${esc(site.company || site.clientName || '')}</p>
+      ${site.address ? `<p><a href="https://maps.google.com/?q=${encodeURIComponent(site.address)}">${esc(site.address)}</a></p>` : ''}
+      ${site.phone ? `<p><a href="tel:${esc(site.phone)}">${esc(site.phone)}</a></p>` : ''}
+      ${job.scheduledDate ? `<p>${esc(job.scheduledDate)}${job.scheduledStart ? ' at ' + esc(job.scheduledStart) : ''}</p>` : ''}
+    </div>
+
+    ${warnings}
+
+    <div class="crew-card">
+      <h2>What we are doing</h2>
+      <ul>${list(scope)}</ul>
+      ${contractDescription ? `<p style="font-size:0.85rem; color:#8A98AC; margin:10px 0 0;">Under ${esc(contractDescription)}</p>` : ''}
+    </div>
+
+    <div class="crew-card">
+      <h2>Crew and time</h2>
+      <ul>
+        <li>${plan.crew.techs} ${plan.crew.techs === 1 ? 'tech' : 'techs'}, about ${plan.crew.hoursEach} hrs each</li>
+        <li>${plan.onSiteHours} hrs on site, ${plan.laborHours} crew hours total</li>
+        ${plan.crew.rationale ? `<li>${esc(plan.crew.rationale)}</li>` : ''}
+      </ul>
+    </div>
+
+    ${phases}
+    ${chemicals}
+
+    ${plan.equipment.length ? `<div class="crew-card"><h2>Bring</h2><ul>${list(plan.equipment)}</ul></div>` : ''}
+    ${plan.ppe.length ? `<div class="crew-card"><h2>Wear</h2><ul>${list(plan.ppe)}</ul></div>` : ''}
+    ${plan.water.gallons ? `<div class="crew-card"><h2>Water</h2><ul><li>${plan.water.gallons} gal &mdash; ${esc(plan.water.note)}</li></ul></div>` : ''}
+    ${plan.weather.length ? `<div class="crew-card"><h2>Weather</h2><ul>${list(plan.weather)}</ul></div>` : ''}
+    ${site.siteConditions ? `<div class="crew-card"><h2>Site notes</h2><ul><li>${esc(site.siteConditions)}</li></ul></div>` : ''}
+    ${compliance}
+
+    <div class="crew-card crew-log${logged ? ' crew-done' : ''}">
+      <h2>${logged ? 'Logged' : 'When you are done'}</h2>
+      <p class="crew-hint">
+        Total crew hours &mdash; everybody added together. Three techs for four hours is twelve.
+      </p>
+
+      <label for="hours">Crew hours</label>
+      <input type="number" id="hours" inputmode="decimal" step="0.25" min="0"
+        placeholder="12" value="${actuals.actualHours != null ? esc(actuals.actualHours) : ''}">
+
+      <label for="techs">How many techs</label>
+      <input type="number" id="techs" inputmode="numeric" step="1" min="1"
+        placeholder="3" value="${actuals.actualCrewSize != null ? esc(actuals.actualCrewSize) : ''}">
+
+      <label for="materials">Chemicals used, in dollars <span style="font-weight:400; color:#8A98AC;">(optional)</span></label>
+      <input type="number" id="materials" inputmode="decimal" step="0.01" min="0"
+        placeholder="0.00" value="${actuals.actualMaterialsCost != null ? esc(actuals.actualMaterialsCost) : ''}">
+
+      <label for="note">Anything the office should know <span style="font-weight:400; color:#8A98AC;">(optional)</span></label>
+      <textarea id="note" rows="3" placeholder="Ran long, the drain was blocked and we had to bail it."></textarea>
+
+      <p class="error-text" id="logError"></p>
+      <p id="logOk" style="color:#1B7A3C; font-weight:600; font-size:0.9rem;"></p>
+      <button type="button" class="btn btn-primary crew-btn" id="logBtn" onclick="logHours()">
+        ${logged ? 'Update the hours' : 'Log the hours'}
+      </button>
+    </div>`;
+}
+
+async function logHours() {
+  const err = document.getElementById('logError');
+  const ok = document.getElementById('logOk');
+  const btn = document.getElementById('logBtn');
+  err.textContent = ''; err.classList.remove('show');
+  ok.textContent = '';
+
+  const hours = document.getElementById('hours').value.trim();
+  if (!hours) {
+    err.textContent = 'Put the crew hours in first.';
+    err.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  const res = await fetch(`/api/crew/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      actualHours: hours,
+      actualCrewSize: document.getElementById('techs').value.trim() || undefined,
+      actualMaterialsCost: document.getElementById('materials').value.trim() || undefined,
+      note: document.getElementById('note').value.trim() || undefined,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+
+  btn.disabled = false;
+  btn.textContent = label;
+
+  if (!res.ok) {
+    err.textContent = data.error || 'Could not save that. Try again, or ring the office.';
+    err.classList.add('show');
+    return;
+  }
+  ok.textContent = 'Saved. Thanks.';
+  // Reload so the card flips to its logged state and shows what was stored.
+  setTimeout(load, 900);
+}
+
+load();
+</script>
+</body>
+</html>

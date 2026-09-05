@@ -120,6 +120,20 @@ export const workOrders = pgTable('work_orders', {
   visitSequence: integer('visit_sequence'),
   kind: workOrderKindEnum('kind').notNull().default('authorization'),
   token: text('token').notNull().unique(),
+  /*
+   * A second token, for the crew rather than the client.
+   *
+   * Deliberately not the same one. The client's link opens the work order they
+   * sign; the crew's opens the job plan behind it -- chemicals, dilutions,
+   * dwell times, crew size, the lot. A client who noticed the URL and changed
+   * the page name would otherwise be reading how the job is actually priced
+   * and staffed, which is exactly what the job plan was kept off the public
+   * route to prevent.
+   *
+   * Nullable because work orders already exist. Issued on demand the first
+   * time somebody asks for the crew link.
+   */
+  crewToken: text('crew_token').unique(),
   termsText: text('terms_text').notNull(),
   status: workOrderStatusEnum('status').notNull().default('pending'),
   // When the crew is booked to be on site. Nullable: a work order exists from

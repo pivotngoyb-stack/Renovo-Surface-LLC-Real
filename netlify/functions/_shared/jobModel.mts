@@ -101,6 +101,7 @@ export interface LineItemLike {
   calculatorInputs: string | null
   estimatedDurationHours: string | number | null
   estimatedProductCost: string | number | null
+  isOptional?: boolean | null
 }
 
 export interface ChemicalNeed {
@@ -144,7 +145,18 @@ export interface JobPlan {
     delta: number
     status: 'ok' | 'over'
   }
+  /** Things the crew standing on site needs to know. Safe to hand out. */
   warnings: string[]
+  /**
+   * Things only the office needs to know, because they are about money.
+   *
+   * Kept apart from `warnings` rather than filtered out downstream: a filter
+   * that matches on wording stops matching the day somebody rewords the
+   * warning, and then the margin goes out on a crew link without anyone
+   * noticing. Split at the source, a new office-only warning is withheld by
+   * default -- it has to be deliberately moved to be exposed.
+   */
+  internalWarnings: string[]
 }
 
 /* ---------- helpers ---------- */
@@ -881,10 +893,23 @@ function mergeChemicals(items: ChemicalNeed[]): ChemicalNeed[] {
 /* ---------- plan assembly ---------- */
 
 export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
-  const planned = lineItems.filter(li => li.serviceType && SERVICE_LABELS[li.serviceType])
+  /*
+   * Optional lines are excluded before anything else is counted.
+   *
+   * An optional line is work the client was shown and did not buy. Left in, it
+   * loads its hours, its chemicals, its equipment and its water into the
+   * dispatch plan: the crew brings sealer for a slab nobody sealed, the day is
+   * planned at twenty hours instead of twelve, and the profitability report
+   * compares the hours actually worked against an estimate that included work
+   * that never happened. The admin page already sums estimated hours over
+   * non-optional lines only, so leaving them in here also made the two figures
+   * on the same screen disagree.
+   */
+  const sold = lineItems.filter(li => !li.isOptional)
+  const planned = sold.filter(li => li.serviceType && SERVICE_LABELS[li.serviceType])
   const warnings: string[] = []
 
-  const skipped = lineItems.length - planned.length
+  const skipped = sold.length - planned.length
   if (skipped > 0) {
     warnings.push(
       `${skipped} line item(s) were added manually rather than through the pricing calculator, so they carry no job data and are not covered by this plan. Their time and materials are not included below.`
@@ -1008,8 +1033,9 @@ export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
   // a margin problem -- warning on it every time would train you to ignore the
   // warning that actually matters.
   const MATERIAL_VARIANCE_TOLERANCE = 5
+  const internalWarnings: string[] = []
   if (delta > MATERIAL_VARIANCE_TOLERANCE) {
-    warnings.push(
+    internalWarnings.push(
       `Chemicals for this plan cost about ${delta.toFixed(2)} more than the estimate assumed. That comes straight out of the job's margin -- worth checking before dispatch.`
     )
   }
@@ -1028,5 +1054,6 @@ export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
     weather: weatherFor(services),
     costCheck: { plannedChemicalCost, quotedProductCost, delta, status: delta > MATERIAL_VARIANCE_TOLERANCE ? 'over' : 'ok' },
     warnings,
+    internalWarnings,
   }
 }
