@@ -61,6 +61,27 @@ export const estimates = pgTable('estimates', {
   solicitationNumber: text('solicitation_number'),
   optionYears: integer('option_years').notNull().default(0),
   prevailingWage: boolean('prevailing_wage').notNull().default(false),
+  /*
+   * The wage determination behind that flag.
+   *
+   * The flag alone used to add two binding statements to the proposal -- that
+   * Renovo will pay the applicable determination and file certified payroll --
+   * while the price was still computed from an ordinary wage. A covered hour
+   * costs roughly 130% more than an unregulated one, so the document was
+   * promising something the number could not survive.
+   *
+   * Typed in from the solicitation rather than looked up: the governing
+   * determination is an attachment on a specific bid, and a table this app
+   * kept on its own would go stale silently. See prevailingWage.mts.
+   */
+  wageDeterminationNumber: text('wage_determination_number'),
+  wageClassification: text('wage_classification'),
+  wageBaseRate: numeric('wage_base_rate'),
+  wageFringeRate: numeric('wage_fringe_rate'),
+  // 'cash' or 'plan'. Cash fringe is payroll and carries FICA, unemployment
+  // and workers' comp; a bona fide plan contribution carries none of them.
+  wageFringeMode: text('wage_fringe_mode').notNull().default('cash'),
+  wageDecisionDate: date('wage_decision_date'),
   // Percent of the total required up front to schedule the crew. Null means
   // no deposit. Percent rather than a fixed amount so it survives a scope
   // revision -- a $4,000 deposit on a job that grew to $12,000 is not a

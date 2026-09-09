@@ -40,6 +40,19 @@ export interface BurdenInputs {
    */
   benefitsPct: number
   /**
+   * A flat hourly cost that carries no payroll tax.
+   *
+   * Exists for one thing: the fringe portion of a prevailing wage
+   * determination paid into a bona fide benefit plan. That contribution is a
+   * real hourly cost, but it is not wages -- no FICA, no unemployment, and in
+   * most states outside the workers' comp payroll basis too. Adding it to
+   * baseWage would tax money that is not taxed and over-price a covered bid;
+   * leaving it out would under-price it by the whole fringe.
+   *
+   * Zero for ordinary work. See prevailingWage.mts.
+   */
+  hourlyFringe: number
+  /**
    * Business overhead as a percent of direct job cost: vehicles, fuel for
    * non-job travel, admin time, software, insurance not already counted above.
    *
@@ -58,6 +71,8 @@ export const DEFAULT_BURDEN: BurdenInputs = {
   unemploymentPct: 2,
   // No benefits assumed by default. Set this once Renovo offers PTO or health.
   benefitsPct: 0,
+  // Only a prevailing wage fringe paid into a plan puts anything here.
+  hourlyFringe: 0,
   overheadPct: 18,
 }
 
@@ -68,6 +83,8 @@ export interface BurdenBreakdown {
   generalLiability: number
   unemployment: number
   benefits: number
+  /** Untaxed hourly fringe, if any. Cost, but not payroll. */
+  hourlyFringe: number
   /** Base wage plus every payroll add-on, per hour. */
   burdenedRate: number
   /** burdenedRate / baseWage, e.g. 1.36. */
@@ -86,7 +103,10 @@ export function burdenedRate(inputs: Partial<BurdenInputs> = {}): BurdenBreakdow
   const generalLiability = base * Math.max(0, i.generalLiabilityPct) / 100
   const unemployment = base * Math.max(0, i.unemploymentPct) / 100
   const benefits = base * Math.max(0, i.benefitsPct) / 100
-  const rate = base + fica + workersComp + generalLiability + unemployment + benefits
+  // Added after every percentage, never inside the base: this money is a cost
+  // but not payroll, so nothing above is charged on it.
+  const fringe = Math.max(0, i.hourlyFringe || 0)
+  const rate = base + fica + workersComp + generalLiability + unemployment + benefits + fringe
 
   return {
     baseWage: round2(base),
@@ -95,6 +115,7 @@ export function burdenedRate(inputs: Partial<BurdenInputs> = {}): BurdenBreakdow
     generalLiability: round2(generalLiability),
     unemployment: round2(unemployment),
     benefits: round2(benefits),
+    hourlyFringe: round2(fringe),
     burdenedRate: round2(rate),
     burdenMultiplier: base > 0 ? Math.round((rate / base) * 1000) / 1000 : 0,
   }

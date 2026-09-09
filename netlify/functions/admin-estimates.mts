@@ -37,9 +37,33 @@ interface CreateEstimateBody {
   solicitationNumber?: string
   optionYears?: number | string
   prevailingWage?: boolean
+  /** The wage determination this bid was costed against. See prevailingWage.mts. */
+  wageDeterminationNumber?: string
+  wageClassification?: string
+  wageBaseRate?: number | string
+  wageFringeRate?: number | string
+  wageFringeMode?: string
+  wageDecisionDate?: string
   lineItems: LineItemInput[]
   taxApplied?: boolean
   taxAmount?: number | string
+}
+
+const textOrNull = (v: unknown, max: number): string | null =>
+  typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null
+
+/**
+ * An hourly rate as a stored string, or null.
+ *
+ * Zero is not a rate here -- a determination with a zero base is a field
+ * somebody left blank, and storing it would let the bid price itself at no
+ * wage at all. Zero fringe is legitimate and handled by the caller.
+ */
+const rateOrNull = (v: unknown): string | null => {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0 || n > 1000) return null
+  return String(Math.round(n * 100) / 100)
 }
 
 export default async (request: Request) => {
@@ -121,6 +145,20 @@ export default async (request: Request) => {
         solicitationNumber: body.solicitationNumber,
         optionYears: Math.max(0, Math.min(Number(body.optionYears) || 0, 9)),
         prevailingWage: Boolean(body.prevailingWage),
+        /*
+         * Only stored on a covered bid.
+         *
+         * Clearing the flag clears the rates with it, so an estimate can never
+         * carry a determination it is not subject to -- which would show a
+         * wage impact panel on a driveway job and, worse, cost it at a federal
+         * laborer rate.
+         */
+        wageDeterminationNumber: body.prevailingWage ? textOrNull(body.wageDeterminationNumber, 60) : null,
+        wageClassification: body.prevailingWage ? textOrNull(body.wageClassification, 120) : null,
+        wageBaseRate: body.prevailingWage ? rateOrNull(body.wageBaseRate) : null,
+        wageFringeRate: body.prevailingWage ? rateOrNull(body.wageFringeRate) : null,
+        wageFringeMode: body.prevailingWage && body.wageFringeMode === 'plan' ? 'plan' : 'cash',
+        wageDecisionDate: body.prevailingWage ? (body.wageDecisionDate || null) : null,
         depositPct: body.depositPct != null && body.depositPct !== '' ? String(body.depositPct) : null,
         walkthroughDate: body.walkthroughDate,
         siteConditions: body.siteConditions,

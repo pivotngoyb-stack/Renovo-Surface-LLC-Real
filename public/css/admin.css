@@ -879,3 +879,15 @@ body.admin-body {
   .jp-tag { border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .jp-actions { display: none; }
 }
+
+/* Prevailing wage impact panel.
+   The floor is the number that stops a covered bid going out under water, so
+   it is the one thing here that reads at a glance. */
+.wage-impact { margin-top: 14px; border-top: 1px solid #EEF2F8; padding-top: 12px; }
+.wage-impact > div { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: 0.86rem; color: #4A5A72; }
+.wage-impact > div strong { color: var(--navy); font-variant-numeric: tabular-nums; }
+.wage-impact-total { border-top: 1px solid #EEF2F8; margin-top: 6px; padding-top: 10px !important; font-size: 0.95rem !important; }
+.wage-impact-total strong { font-size: 1.05rem; }
+.wage-warn { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 0.84rem; line-height: 1.5; background: #FFF7E8; color: #7A5308; border: 1px solid #F0D9A8; }
+.wage-warn-hard { background: #FDECEA; color: #A32C1E; border-color: #F3C0B8; }
+.wage-warn-ok { background: #E1F7E8; color: #1B7A3C; border-color: #A8DCBB; }

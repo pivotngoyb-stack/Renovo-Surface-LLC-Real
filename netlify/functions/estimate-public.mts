@@ -11,7 +11,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { getClientIp } from './_shared/http.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
 import { contractValue, buildScheduleMatrix, groupBySite, portfolioDiscountPct, frequencyOf } from './_shared/serviceSchedule.mts'
-import { COMPANY, registrationRows, PREVAILING_WAGE_STATEMENTS } from './_shared/companyProfile.mts'
+import { COMPANY, registrationRows, prevailingWageStatements } from './_shared/companyProfile.mts'
 import { multiYearSchedule, executiveSummary } from './_shared/proposalDoc.mts'
 
 export default async (request: Request, context: Context) => {
@@ -131,7 +131,14 @@ export default async (request: Request, context: Context) => {
         registration: registrationRows(),
         multiYear,
         prevailingWage: estimate.prevailingWage,
-        prevailingWageStatements: estimate.prevailingWage ? PREVAILING_WAGE_STATEMENTS : [],
+        prevailingWageStatements: estimate.prevailingWage
+          ? prevailingWageStatements({
+              number: estimate.wageDeterminationNumber,
+              classification: estimate.wageClassification,
+              baseRate: estimate.wageBaseRate,
+              fringeRate: estimate.wageFringeRate,
+            })
+          : [],
         solicitationNumber: estimate.solicitationNumber,
       } : null,
       // Server owns these so the date shown and the date enforced always agree.

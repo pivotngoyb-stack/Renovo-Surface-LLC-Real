@@ -3,8 +3,9 @@ import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { sendEstimateToClient } from './_shared/email.mts'
-import { json, unauthorized, notFound, pathId } from './_shared/http.mts'
+import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { buildProposalPdf, proposalFilename } from './_shared/proposalDocument.mts'
+import { checkDetermination } from './_shared/prevailingWage.mts'
 
 export default async (request: Request, context: Context) => {
   if (!isAuthenticated(request)) return unauthorized()
@@ -18,6 +19,35 @@ export default async (request: Request, context: Context) => {
 
   const [client] = await db.select().from(schema.clients).where(eq(schema.clients.id, estimate.clientId)).limit(1)
   if (!client) return notFound()
+
+  /*
+   * A covered bid does not leave without the determination it was costed
+   * against.
+   *
+   * The proposal a prevailing wage flag produces contains two binding
+   * statements: that Renovo will pay the applicable determination, and that
+   * certified payroll will be filed each period. Sending that on a price built
+   * from an ordinary shop wage is signing up to a labor cost roughly double
+   * what was bid. The browser warns while the estimate is being written; this
+   * is the check that cannot be skipped by not looking at the screen.
+   */
+  if (estimate.prevailingWage) {
+    const problems = checkDetermination({
+      number: estimate.wageDeterminationNumber ?? undefined,
+      classification: estimate.wageClassification ?? undefined,
+      baseRate: estimate.wageBaseRate != null ? Number(estimate.wageBaseRate) : undefined,
+      fringeRate: estimate.wageFringeRate != null ? Number(estimate.wageFringeRate) : 0,
+      fringeMode: estimate.wageFringeMode === 'plan' ? 'plan' : 'cash',
+      decisionDate: estimate.wageDecisionDate ?? null,
+    })
+    if (problems.length) {
+      return badRequest(
+        'This bid is marked prevailing wage, so it promises to pay the determination and file '
+        + 'certified payroll. Add the determination before sending it: '
+        + problems.map(p => p.message).join(' '),
+      )
+    }
+  }
 
   await db.update(schema.estimates).set({ status: 'sent', updatedAt: new Date() }).where(eq(schema.estimates.id, id))
 
