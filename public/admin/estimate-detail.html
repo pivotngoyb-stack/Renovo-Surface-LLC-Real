@@ -19,6 +19,7 @@
         <a href="/admin/contracts.html">Contracts</a>
         <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/bid-board.html">Bid Board</a>
         <a href="/admin/documents.html">Documents</a>
         <a href="/admin/profitability.html">Profit</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
@@ -161,6 +162,23 @@ async function load() {
     </p>
     <div id="estPhotos"></div>
 
+    <h3 style="margin:28px 0 6px;">The Envelope</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      The cheapest number does not win if the envelope is incomplete. A bid that missed an addendum,
+      or arrived without the insurance certificate, is thrown out as non-responsive before anyone
+      reads the price &mdash; and you usually find out weeks later, if at all.
+    </p>
+    <div id="bidDesk">Loading…</div>
+
+    <h3 style="margin:28px 0 6px;">How This Bid Finished</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      The winner's number is the most useful figure a losing bid ever produces, and it is only
+      findable for a week or two after the award. Recorded here, it tells you whether the next bid
+      is priced right. Left blank, every bid is priced from the same assumptions as the last one
+      whether that one won or lost by forty percent.
+    </p>
+    <div id="outcomePanel">Loading…</div>
+
     <h3 style="margin:28px 0 6px;">Scope, Exclusions &amp; Clarifications</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
       Everything below is on the proposal the client reads and the PDF they keep. The standard terms
@@ -174,6 +192,8 @@ async function load() {
     ${workOrderSection}
   `;
 
+  renderOutcome(estimate);
+  loadBidDesk();
   loadScope();
   loadPhotos();
   if (recurringLines.length) loadRecurring();
@@ -219,6 +239,224 @@ async function setUpRecurring() {
 }
 
 const MAX_PROPOSAL_PHOTOS = 12;
+
+/* ---------- The envelope: addenda and submittals ----------
+ *
+ * Two lists that decide whether the bid is read at all. The send route refuses
+ * on an unacknowledged addendum -- that is a fact recorded here on purpose --
+ * and only warns about a missing submittal, which may well already be attached
+ * to the email. Blocking on what the app cannot know is how a safety rail
+ * becomes an obstacle people learn to route around.
+ */
+let deskState = { addenda: [], submittals: [], readiness: [], library: [] };
+
+async function loadBidDesk() {
+  const box = document.getElementById('bidDesk');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/bid-desk`);
+  if (!res.ok) { box.innerHTML = '<div class="empty-state" style="padding:18px;">Could not load the bid desk.</div>'; return; }
+  deskState = await res.json();
+  renderBidDesk();
+}
+
+function renderBidDesk() {
+  const box = document.getElementById('bidDesk');
+  if (!box) return;
+  const { addenda, submittals, readiness } = deskState;
+
+  const flags = (readiness || []).map(p =>
+    `<div class="wage-warn${p.level === 'blocking' ? ' wage-warn-hard' : ''}" style="margin:0 0 10px;">
+       ${p.level === 'blocking' ? '<strong>Blocks sending.</strong> ' : ''}${scopeEsc(p.message)}</div>`).join('');
+
+  const addendaRows = !addenda.length
+    ? '<p class="scope-blurb" style="margin:0 0 10px;">None recorded. If the agency has issued any, add them &mdash; the bid cannot go out until each is acknowledged.</p>'
+    : `<ul class="scope-list">${addenda.map(a => `
+        <li class="${a.acknowledged ? '' : 'is-locked'}">
+          <span>
+            <strong>Addendum ${scopeEsc(a.number)}</strong>${a.receivedAt ? ` &middot; received ${scopeEsc(a.receivedAt)}` : ''}
+            ${a.affectsPrice ? ' <em style="font-style:normal; color:#96650B;">&middot; changed the scope</em>' : ''}
+            ${a.summary ? `<br><span style="color:#8A98AC; font-size:0.82rem;">${scopeEsc(a.summary)}</span>` : ''}
+          </span>
+          <span style="flex:none; white-space:nowrap;">
+            ${a.acknowledged
+              ? `<span class="scope-lock" style="background:#E1F7E8; color:#1B7A3C;">Acknowledged</span>
+                 <button type="button" class="scope-btn scope-btn-off" onclick="deskPost({action:'unacknowledge-addendum', id:${a.id}})">Undo</button>`
+              : `<button type="button" class="scope-btn" onclick="deskPost({action:'acknowledge-addendum', id:${a.id}})">Acknowledge</button>`}
+            <button type="button" class="scope-btn scope-btn-off" onclick="deskPost({action:'remove-addendum', id:${a.id}})">&times;</button>
+          </span>
+        </li>`).join('')}</ul>`;
+
+  const submittalRows = !submittals.length
+    ? `<p class="scope-blurb" style="margin:0 0 10px;">No checklist yet.
+       <button type="button" class="scope-btn" onclick="deskPost({action:'seed-submittals'})">Start one from the standard list</button></p>`
+    : `<ul class="scope-list">${submittals.map(s => `
+        <li class="${s.provided ? '' : s.required ? 'is-locked' : ''}">
+          <span>
+            <label style="display:flex; gap:8px; align-items:flex-start; cursor:pointer;">
+              <input type="checkbox" ${s.provided ? 'checked' : ''} style="margin-top:3px;"
+                onchange="deskPost({action:'set-submittal', id:${s.id}, provided:this.checked})">
+              <span>
+                <strong style="${s.provided ? 'color:#1B7A3C;' : ''}">${scopeEsc(s.label)}</strong>
+                ${s.required ? '' : ' <em style="font-style:normal; color:#A0AAB9;">&middot; optional</em>'}
+                ${s.note ? `<br><span style="color:#8A98AC; font-size:0.82rem;">${scopeEsc(s.note)}</span>` : ''}
+              </span>
+            </label>
+          </span>
+          <button type="button" class="scope-btn scope-btn-off" onclick="deskPost({action:'remove-submittal', id:${s.id}})">&times;</button>
+        </li>`).join('')}</ul>`;
+
+  box.innerHTML = flags + `
+    <div class="scope-group" style="max-width:660px;">
+      <h4>Addenda</h4>
+      <p class="scope-blurb">Every amendment the agency issues has to be acknowledged in writing. Failing to is the most common reason a complete bid is thrown out unread &mdash; and any of them may have moved the scope you priced.</p>
+      ${addendaRows}
+      <div style="display:grid; grid-template-columns:90px 150px 1fr; gap:0 12px; margin-top:10px;">
+        <div class="field-group" style="margin-bottom:8px;"><label>Number</label><input type="text" id="addNumber" placeholder="2"></div>
+        <div class="field-group" style="margin-bottom:8px;"><label>Received</label><input type="date" id="addReceived"></div>
+        <div class="field-group" style="margin-bottom:8px;"><label>What it changed</label><input type="text" id="addSummary" placeholder="e.g. Added the parking structure to the final clean"></div>
+      </div>
+      <div class="consent-row" style="margin-top:0;">
+        <input type="checkbox" id="addAffectsPrice">
+        <label for="addAffectsPrice">This one changed the scope, so the price has to be revisited</label>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick="addAddendum()">Add addendum</button>
+    </div>
+
+    <div class="scope-group" style="max-width:660px;">
+      <h4>Submittals</h4>
+      <p class="scope-blurb">What goes in the envelope beside the price. Tick each as it is ready. These are a warning rather than a block: the certificate may already be attached to the email, and this app cannot know that.</p>
+      ${submittalRows}
+      <div class="scope-add">
+        <input type="text" id="subLabel" placeholder="Anything else this solicitation asks for"
+          style="flex:1; padding:9px 11px; font-size:0.86rem; border:1.5px solid #DCE4EF; border-radius:8px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="addSubmittal()">Add</button>
+      </div>
+    </div>`;
+}
+
+async function deskPost(body) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/bid-desk`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { adminToast(data.error || 'Could not save that.'); return false; }
+  await loadBidDesk();
+  return true;
+}
+
+async function addAddendum() {
+  const number = document.getElementById('addNumber').value.trim();
+  if (!number) { adminToast('Give the addendum its number.'); return; }
+  const ok = await deskPost({
+    action: 'add-addendum',
+    number,
+    receivedAt: document.getElementById('addReceived').value || undefined,
+    summary: document.getElementById('addSummary').value || undefined,
+    affectsPrice: document.getElementById('addAffectsPrice').checked,
+  });
+  if (ok) adminToast('Addendum recorded. It still needs acknowledging before the bid can go.', 'success');
+}
+
+async function addSubmittal() {
+  const label = document.getElementById('subLabel').value.trim();
+  if (!label) { adminToast('Name the document first.'); return; }
+  await deskPost({ action: 'add-submittal', label });
+}
+
+/* ---------- How the bid finished ----------
+ *
+ * Separate from the estimate's status on purpose. Status is what happened to
+ * the paperwork; most bids never have anything happen to the paperwork at all.
+ * They go quiet, and the job turns up on somebody else's truck.
+ */
+const OUTCOMES = [
+  { v: 'won', l: 'Won' },
+  { v: 'lost', l: 'Lost' },
+  { v: 'no_bid', l: 'Chose not to bid' },
+  { v: 'withdrawn', l: 'Withdrawn' },
+];
+
+function renderOutcome(estimate) {
+  const box = document.getElementById('outcomePanel');
+  if (!box) return;
+  const o = estimate.outcome || '';
+  const lost = o === 'lost';
+
+  box.innerHTML = `
+    <div class="scope-group" style="max-width:660px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+        <div class="field-group">
+          <label for="outcomeSelect">Outcome</label>
+          <select id="outcomeSelect" onchange="renderOutcomeFields()">
+            <option value="">Not recorded yet</option>
+            ${OUTCOMES.map(x => `<option value="${x.v}"${o === x.v ? ' selected' : ''}>${x.l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="bidderCount">Bidders <span style="font-weight:400; color:#8A98AC;">(if known)</span></label>
+          <input type="number" id="bidderCount" min="1" max="99" step="1"
+            value="${estimate.bidderCount != null ? estimate.bidderCount : ''}" placeholder="e.g. 5">
+        </div>
+      </div>
+      <div id="lossFields" style="display:${lost ? 'grid' : 'none'}; grid-template-columns:1fr 1fr; gap:0 16px;">
+        <div class="field-group">
+          <label for="lostToName">Who took it</label>
+          <input type="text" id="lostToName" value="${scopeEsc(estimate.lostToName || '')}" placeholder="e.g. Wasatch Facility Services">
+        </div>
+        <div class="field-group">
+          <label for="lostToAmount">Their number ($)</label>
+          <input type="number" id="lostToAmount" min="0" step="0.01"
+            value="${estimate.lostToAmount != null ? estimate.lostToAmount : ''}" placeholder="the figure that won">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">Public awards are published. On private work, ask &mdash; a GC who liked you will often say.</p>
+        </div>
+      </div>
+      <div class="field-group">
+        <label for="outcomeNotes">What actually decided it</label>
+        <textarea id="outcomeNotes" rows="2" placeholder="e.g. Price was close but they had the school district already. Or: we were non-responsive, missed the addendum acknowledgment.">${scopeEsc(estimate.outcomeNotes || '')}</textarea>
+      </div>
+      <p class="error-text" id="outcomeError"></p>
+      <button type="button" class="btn btn-primary btn-sm" onclick="saveOutcome()">Save outcome</button>
+      ${o ? ' <button type="button" class="btn btn-sm" style="color:#C0392B;" onclick="clearOutcome()">Clear</button>' : ''}
+      ${estimate.outcomeAt ? `<p style="font-size:0.78rem; color:#8A98AC; margin:10px 0 0;">Recorded ${new Date(estimate.outcomeAt).toLocaleDateString()}.</p>` : ''}
+    </div>`;
+}
+
+/** Only a loss has a competitor, so only a loss asks for one. */
+function renderOutcomeFields() {
+  const lost = document.getElementById('outcomeSelect').value === 'lost';
+  document.getElementById('lossFields').style.display = lost ? 'grid' : 'none';
+}
+
+async function saveOutcome() {
+  const err = document.getElementById('outcomeError');
+  err.textContent = ''; err.classList.remove('show');
+  const outcome = document.getElementById('outcomeSelect').value;
+  if (!outcome) { err.textContent = 'Pick an outcome, or use Clear to unset it.'; err.classList.add('show'); return; }
+
+  const res = await adminFetch(`/api/admin/estimates/${id}/outcome`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      outcome,
+      lostToName: document.getElementById('lostToName')?.value || undefined,
+      lostToAmount: document.getElementById('lostToAmount')?.value || undefined,
+      bidderCount: document.getElementById('bidderCount')?.value || undefined,
+      outcomeNotes: document.getElementById('outcomeNotes')?.value || undefined,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { err.textContent = data.error || 'Could not save that.'; err.classList.add('show'); return; }
+  adminToast('Outcome recorded.', 'success');
+  load();
+}
+
+async function clearOutcome() {
+  if (!(await adminConfirm('Clear the recorded outcome for this bid?', 'Clear'))) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/outcome`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: null }),
+  });
+  if (!res.ok) { adminToast('Could not clear it.'); return; }
+  load();
+}
 
 /* ---------- Scope, exclusions and clarifications ----------
  *

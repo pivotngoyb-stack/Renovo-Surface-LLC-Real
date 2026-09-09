@@ -19,6 +19,7 @@
         <a href="/admin/contracts.html">Contracts</a>
         <a href="/admin/work-orders.html">Work Orders</a>
         <a href="/admin/subcontractors.html">Subcontractors</a>
+        <a href="/admin/bid-board.html">Bid Board</a>
         <a href="/admin/documents.html">Documents</a>
         <a href="/admin/profitability.html">Profit</a>
         <a href="/admin/estimate-new.html">+ New Estimate</a>
@@ -70,6 +71,24 @@
         <div style="display:grid; grid-template-columns:1fr 150px; gap:0 16px;">
           <div class="field-group"><label>Solicitation / RFP Number</label><input type="text" id="solicitationNumber" placeholder="e.g. JSD-2026-014"></div>
           <div class="field-group"><label>Option Years</label><input type="number" id="optionYears" min="0" max="9" value="0"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+          <div class="field-group">
+            <label for="bidDueAt">Bid due</label>
+            <input type="datetime-local" id="bidDueAt">
+            <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">Date <em>and</em> time. A bid due at 2:00 PM is dead at 2:01, and the most expensive way to lose one is to be late with the cheapest number.</p>
+          </div>
+          <div class="field-group">
+            <label for="bidDeliveryMethod">Deliver by</label>
+            <select id="bidDeliveryMethod">
+              <option value="">Not specified</option>
+              <option value="Procurement portal upload">Procurement portal upload</option>
+              <option value="Email to the contracting officer">Email to the contracting officer</option>
+              <option value="Sealed hard copy, hand delivered">Sealed hard copy, hand delivered</option>
+              <option value="Sealed hard copy, posted">Sealed hard copy, posted</option>
+            </select>
+            <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">"Email it" and "upload to the portal by 2pm" are different amounts of afternoon.</p>
+          </div>
         </div>
         <div class="consent-row" style="margin-top:0;">
           <input type="checkbox" id="prevailingWage" onchange="onWageChange()">
@@ -2551,6 +2570,8 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
         bidMode: document.getElementById('bidModeGov').checked ? 'government' : 'standard',
         solicitationNumber: document.getElementById('solicitationNumber').value || undefined,
         optionYears: Number(document.getElementById('optionYears').value) || 0,
+        bidDueAt: val('bidDueAt') || null,
+        bidDeliveryMethod: val('bidDeliveryMethod') || null,
         prevailingWage: document.getElementById('prevailingWage').checked,
         // The rates the bid was actually costed against. Stored on the estimate
         // rather than recomputed later: a determination is a fact about one

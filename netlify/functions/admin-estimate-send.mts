@@ -49,6 +49,30 @@ export default async (request: Request, context: Context) => {
     }
   }
 
+  /*
+   * An unacknowledged addendum stops the bid.
+   *
+   * It is the most common reason a complete, competitive bid is thrown out
+   * unread -- and unlike a missing insurance certificate, which may well be
+   * attached to the email already, this is a fact somebody recorded in this
+   * app on purpose. The app knows the addendum arrived and knows nobody has
+   * said so in writing. Refusing on that is a rail, not a guess.
+   *
+   * Everything else the readiness check finds is a warning, said on the screen
+   * and stepped over: blocking on what the app cannot actually know is how a
+   * safety rail becomes an obstacle people learn to route around.
+   */
+  const addenda = await db.select().from(schema.bidAddenda).where(eq(schema.bidAddenda.estimateId, id))
+  const unacknowledged = addenda.filter(a => !a.acknowledged)
+  if (unacknowledged.length) {
+    const list = unacknowledged.map(a => a.number).join(', ')
+    return badRequest(
+      `Addend${unacknowledged.length === 1 ? 'um' : 'a'} ${list} ${unacknowledged.length === 1 ? 'has' : 'have'} not been acknowledged. `
+      + 'A bid that does not acknowledge every addendum is thrown out before the price is read, and any of '
+      + 'them may have changed the scope you priced. Acknowledge them on the estimate, then send.',
+    )
+  }
+
   await db.update(schema.estimates).set({ status: 'sent', updatedAt: new Date() }).where(eq(schema.estimates.id, id))
 
   /*

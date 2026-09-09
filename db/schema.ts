@@ -1,6 +1,19 @@
 import { pgTable, serial, text, integer, numeric, timestamp, boolean, pgEnum, date } from 'drizzle-orm/pg-core'
 
 export const estimateStatusEnum = pgEnum('estimate_status', ['draft', 'sent', 'viewed', 'approved', 'declined'])
+/*
+ * How a bid finished, which is not the same thing as the document's status.
+ *
+ * Status is what happened to the paperwork: sent, viewed, approved, declined.
+ * Most bids do none of those -- they go quiet, and the job appears on somebody
+ * else's truck. Recording that as 'declined' would be a lie about what the
+ * client did, and leaving it as 'sent' forever makes the pipeline read as
+ * bigger than it is.
+ *
+ * 'no_bid' is a decision not to chase it, which is worth counting: a shop that
+ * bids everything is not qualifying its work.
+ */
+export const bidOutcomeEnum = pgEnum('bid_outcome', ['won', 'lost', 'no_bid', 'withdrawn'])
 // 'signed' is the client authorising a one-off job. 'completed' is a visit
 // under a standing contract, which nobody signs each time -- the contract was
 // the authorisation, and the visit is dispatch.
@@ -92,6 +105,34 @@ export const estimates = pgTable('estimates', {
   // and workers' comp; a bona fide plan contribution carries none of them.
   wageFringeMode: text('wage_fringe_mode').notNull().default('cash'),
   wageDecisionDate: date('wage_decision_date'),
+  /*
+   * When the bid is due, and how it has to arrive.
+   *
+   * A time, not a date: a bid due at 2:00 PM is dead at 2:01, and the most
+   * expensive way to lose one is to be late with the cheapest number. The
+   * delivery method belongs beside it because "email it" and "upload to the
+   * portal by 2pm" are different amounts of afternoon.
+   */
+  bidDueAt: timestamp('bid_due_at'),
+  bidDeliveryMethod: text('bid_delivery_method'),
+  /*
+   * How it finished, and what it lost to.
+   *
+   * Without this there is no feedback loop at all: every bid is priced from
+   * the same assumptions as the last one, whether the last one won or lost by
+   * forty percent. The competitor's number is the single most valuable figure
+   * a losing bid produces, and it is only ever available in the week after the
+   * award -- so there has to be somewhere to put it.
+   */
+  outcome: bidOutcomeEnum('outcome'),
+  outcomeAt: timestamp('outcome_at'),
+  outcomeNotes: text('outcome_notes'),
+  /** Who took it, when that is known. Public bids publish the award. */
+  lostToName: text('lost_to_name'),
+  /** Their number, when that is known. The whole point of the exercise. */
+  lostToAmount: numeric('lost_to_amount'),
+  /** How many bidders, when the agency publishes it. Context for the gap. */
+  bidderCount: integer('bidder_count'),
   // Percent of the total required up front to schedule the crew. Null means
   // no deposit. Percent rather than a fixed amount so it survives a scope
   // revision -- a $4,000 deposit on a job that grew to $12,000 is not a
@@ -367,6 +408,45 @@ export const estimateSignatures = pgTable('estimate_signatures', {
   consentConfirmed: boolean('consent_confirmed').notNull().default(false),
   ipAddress: text('ip_address'),
   signedAt: timestamp('signed_at').defaultNow().notNull(),
+})
+
+/**
+ * Amendments the agency issued after the solicitation went out.
+ *
+ * Every one has to be acknowledged in writing, and failing to is the single
+ * most common reason a complete, competitive bid is thrown out unread. Each
+ * may also have changed the scope, which means the price on a bid that ignored
+ * one is answering a question nobody asked.
+ */
+export const bidAddenda = pgTable('bid_addenda', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  /** As the agency numbers it: "1", "2", sometimes "A". Text, not an integer. */
+  number: text('number').notNull(),
+  receivedAt: date('received_at'),
+  summary: text('summary'),
+  acknowledged: boolean('acknowledged').notNull().default(false),
+  /** True when it moved the scope, so the price has to be revisited. */
+  affectsPrice: boolean('affects_price').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+/**
+ * The documents that have to go in the envelope beside the price.
+ *
+ * A bid missing an insurance certificate is not a cheaper bid, it is no bid at
+ * all. Stored per estimate rather than as a global checklist because every
+ * solicitation asks for a different set, and a list that is always the same is
+ * a list nobody reads.
+ */
+export const bidSubmittals = pgTable('bid_submittals', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  label: text('label').notNull(),
+  required: boolean('required').notNull().default(true),
+  provided: boolean('provided').notNull().default(false),
+  note: text('note'),
+  sortOrder: integer('sort_order').notNull().default(0),
 })
 
 /**

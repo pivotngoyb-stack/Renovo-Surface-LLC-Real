@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bid Board | Renovo Surface Solutions</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../images/logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/admin.css">
+<style>
+  .bb-verdict {
+    padding: 16px 18px; border-radius: 10px; margin-bottom: 20px;
+    font-size: 0.95rem; line-height: 1.6; background: var(--off-white); color: #4A5A72;
+    border: 1.5px solid #E4EBF4;
+  }
+  .bb-verdict.is-warn { background: #FFF7E8; border-color: #F0D9A8; color: #7A5308; }
+  .bb-verdict.is-bad { background: #FDECEA; border-color: #F3C0B8; color: #A32C1E; }
+  .bb-verdict.is-ok { background: #E1F7E8; border-color: #A8DCBB; color: #1B7A3C; }
+  .bb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .bb-stat { background: #fff; border: 1.5px solid #E4EBF4; border-radius: 10px; padding: 14px 16px; }
+  .bb-stat .n { font-size: 1.5rem; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .bb-stat .l { font-size: 0.76rem; letter-spacing: 0.05em; text-transform: uppercase; color: #8A98AC; margin-top: 3px; }
+  .bb-stat .s { font-size: 0.78rem; color: #8A98AC; margin-top: 5px; }
+  .bb-due { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bb-soon { color: #A32C1E; font-weight: 700; }
+  .bb-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+  .bb-won { background: #E1F7E8; color: #1B7A3C; }
+  .bb-lost { background: #FDECEA; color: #A32C1E; }
+  .bb-nobid { background: #F1F5FA; color: #6B7A8F; }
+  .bb-gap { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="admin-body">
+  <nav class="admin-nav">
+    <div class="container">
+      <img src="../images/logo.png" alt="Renovo">
+      <div style="display:flex; gap:24px; align-items:center;">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/schedule.html">Schedule</a>
+        <a href="/admin/contracts.html">Contracts</a>
+        <a href="/admin/work-orders.html">Work Orders</a>
+        <a href="/admin/bid-board.html">Bid Board</a>
+        <a href="/admin/documents.html">Documents</a>
+        <a href="/admin/profitability.html">Profit</a>
+        <a href="/admin/estimate-new.html">+ New Estimate</a>
+        <button onclick="logout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <h1 style="font-size:1.6rem; margin-bottom:4px;">Bid Board</h1>
+    <p style="color:#8A98AC; font-size:0.88rem; margin-bottom:22px; max-width:720px;">
+      What is due, and what the record says about the number. A win rate on its own is a trap in both
+      directions &mdash; winning almost everything means the price is under the market, and every one of
+      those jobs was delivered at a margin nobody else would take.
+    </p>
+    <div id="content">Loading…</div>
+  </div>
+
+<script src="../js/admin.js"></script>
+<script>
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+const name = (r) => esc(r.projectName || r.company || r.clientName || `Estimate #${r.id}`);
+const link = (r) => `<a href="/admin/estimate-detail.html?id=${r.id}">${name(r)}</a>`;
+
+function dueIn(iso) {
+  const days = Math.ceil((new Date(iso) - Date.now()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  return `in ${days} days`;
+}
+
+function table(rows, cols) {
+  return `<table class="dash-table"><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead>`
+    + `<tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function section(title, blurb, body) {
+  return `<h3 style="margin:28px 0 6px;">${title}</h3>`
+    + (blurb ? `<p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:700px;">${blurb}</p>` : '')
+    + body;
+}
+
+async function load() {
+  const res = await adminFetch('/api/admin/bid-board');
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Could not load the bid board.</div>'; return; }
+  const d = await res.json();
+  const s = d.summary;
+
+  // The verdict's tone follows what it says, not whether the number is big.
+  const tone = !s.verdict ? ''
+    : /under the market/i.test(s.verdict) ? ' is-warn'
+    : /over the market|pricing gap|wrong work/i.test(s.verdict) ? ' is-bad'
+    : /working bid desk/i.test(s.verdict) ? ' is-ok'
+    : ' is-warn';
+
+  const stat = (n, l, sub) => `<div class="bb-stat"><div class="n">${n}</div><div class="l">${l}</div>`
+    + (sub ? `<div class="s">${sub}</div>` : '') + '</div>';
+
+  document.getElementById('content').innerHTML =
+    (s.verdict ? `<div class="bb-verdict${tone}">${esc(s.verdict)}</div>` : '')
+    + '<div class="bb-stats">'
+    + stat(s.winRate != null ? Math.round(s.winRate * 100) + '%' : '—', 'Win rate', `${s.won} of ${s.decided} decided`)
+    + stat(money(s.wonValue), 'Won', 'contract value')
+    + stat(money(s.lostValue), 'Lost', 'contract value')
+    + stat(s.medianLossGapPct != null ? (s.medianLossGapPct > 0 ? '+' : '') + s.medianLossGapPct + '%' : '—',
+        'Median loss gap', s.gapSample ? `over the winner, ${s.gapSample} known` : 'no competitor prices recorded')
+    + stat(s.pending, 'Not recorded', 'outcome unknown')
+    + stat(s.noBid, 'Chose not to bid', 'qualified out')
+    + '</div>'
+
+    + (d.overdue.length ? section('Past their deadline, still unrecorded',
+        'These closed without an outcome being entered. Either they were lost and nobody wrote it down, or they need chasing.',
+        table(d.overdue, [
+          ['Bid', link],
+          ['Was due', r => `<span class="bb-due">${new Date(r.bidDueAt).toLocaleString()}</span>`],
+          ['Value', r => money(r.amount)],
+          ['', r => `<a href="/admin/estimate-detail.html?id=${r.id}">Record outcome →</a>`],
+        ])) : '')
+
+    + section('Due next',
+        'The most expensive way to lose a bid is to be late with the cheapest number.',
+        d.upcoming.length ? table(d.upcoming, [
+          ['Bid', link],
+          ['Due', r => `<span class="bb-due${(new Date(r.bidDueAt) - Date.now()) < 3 * 86400000 ? ' bb-soon' : ''}">`
+            + `${new Date(r.bidDueAt).toLocaleString()} (${dueIn(r.bidDueAt)})</span>`],
+          ['Deliver by', r => esc(r.bidDeliveryMethod || '—')],
+          ['Solicitation', r => esc(r.solicitationNumber || '—')],
+          ['Value', r => money(r.amount)],
+        ]) : '<div class="empty-state" style="padding:20px;">Nothing with a deadline on it.</div>')
+
+    + (d.awaiting.length ? section('Out with clients, no deadline set',
+        'Sent and not answered. Without a due date these never appear above, and quietly go stale.',
+        table(d.awaiting, [
+          ['Bid', link],
+          ['Sent', r => new Date(r.createdAt).toLocaleDateString()],
+          ['Value', r => money(r.amount)],
+        ])) : '')
+
+    + (d.decided.length ? section('The record', '',
+        table(d.decided, [
+          ['Bid', link],
+          ['Outcome', r => `<span class="bb-pill bb-${r.outcome === 'won' ? 'won' : r.outcome === 'lost' ? 'lost' : 'nobid'}">`
+            + esc(r.outcome.replace('_', ' ')) + '</span>'],
+          ['Our number', r => money(r.amount)],
+          ['Theirs', r => r.lostToAmount != null ? money(r.lostToAmount) : '—'],
+          ['Gap', r => {
+            if (r.outcome !== 'lost' || !(r.lostToAmount > 0) || !(r.amount > 0)) return '—';
+            const g = Math.round(((r.amount - r.lostToAmount) / r.lostToAmount) * 1000) / 10;
+            return `<span class="bb-gap">${g > 0 ? '+' : ''}${g}%</span>`;
+          }],
+          ['Lost to', r => esc(r.lostToName || '—')],
+          ['Bidders', r => r.bidderCount != null ? r.bidderCount : '—'],
+        ])) : '');
+}
+
+load();
+</script>
+</body>
+</html>

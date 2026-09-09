@@ -44,6 +44,9 @@ interface CreateEstimateBody {
   wageFringeRate?: number | string
   wageFringeMode?: string
   wageDecisionDate?: string
+  /** When the bid closes, and how it has to arrive. */
+  bidDueAt?: string
+  bidDeliveryMethod?: string
   lineItems: LineItemInput[]
   taxApplied?: boolean
   taxAmount?: number | string
@@ -159,6 +162,18 @@ export default async (request: Request) => {
         wageFringeRate: body.prevailingWage ? rateOrNull(body.wageFringeRate) : null,
         wageFringeMode: body.prevailingWage && body.wageFringeMode === 'plan' ? 'plan' : 'cash',
         wageDecisionDate: body.prevailingWage ? (body.wageDecisionDate || null) : null,
+        /*
+         * A datetime-local field sends "2026-09-20T14:00" with no zone, which
+         * new Date() reads as local time -- which is what was meant. An invalid
+         * string would otherwise store Invalid Date and make the bid board
+         * throw, so it is checked rather than trusted.
+         */
+        bidDueAt: (() => {
+          if (!body.bidDueAt) return null
+          const d = new Date(body.bidDueAt)
+          return Number.isNaN(d.getTime()) ? null : d
+        })(),
+        bidDeliveryMethod: textOrNull(body.bidDeliveryMethod, 80),
         depositPct: body.depositPct != null && body.depositPct !== '' ? String(body.depositPct) : null,
         walkthroughDate: body.walkthroughDate,
         siteConditions: body.siteConditions,
