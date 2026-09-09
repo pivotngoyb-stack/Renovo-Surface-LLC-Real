@@ -41,6 +41,23 @@ export const LIEN_ENFORCEMENT_DAYS = 180
 /** Start warning this far out, so there is time to actually do it. */
 export const WARN_WITHIN_DAYS = 7
 
+/**
+ * Public work has no lien, and that is not a detail.
+ *
+ * A mechanic's lien attaches to the property, and you cannot attach one to a
+ * school or a courthouse. On a public project the remedy is a claim against
+ * the general contractor's payment bond instead -- a different document, a
+ * different clock, and a deadline that turns on whether Renovo has a direct
+ * contract with that contractor.
+ *
+ * That last part is genuinely a lawyer's question, so this module does not
+ * invent a number for it. Marking a project public replaces the lien steps
+ * with one instruction -- get the bond and find out the date -- and then
+ * tracks whatever date comes back. A confident-looking deadline that was
+ * guessed is worse than a blank one that says "go and ask".
+ */
+export type ProjectType = 'private' | 'public'
+
 export interface LienRecord {
   /** The day the crew first furnished labor. The clock starts here. */
   firstWorkDate: string | null
@@ -50,12 +67,19 @@ export interface LienRecord {
   lienFiledAt: string | null
   /** A deliberate decision not to preserve rights on this job. */
   waived: boolean
+  /** Private property, or a public owner where no lien can attach. */
+  projectType?: ProjectType | null
+  /** The bond claim deadline, once counsel or the bond itself has supplied it. */
+  bondNoticeDue?: string | null
+  bondNoticeFiledAt?: string | null
+  /** Surety and bond number, so the claim can be made without hunting. */
+  bondReference?: string | null
 }
 
 export type LienUrgency = 'none' | 'ok' | 'due-soon' | 'overdue' | 'done' | 'waived'
 
 export interface LienStep {
-  key: 'preliminary' | 'lien'
+  key: 'preliminary' | 'lien' | 'bond'
   label: string
   /** ISO date the step is due, or null when the clock has not started. */
   dueOn: string | null
@@ -132,6 +156,52 @@ export function lienSteps(record: LienRecord, today = new Date()): LienStep[] {
       key, label, dueOn: iso(due), daysLeft: left, urgency: 'ok',
       message: `Due ${iso(due)}, ${left} days away.`,
     }
+  }
+
+  /*
+   * On public work there is one step, and its date is not computed.
+   *
+   * No lien attaches to a school, so the two windows above are the wrong
+   * windows entirely. The bond claim deadline depends on facts this app does
+   * not hold -- chiefly whether there is a direct contract with the general
+   * contractor -- so it is asked for rather than derived, and until it arrives
+   * the step says what to go and do.
+   */
+  if (record.projectType === 'public') {
+    const filed = parse(record.bondNoticeFiledAt)
+    const due = parse(record.bondNoticeDue)
+
+    if (waived) {
+      return [{ key: 'bond', label: 'Payment bond claim', dueOn: null, daysLeft: null, urgency: 'waived',
+        message: 'Bond rights deliberately not preserved on this job.' }]
+    }
+    if (filed) {
+      return [{ key: 'bond', label: 'Payment bond claim', dueOn: null, daysLeft: null, urgency: 'done',
+        message: `Notice given ${iso(filed)}.${record.bondReference ? ` Bond ${record.bondReference}.` : ''}` }]
+    }
+    if (!due) {
+      return [{
+        key: 'bond', label: 'Payment bond claim', dueOn: null, daysLeft: null, urgency: 'none',
+        message: 'Public project, so no lien attaches -- the remedy is a claim on the general contractor\'s '
+          + 'payment bond. Ask the contractor for a copy of the bond now, while they are still pleased with you, '
+          + 'and confirm the notice deadline with counsel. It turns on whether you contract directly with them. '
+          + 'Record the date here and this becomes a countdown.',
+      }]
+    }
+
+    const left = daysUntil(due, today)
+    return [{
+      key: 'bond',
+      label: 'Payment bond claim',
+      dueOn: iso(due),
+      daysLeft: left,
+      urgency: left < 0 ? 'overdue' : left <= WARN_WITHIN_DAYS ? 'due-soon' : 'ok',
+      message: left < 0
+        ? `The notice date you recorded passed ${Math.abs(left)} day${Math.abs(left) === 1 ? '' : 's'} ago, on ${iso(due)}. Ring counsel today.`
+        : left === 0
+          ? `Notice due today, ${iso(due)}.`
+          : `Notice due in ${left} day${left === 1 ? '' : 's'}, on ${iso(due)}.`,
+    }]
   }
 
   return [

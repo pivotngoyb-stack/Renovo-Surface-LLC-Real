@@ -162,6 +162,16 @@ async function load() {
     </p>
     <div id="estPhotos"></div>
 
+    <h3 style="margin:28px 0 6px;">Lien Deadlines</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      A lien is the only real leverage you have when a general contractor stops answering the phone,
+      and it is the easiest thing to lose &mdash; the right is preserved in the first days of a job
+      nobody expects to go bad. This is a calendar, not legal advice: the windows are Utah defaults
+      worth confirming with counsel, and the point is being reminded on day four rather than
+      remembering on day forty.
+    </p>
+    <div id="lienPanel">Loading…</div>
+
     <h3 style="margin:28px 0 6px;">The Envelope</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
       The cheapest number does not win if the envelope is incomplete. A bid that missed an addendum,
@@ -193,6 +203,7 @@ async function load() {
   `;
 
   renderOutcome(estimate);
+  loadLien();
   loadBidDesk();
   loadScope();
   loadPhotos();
@@ -239,6 +250,138 @@ async function setUpRecurring() {
 }
 
 const MAX_PROPOSAL_PHOTOS = 12;
+
+/* ---------- Lien deadlines ----------
+ *
+ * Dates are typed rather than inferred from the schedule. "First furnished
+ * labor" is a legal fact about a job, and guessing it from the first row in
+ * this database would produce a deadline that looks authoritative and is not.
+ * A wrong date here is worse than no date: it reassures.
+ */
+const LIEN_TONE = {
+  overdue: 'wage-warn wage-warn-hard',
+  'due-soon': 'wage-warn',
+  ok: 'wage-warn wage-warn-ok',
+  done: 'wage-warn wage-warn-ok',
+  waived: 'wage-warn',
+  none: '',
+};
+
+async function loadLien() {
+  const box = document.getElementById('lienPanel');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/lien`);
+  if (!res.ok) { box.innerHTML = '<div class="empty-state" style="padding:18px;">Could not load the lien calendar.</div>'; return; }
+  renderLien(await res.json());
+}
+
+function renderLien(d) {
+  const box = document.getElementById('lienPanel');
+  if (!box) return;
+  const l = d.lien || {};
+
+  const steps = (d.steps || []).map(s => `
+    <div class="${LIEN_TONE[s.urgency] || 'wage-warn'}" style="margin:0 0 8px;">
+      <strong>${scopeEsc(s.label)}.</strong> ${scopeEsc(s.message)}
+    </div>`).join('');
+
+  const field = (id_, label, value, type = 'date', help = '') => `
+    <div class="field-group">
+      <label for="${id_}">${label}</label>
+      <input type="${type}" id="${id_}" value="${scopeEsc(value || '')}">
+      ${help ? `<p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">${help}</p>` : ''}
+    </div>`;
+
+  const isPublic = l.projectType === 'public';
+
+  /*
+   * The two remedies do not share a form.
+   *
+   * A lien does not attach to a school, so on public work the private fields
+   * are not merely unused -- filling them in would produce a deadline for a
+   * remedy that does not exist here. The bond date is asked for rather than
+   * computed, because it turns on whether Renovo contracts directly with the
+   * general contractor, and that is a lawyer's question.
+   */
+  const privateFields = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+        ${field('lienFirstWork', 'First day we furnished labor', l.firstWorkDate, 'date',
+          `The clock starts here. Preliminary notice is due ${d.windows.preliminaryDays} days later.`)}
+        ${field('lienPrelimFiled', 'Preliminary notice filed', l.preliminaryFiledAt, 'date',
+          'Utah files these on the State Construction Registry.')}
+        ${field('lienPrelimRef', 'Registry reference', l.preliminaryReference, 'text',
+          'So the filing can be produced later without hunting for it.')}
+        ${field('lienCompletion', 'Final completion of the project', l.completionDate, 'date',
+          `Not our last day &mdash; the project's. The lien window is ${d.windows.lienDays} days from here.`)}
+        ${field('lienFiled', 'Lien filed', l.lienFiledAt, 'date', '')}
+      </div>`;
+
+  const publicFields = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+        ${field('lienBondRef', 'Bond and surety', l.bondReference, 'text',
+          'Ask the general contractor for a copy now, while they are still pleased with you.')}
+        ${field('lienBondDue', 'Notice deadline', l.bondNoticeDue, 'date',
+          'From the bond or from counsel. Not computed here &mdash; it depends on whether you contract with the GC directly.')}
+        ${field('lienBondFiled', 'Notice given', l.bondNoticeFiledAt, 'date', '')}
+      </div>`;
+
+  box.innerHTML = steps + `
+    <div class="scope-group" style="max-width:660px;">
+      <div class="field-group">
+        <label for="lienProjectType">Who owns the property</label>
+        <select id="lienProjectType" onchange="saveLien()">
+          <option value="private"${isPublic ? '' : ' selected'}>Private owner &mdash; a lien can attach</option>
+          <option value="public"${isPublic ? ' selected' : ''}>Public owner &mdash; school, city, state, federal</option>
+        </select>
+        <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">
+          No lien attaches to public property. On a public job the remedy is a claim against the general
+          contractor's payment bond instead, which is a different document on a different clock.
+        </p>
+      </div>
+      ${isPublic ? publicFields : privateFields}
+      <div class="field-group">
+        <label for="lienNotes">Notes</label>
+        <textarea id="lienNotes" rows="2" placeholder="e.g. GC is Okland; owner is the school district, so this may be a bond claim rather than a lien.">${scopeEsc(l.notes || '')}</textarea>
+      </div>
+      <div class="consent-row" style="margin-top:0;">
+        <input type="checkbox" id="lienWaived" ${l.waived ? 'checked' : ''}>
+        <label for="lienWaived">Not preserving lien rights on this job &mdash; stop reminding me</label>
+      </div>
+      <p class="error-text" id="lienError"></p>
+      <button type="button" class="btn btn-primary btn-sm" onclick="saveLien()">Save dates</button>
+    </div>`;
+}
+
+async function saveLien() {
+  const err = document.getElementById('lienError');
+  err.textContent = ''; err.classList.remove('show');
+  // Only the fields on screen are sent. The other remedy's dates are not
+  // cleared behind your back, so switching type by mistake loses nothing.
+  const val = (elId) => document.getElementById(elId)?.value || null;
+  const res = await adminFetch(`/api/admin/estimates/${id}/lien`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectType: document.getElementById('lienProjectType').value,
+      ...(document.getElementById('lienFirstWork') ? {
+        firstWorkDate: val('lienFirstWork'),
+        preliminaryFiledAt: val('lienPrelimFiled'),
+        preliminaryReference: val('lienPrelimRef'),
+        completionDate: val('lienCompletion'),
+        lienFiledAt: val('lienFiled'),
+      } : {
+        bondReference: val('lienBondRef'),
+        bondNoticeDue: val('lienBondDue'),
+        bondNoticeFiledAt: val('lienBondFiled'),
+      }),
+      notes: val('lienNotes'),
+      waived: document.getElementById('lienWaived').checked,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { err.textContent = data.error || 'Could not save that.'; err.classList.add('show'); return; }
+  renderLien(data);
+  adminToast('Lien calendar updated.', 'success');
+}
 
 /* ---------- The envelope: addenda and submittals ----------
  *

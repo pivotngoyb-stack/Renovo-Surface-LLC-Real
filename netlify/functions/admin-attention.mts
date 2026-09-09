@@ -5,6 +5,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { businessToday, effectiveExpiry } from './_shared/expiry.mts'
+import { lienSteps, lienUrgency, lienNeedsAttention } from './_shared/lienDeadlines.mts'
 
 /**
  * Work that has fallen between two stages.
@@ -189,14 +190,69 @@ export default withErrorHandling('admin-attention', async (request: Request, _co
       eq(schema.estimates.archived, false),
     ))
 
+  /*
+   * Lien deadlines that need doing today.
+   *
+   * This one is not like the others on this panel. Everything else here costs
+   * a phone call or a bit of margin; missing a preliminary notice costs the
+   * only leverage there is over an unpaid six-figure receivable, and it costs
+   * it silently, on a job that is going fine at the time.
+   *
+   * Only jobs where a date has actually been entered appear. A job nobody
+   * decided to track is not overdue, it is untracked -- and inventing a
+   * deadline from the first scheduled visit would fill this panel with alarms
+   * about driveways.
+   */
+  const lienRows = await db
+    .select({
+      estimateId: schema.lienNotices.estimateId,
+      firstWorkDate: schema.lienNotices.firstWorkDate,
+      preliminaryFiledAt: schema.lienNotices.preliminaryFiledAt,
+      completionDate: schema.lienNotices.completionDate,
+      lienFiledAt: schema.lienNotices.lienFiledAt,
+      waived: schema.lienNotices.waived,
+      /*
+       * The public-work fields are not optional here.
+       *
+       * Left out, every column arrives undefined, lienSteps reads that as
+       * private work, and the dashboard computes a lien deadline for a school
+       * -- a remedy that does not exist on public property -- while a bond
+       * notice that has actually been given keeps being chased. A projection
+       * that omits a field does not fail; it quietly answers a different
+       * question.
+       */
+      projectType: schema.lienNotices.projectType,
+      bondNoticeDue: schema.lienNotices.bondNoticeDue,
+      bondNoticeFiledAt: schema.lienNotices.bondNoticeFiledAt,
+      bondReference: schema.lienNotices.bondReference,
+      projectName: schema.estimates.projectName,
+      clientName: schema.clients.name,
+    })
+    .from(schema.lienNotices)
+    .leftJoin(schema.estimates, eq(schema.estimates.id, schema.lienNotices.estimateId))
+    .leftJoin(schema.clients, eq(schema.clients.id, schema.estimates.clientId))
+
+  const lienDeadlines = lienRows.flatMap(r => {
+    const steps = lienSteps(r)
+    if (!lienNeedsAttention(steps)) return []
+    return [{
+      estimateId: r.estimateId,
+      projectName: r.projectName,
+      clientName: r.clientName,
+      steps: steps.filter(s => s.urgency === 'overdue' || s.urgency === 'due-soon'),
+      urgency: lienUrgency(steps),
+    }]
+  })
+
   return json({
     approvedWithoutWorkOrder,
     signedWithoutInvoice,
     expiredUnanswered,
     unansweredChangeOrders,
     unloggedVisits,
+    lienDeadlines,
     total: approvedWithoutWorkOrder.length + signedWithoutInvoice.length + expiredUnanswered.length
-      + unansweredChangeOrders.length + unloggedVisits.length,
+      + unansweredChangeOrders.length + unloggedVisits.length + lienDeadlines.length,
     pipeline: {
       openEstimates: liveEstimates.length,
       openValue: Math.round(openValue * 100) / 100,

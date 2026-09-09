@@ -149,6 +149,21 @@ async function loadAttention() {
       `/admin/work-order-detail.html?id=${v.id}`,
       'Log hours',
     )),
+    /*
+     * Lien deadlines come last in the code and first in the list, because this
+     * is the only item here that expires. Everything else on this panel costs a
+     * phone call or a bit of margin; a missed preliminary notice costs the only
+     * leverage there is over an unpaid six-figure receivable, and it goes
+     * quietly, on a job that is running fine at the time.
+     */
+    ...(data.lienDeadlines || []).flatMap(l => l.steps.map(s => item(
+      s.urgency === 'overdue' ? 'urgent' : 'stale',
+      `<strong>${escAttn(l.projectName || l.clientName || 'Project')}</strong> &mdash; ${escAttn(s.label.toLowerCase())} `
+      + `${s.urgency === 'overdue' ? 'is past its window' : `is due in ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'}`}`
+      + `. Lose it and the invoice is still owed, just unsecured.`,
+      `/admin/estimate-detail.html?id=${l.estimateId}`,
+      s.urgency === 'overdue' ? 'Ring counsel' : 'File it',
+    ))),
   ].join('');
 
   box.innerHTML = `

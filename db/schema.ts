@@ -411,6 +411,55 @@ export const estimateSignatures = pgTable('estimate_signatures', {
 })
 
 /**
+ * The clock on being able to enforce payment.
+ *
+ * A mechanic's lien is the only real leverage a cleaning contractor has when a
+ * general contractor stops answering the phone on a six-figure receivable, and
+ * it is the easiest thing in the business to lose: the right is preserved by
+ * filing within days of starting, and nobody is thinking about non-payment in
+ * the first week of a job they just won. Miss it and the invoice is still owed
+ * -- just unsecured, by somebody with no reason to pay.
+ *
+ * One row per project rather than per work order: a lien attaches to the
+ * property, and a contract with fourteen visits does not produce fourteen
+ * liens. The dates are entered rather than inferred, because "first furnished
+ * labor" is a legal fact about a job and not necessarily the first row in this
+ * database.
+ *
+ * The windows themselves live in lienDeadlines.mts, configurable, because they
+ * move and vary and are exactly what should be confirmed with counsel rather
+ * than taken from a cleaning company's admin tool.
+ */
+export const lienNotices = pgTable('lien_notices', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id).unique(),
+  /** The day the crew first furnished labor. The clock starts here. */
+  firstWorkDate: date('first_work_date'),
+  preliminaryFiledAt: date('preliminary_filed_at'),
+  /** The registry's reference for the filing, so it can be produced later. */
+  preliminaryReference: text('preliminary_reference'),
+  /** Final completion of the project, not of Renovo's part in it. */
+  completionDate: date('completion_date'),
+  lienFiledAt: date('lien_filed_at'),
+  /** A deliberate decision not to preserve rights, so the alerts stop. */
+  waived: boolean('waived').notNull().default(false),
+  /*
+   * 'private' or 'public'. No lien attaches to a school or a courthouse: on
+   * public work the remedy is a claim against the general contractor's payment
+   * bond, on a clock that turns on whether we contract with them directly.
+   * That is a lawyer's question, so the date below is recorded rather than
+   * computed -- a confident-looking deadline that was guessed is worse than a
+   * blank one saying "go and ask".
+   */
+  projectType: text('project_type').notNull().default('private'),
+  bondNoticeDue: date('bond_notice_due'),
+  bondNoticeFiledAt: date('bond_notice_filed_at'),
+  bondReference: text('bond_reference'),
+  notes: text('notes'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+/**
  * Amendments the agency issued after the solicitation went out.
  *
  * Every one has to be acknowledged in writing, and failing to is the single
