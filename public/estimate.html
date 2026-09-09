@@ -307,7 +307,7 @@ function render(data) {
     : (estimate.validUntil ? new Date(estimate.validUntil) : addDays(estimate.createdAt, 30));
 
   const profile = company || (government && government.company) || null;
-  const scope = proposal || { sections: [], exclusions: [], assumptions: [], compliance: [] };
+  const scope = proposal || { sections: [], exclusions: [], assumptions: [], compliance: [], clarifications: [] };
 
   // Sections 2 and 3 only appear on recurring or multi-site bids, so the
   // numbering has to shift rather than leave gaps a client would notice.
@@ -488,6 +488,9 @@ function render(data) {
       ${section(nextNum(), 'Pricing', pricingBody + contractValueHtml(contract))}
       ${government && government.multiYear && government.multiYear.hasOptionYears ? section(nextNum(), 'Contract Period Pricing', multiYearHtml(government.multiYear)) : ''}
       ${government ? section(nextNum(), 'Vendor Information &amp; Certifications', registrationHtml(government)) : ''}
+      ${(scope.clarifications || []).length ? section(nextNum(), 'Specific To This Project', `
+        <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">Written for this project rather than taken from our standard terms. Where these differ from anything else in this proposal, these govern.</p>
+        ${bulletList(scope.clarifications)}`) : ''}
       ${scope.exclusions.length ? section(nextNum(), 'Exclusions', `
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">The following are not included in the pricing above. Any of them can be quoted separately on request.</p>
         ${bulletList(scope.exclusions, 'is-exclusion')}`) : ''}

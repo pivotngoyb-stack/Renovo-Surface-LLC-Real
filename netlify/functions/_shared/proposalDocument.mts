@@ -45,7 +45,16 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     .where(eq(schema.estimateLineItems.estimateId, estimate.id))
     .orderBy(schema.estimateLineItems.sortOrder)
 
-  const scope = buildProposalScope(lineItems.map(li => li.serviceType))
+  // Bid-specific statements ride with the library ones. Without them the PDF
+  // and the web proposal would disagree about what was promised, which is a
+  // worse problem than either document being incomplete.
+  const customScope = await db
+    .select()
+    .from(schema.estimateScopeLines)
+    .where(eq(schema.estimateScopeLines.estimateId, estimate.id))
+    .orderBy(schema.estimateScopeLines.sortOrder, schema.estimateScopeLines.id)
+
+  const scope = buildProposalScope(lineItems.map(li => li.serviceType), customScope)
   const contract = contractValue(lineItems)
 
   const base = lineItems.filter(li => !li.isOptional)

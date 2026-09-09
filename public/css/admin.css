@@ -891,3 +891,44 @@ body.admin-body {
 .wage-warn { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 0.84rem; line-height: 1.5; background: #FFF7E8; color: #7A5308; border: 1px solid #F0D9A8; }
 .wage-warn-hard { background: #FDECEA; color: #A32C1E; border-color: #F3C0B8; }
 .wage-warn-ok { background: #E1F7E8; color: #1B7A3C; border-color: #A8DCBB; }
+
+/* Scope editor.
+   Standard library terms and bid-specific ones must be visually distinct: the
+   whole point is knowing which sentences you wrote for this job. */
+.scope-group { border: 1.5px solid #E4EBF4; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; background: #fff; }
+.scope-group h4 { margin: 0 0 4px; font-size: 0.95rem; color: var(--navy); }
+.scope-blurb { margin: 0 0 12px; font-size: 0.8rem; color: #8A98AC; line-height: 1.5; max-width: 640px; }
+.scope-sub { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: #8A98AC; margin: 10px 0 6px; }
+.scope-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.scope-list li {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  padding: 7px 0; border-top: 1px solid #F1F5FA; font-size: 0.86rem; color: #4A5A72; line-height: 1.45;
+}
+.scope-list li:first-child { border-top: 0; }
+.scope-list li.is-off span { text-decoration: line-through; color: #B4BECD; }
+.scope-list li.is-custom { border-left: 3px solid var(--blue); padding-left: 10px; }
+.scope-btn {
+  flex: none; background: none; border: 0; padding: 2px 4px; cursor: pointer;
+  font-size: 0.76rem; color: var(--blue); font-weight: 600; white-space: nowrap;
+}
+.scope-btn-off { color: #A0AAB9; }
+.scope-btn:hover { text-decoration: underline; }
+.scope-add { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
+.scope-add textarea {
+  flex: 1; padding: 9px 11px; font-size: 0.86rem; font-family: inherit; line-height: 1.45;
+  border: 1.5px solid #DCE4EF; border-radius: 8px; resize: vertical;
+}
+.scope-list li.is-locked span:first-child { color: var(--navy); }
+.scope-lock {
+  flex: none; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
+  color: #8A98AC; background: #F1F5FA; border-radius: 4px; padding: 3px 7px; white-space: nowrap; cursor: help;
+}
+
+/* Bid costs: what bidding the job costs before anyone picks up a mop. */
+.bid-costs { max-width: 660px; margin: 6px 0 4px; padding: 12px 14px; background: var(--off-white); border-radius: 8px; }
+.bid-costs > div { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: 0.86rem; color: #4A5A72; }
+.bid-costs > div strong { color: var(--navy); font-variant-numeric: tabular-nums; }
+.bid-costs em { font-style: normal; color: #A0AAB9; font-size: 0.78rem; }
+.bid-costs-total { border-top: 1px solid #DCE4EF; margin-top: 6px; padding-top: 9px !important; font-size: 0.95rem !important; }
+.bid-costs-foot { display: block !important; margin-top: 8px; font-size: 0.8rem !important; color: #8A98AC !important; line-height: 1.5; }
+.bid-costs-foot strong { color: #96650B !important; }

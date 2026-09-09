@@ -74,7 +74,15 @@ export default async (request: Request, context: Context) => {
 
     // Scope, exclusions and assumptions are derived from the services actually
     // quoted, so the proposal can never describe work that is not on the bid.
-    const proposal = buildProposalScope(lineItems.map(li => li.serviceType))
+    // The same custom lines the PDF carries, so the page a client reads and
+    // the file they save cannot promise different things.
+    const customScope = await db
+      .select()
+      .from(schema.estimateScopeLines)
+      .where(eq(schema.estimateScopeLines.estimateId, estimate.id))
+      .orderBy(schema.estimateScopeLines.sortOrder, schema.estimateScopeLines.id)
+
+    const proposal = buildProposalScope(lineItems.map(li => li.serviceType), customScope)
     const contract = contractValue(lineItems)
     const sites = groupBySite(lineItems)
     const isGovernment = estimate.bidMode === 'government'

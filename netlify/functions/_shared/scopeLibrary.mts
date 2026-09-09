@@ -495,33 +495,137 @@ export interface ProposalScope {
   exclusions: string[]
   assumptions: string[]
   compliance: string[]
+  /**
+   * Bid-specific statements, which the library cannot supply.
+   *
+   * On a construction bid this is the section that decides who pays. The
+   * library knows what a final clean is; it does not know that this building
+   * is released floor by floor, that the parking structure is out, or that
+   * the GC's own trades are leaving the overspray. Those sentences are the
+   * difference between a change order and an argument.
+   */
+  clarifications: string[]
+}
+
+/** A statement added to, or removed from, one bid. */
+export interface CustomScopeLine {
+  kind: 'scope' | 'exclusion' | 'assumption' | 'clarification'
+  text: string
+  /** True to hide a library line matching this text instead of adding one. */
+  suppress?: boolean | null
+}
+
+/** Normalised for matching a suppression: wording, not whitespace or case. */
+const key = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * Exclusions that cannot be taken off a bid.
+ *
+ * Most exclusions are negotiable -- an exterior clause on an interior-only job
+ * is just noise, and removing it makes a better document. These are different.
+ * They say what business Renovo is in and what licences it holds, and a bid
+ * without them invites a general contractor to hand over trade work, hazardous
+ * material, or something needing a licence Renovo does not have. That is not a
+ * scope dispute, it is an uninsured one.
+ *
+ * The removable case fails toward keeping the line; this fails toward keeping
+ * it too, which is why it is matched on meaning rather than on exact wording.
+ * A pattern survives the library being reworded, and if some future exclusion
+ * matches by accident the consequence is only that it cannot be removed --
+ * which is the direction to be wrong in.
+ */
+const PROTECTED_EXCLUSION_PATTERNS: RegExp[] = [
+  /cleaning contractor/i,          // "Renovo is a cleaning contractor only"
+  /no trade work|trade work\b/i,
+  /hazardous|asbestos|lead paint|mold|biohazard/i,
+  /trade licen[cs]e/i,
+]
+
+/** True when an exclusion is load-bearing and must stay on every bid. */
+export function isProtectedExclusion(line: string): boolean {
+  return PROTECTED_EXCLUSION_PATTERNS.some(re => re.test(line))
 }
 
 /**
- * Assembles proposal content from the services actually quoted.
+ * Assembles proposal content from the services actually quoted, plus whatever
+ * this particular bid needs said.
  *
  * Exclusions and assumptions are deduplicated across services -- a job with
  * three construction phases should say "Renovo is a cleaning contractor only"
  * once, not three times.
+ *
+ * Custom lines are appended after the library ones rather than mixed in, so a
+ * reader can tell the standard terms from the ones written for their job, and
+ * so a library update never reorders a bid that was already sent.
+ *
+ * A suppression removes a library line by matching its wording. If the library
+ * is later reworded the match stops working and **the line comes back**. That
+ * direction is deliberate: the failure mode of a stale suppression is an
+ * exclusion you did not mean to keep, which costs a conversation. The other
+ * direction is an exclusion you meant to keep quietly vanishing from a
+ * document you already signed, which costs the job.
  */
-export function buildProposalScope(serviceTypes: (string | null | undefined)[]): ProposalScope {
+export function buildProposalScope(
+  serviceTypes: (string | null | undefined)[],
+  custom: CustomScopeLine[] = [],
+): ProposalScope {
   const keys = [...new Set(serviceTypes.filter((k): k is string => !!k && !!SERVICE_SCOPE[k]))]
-  const sections = keys.map(k => SERVICE_SCOPE[k])
+  const baseSections = keys.map(k => SERVICE_SCOPE[k])
+
+  const added = (kind: CustomScopeLine['kind']) =>
+    custom.filter(c => c.kind === kind && !c.suppress && c.text.trim()).map(c => c.text.trim())
+  const hidden = (kind: CustomScopeLine['kind']) =>
+    new Set(custom.filter(c => c.kind === kind && c.suppress).map(c => key(c.text)))
+
+  const hiddenEx = hidden('exclusion')
+  const hiddenAs = hidden('assumption')
+  const hiddenScope = hidden('scope')
+
+  // Suppression reaches into the per-service scope lists too: an exclusion that
+  // does not apply to this job is usually one a single service dragged in.
+  const sections = baseSections.map(s => ({
+    ...s,
+    scope: s.scope.filter(l => !hiddenScope.has(key(l))),
+  }))
 
   const seenEx = new Set<string>()
   const exclusions: string[] = []
   for (const line of [...sections.flatMap(s => s.exclusions), ...UNIVERSAL_EXCLUSIONS]) {
     if (seenEx.has(line)) continue
+    // A suppression cannot reach a load-bearing exclusion. The route refuses
+    // to store one, and this is the second lock: a row that got in some other
+    // way -- an older build, a direct write -- still cannot strip the line.
+    if (hiddenEx.has(key(line)) && !isProtectedExclusion(line)) continue
     seenEx.add(line)
     exclusions.push(line)
   }
+  exclusions.push(...added('exclusion'))
 
   const seenAs = new Set<string>()
   const assumptions: string[] = []
   for (const line of [...UNIVERSAL_ASSUMPTIONS, ...sections.flatMap(s => s.assumptions)]) {
-    if (seenAs.has(line)) continue
+    if (seenAs.has(line) || hiddenAs.has(key(line))) continue
     seenAs.add(line)
     assumptions.push(line)
+  }
+  assumptions.push(...added('assumption'))
+
+  /*
+   * Added scope goes into its own section rather than into a service's list.
+   *
+   * A line typed for this bid is not part of what "final clean" means, and
+   * filing it under a service heading would make the library look like it
+   * contains something it does not -- which is how a standard scope quietly
+   * acquires a promise nobody agreed to make in general.
+   */
+  const extraScope = added('scope')
+  if (extraScope.length) {
+    sections.push({
+      label: 'Additional Scope For This Project',
+      scope: extraScope,
+      exclusions: [],
+      assumptions: [],
+    })
   }
 
   // Healthcare language is additive and only when it applies.
@@ -530,5 +634,5 @@ export function buildProposalScope(serviceTypes: (string | null | undefined)[]):
     ? [...COMPLIANCE_STATEMENTS, ...HEALTHCARE_STATEMENTS]
     : COMPLIANCE_STATEMENTS
 
-  return { sections, exclusions, assumptions, compliance }
+  return { sections, exclusions, assumptions, compliance, clarifications: added('clarification') }
 }

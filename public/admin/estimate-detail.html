@@ -161,10 +161,20 @@ async function load() {
     </p>
     <div id="estPhotos"></div>
 
+    <h3 style="margin:28px 0 6px;">Scope, Exclusions &amp; Clarifications</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      Everything below is on the proposal the client reads and the PDF they keep. The standard terms
+      come from the service library; the lines you add here are written for this job. On a construction
+      bid the clarifications are what decide who pays &mdash; that the building is released floor by
+      floor, that the parking structure is out, that another trade's overspray is not yours to remove.
+    </p>
+    <div id="scopeEditor">Loading scope…</div>
+
     <div style="margin-top:24px;">${actions}</div>
     ${workOrderSection}
   `;
 
+  loadScope();
   loadPhotos();
   if (recurringLines.length) loadRecurring();
 }
@@ -209,6 +219,172 @@ async function setUpRecurring() {
 }
 
 const MAX_PROPOSAL_PHOTOS = 12;
+
+/* ---------- Scope, exclusions and clarifications ----------
+ *
+ * The service library supplies the standard terms. This is where a bid says
+ * the things the library cannot know, and removes the things that do not apply
+ * to it. Both matter: an unremovable exclusion about exterior surfaces on a bid
+ * that includes exteriors makes the document contradict itself, and a proposal
+ * that can only say boilerplate reads like a template because it is one.
+ */
+const SCOPE_KINDS = [
+  {
+    kind: 'clarification',
+    title: 'Specific to this project',
+    blurb: 'The sentences that settle an argument later. Released floor by floor, parking structure excluded, overspray is the painter’s. These print above the standard exclusions, because they are the ones a GC’s estimator actually needs to read.',
+    placeholder: 'e.g. Building is released floor by floor; this bid prices three mobilizations.',
+    hasLibrary: false,
+  },
+  {
+    kind: 'scope',
+    title: 'Extra scope',
+    blurb: 'Work included in this price that the service library does not describe.',
+    placeholder: 'e.g. Elevator cab interiors detailed and protective pads removed.',
+    hasLibrary: true,
+  },
+  {
+    kind: 'exclusion',
+    title: 'Exclusions',
+    blurb: 'Standard exclusions come from the services quoted. Remove one that does not apply to this job, or add one that does.',
+    placeholder: 'e.g. Exterior glass above the second floor is excluded from this bid.',
+    hasLibrary: true,
+  },
+  {
+    kind: 'assumption',
+    title: 'Assumptions',
+    blurb: 'What has to be true on the service date for this price to hold.',
+    placeholder: 'e.g. Permanent power and a working freight elevator are available on each released floor.',
+    hasLibrary: true,
+  },
+];
+
+let scopeState = { custom: [], library: null };
+
+const scopeEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+/*
+ * Exclusions that cannot come off a bid, mirrored from scopeLibrary.mts.
+ *
+ * Duplicated deliberately rather than fetched: this only decides whether to
+ * draw a button, and the server refuses the write regardless. Getting the two
+ * out of step shows a button that then fails, which is a bad afternoon --
+ * never a bid that went out missing the line.
+ */
+const PROTECTED_EXCLUSION_PATTERNS = [
+  /cleaning contractor/i,
+  /no trade work|trade work\b/i,
+  /hazardous|asbestos|lead paint|mold|biohazard/i,
+  /trade licen[cs]e/i,
+];
+const isProtectedExclusion = (line) => PROTECTED_EXCLUSION_PATTERNS.some(re => re.test(line));
+
+/** Library lines of one kind, flattened out of the composed document. */
+function libraryLines(kind) {
+  const lib = scopeState.library;
+  if (!lib) return [];
+  if (kind === 'exclusion') return lib.exclusions || [];
+  if (kind === 'assumption') return lib.assumptions || [];
+  if (kind === 'scope') return (lib.sections || []).flatMap(s => s.scope || []);
+  return [];
+}
+
+async function loadScope() {
+  const box = document.getElementById('scopeEditor');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/scope`);
+  if (!res.ok) { box.innerHTML = '<div class="empty-state" style="padding:18px;">Could not load the scope.</div>'; return; }
+  const data = await res.json();
+  scopeState = { custom: data.custom || [], library: data.library || null };
+  renderScope();
+}
+
+function renderScope() {
+  const box = document.getElementById('scopeEditor');
+  if (!box) return;
+
+  box.innerHTML = SCOPE_KINDS.map(k => {
+    const added = scopeState.custom.filter(c => c.kind === k.kind && !c.suppress);
+    const hidden = new Set(scopeState.custom.filter(c => c.kind === k.kind && c.suppress)
+      .map(c => c.text.trim().replace(/\s+/g, ' ').toLowerCase()));
+    const lib = libraryLines(k.kind);
+
+    const libHtml = !k.hasLibrary || !lib.length ? '' : `
+      <div class="scope-sub">From the service library</div>
+      <ul class="scope-list">${lib.map(line => {
+        const off = hidden.has(line.trim().replace(/\s+/g, ' ').toLowerCase());
+        const row = scopeState.custom.find(c => c.kind === k.kind && c.suppress
+          && c.text.trim().replace(/\s+/g, ' ').toLowerCase() === line.trim().replace(/\s+/g, ' ').toLowerCase());
+        const locked = k.kind === 'exclusion' && isProtectedExclusion(line);
+        return `<li class="${off ? 'is-off' : ''}${locked ? ' is-locked' : ''}">
+          <span>${scopeEsc(line)}</span>
+          ${locked
+            ? '<span class="scope-lock" title="This is what says Renovo is a cleaning contractor and holds no trade licence. Removing it invites work we cannot insure.">Always on</span>'
+            : off
+              ? `<button type="button" class="scope-btn" onclick="restoreScope(${row ? row.id : 0})">Put back</button>`
+              : `<button type="button" class="scope-btn scope-btn-off" onclick="suppressScope('${k.kind}', this)" data-line="${scopeEsc(line)}">Not on this bid</button>`}
+        </li>`;
+      }).join('')}</ul>`;
+
+    const addedHtml = !added.length ? '' : `
+      <div class="scope-sub">${k.hasLibrary ? 'Added for this bid' : 'On this bid'}</div>
+      <ul class="scope-list">${added.map(c => `
+        <li class="is-custom">
+          <span>${scopeEsc(c.text)}</span>
+          <button type="button" class="scope-btn" onclick="removeScope(${c.id})">Remove</button>
+        </li>`).join('')}</ul>`;
+
+    return `
+      <div class="scope-group">
+        <h4>${k.title}</h4>
+        <p class="scope-blurb">${k.blurb}</p>
+        ${libHtml}
+        ${addedHtml}
+        <div class="scope-add">
+          <textarea id="scopeInput-${k.kind}" rows="2" placeholder="${scopeEsc(k.placeholder)}"></textarea>
+          <button type="button" class="btn btn-primary btn-sm" onclick="addScope('${k.kind}')">Add</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function postScope(body) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/scope`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { adminToast(data.error || 'Could not save that line.'); return false; }
+  await loadScope();
+  return true;
+}
+
+async function addScope(kind) {
+  const el = document.getElementById(`scopeInput-${kind}`);
+  const text = (el.value || '').trim();
+  if (!text) { adminToast('Write the statement first.'); return; }
+  if (await postScope({ kind, text })) el.value = '';
+}
+
+/*
+ * Suppressing sends the library's exact wording, which is what the composer
+ * matches against. If the library is later reworded the match stops working
+ * and the line comes back -- deliberately, since a stale suppression should
+ * cost a conversation rather than silently strip protection out of a document
+ * that has already been signed.
+ */
+async function suppressScope(kind, btn) {
+  await postScope({ kind, text: btn.getAttribute('data-line'), suppress: true });
+}
+
+async function removeScope(lineId) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/scope/${lineId}`, { method: 'DELETE' });
+  if (!res.ok) { adminToast('Could not remove that line.'); return; }
+  loadScope();
+}
+
+const restoreScope = removeScope;   // putting a library line back is deleting its suppression
 
 async function loadPhotos() {
   const box = document.getElementById('estPhotos');

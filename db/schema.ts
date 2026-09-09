@@ -14,6 +14,16 @@ export const contractStatusEnum = pgEnum('contract_status', ['active', 'paused',
 export const paymentTypeEnum = pgEnum('payment_type', ['flat', 'percentage'])
 export const subAgreementStatusEnum = pgEnum('sub_agreement_status', ['pending', 'signed'])
 export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'check', 'card', 'stripe', 'other'])
+/*
+ * The four kinds of statement a proposal makes about the work.
+ *
+ * Scope is what we will do. Exclusions are what we will not. Assumptions are
+ * what has to be true for the price to hold. A clarification is none of those
+ * three -- it is a sentence written for one bid to settle something the
+ * library cannot know, and on a construction job it is usually the sentence
+ * that decides who pays.
+ */
+export const scopeLineKindEnum = pgEnum('scope_line_kind', ['scope', 'exclusion', 'assumption', 'clarification'])
 export const photoCategoryEnum = pgEnum('photo_category', ['before', 'after'])
 /*
  * Who put the photo there.
@@ -357,6 +367,32 @@ export const estimateSignatures = pgTable('estimate_signatures', {
   consentConfirmed: boolean('consent_confirmed').notNull().default(false),
   ipAddress: text('ip_address'),
   signedAt: timestamp('signed_at').defaultNow().notNull(),
+})
+
+/**
+ * Statements written for one bid, on top of the service scope library.
+ *
+ * The library knows what a final clean is. It does not know that this building
+ * is released floor by floor, that the parking structure is out of scope, or
+ * that another trade's overspray is not ours to remove. Those sentences are
+ * the difference between a change order and an argument, and until now there
+ * was nowhere to put them: every proposal carried exactly the boilerplate its
+ * service types implied, which also made every proposal look like a template.
+ *
+ * A row either adds a statement or suppresses a library one. Suppression
+ * matches on wording, so a library rewording breaks the match and the original
+ * line returns -- the safe direction, since a stale suppression then costs a
+ * conversation rather than silently stripping protection out of a signed
+ * document.
+ */
+export const estimateScopeLines = pgTable('estimate_scope_lines', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  kind: scopeLineKindEnum('kind').notNull(),
+  text: text('text').notNull(),
+  suppress: boolean('suppress').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
 export const estimatePhotos = pgTable('estimate_photos', {

@@ -432,6 +432,20 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
     }
   }
 
+  /*
+   * Clarifications sit above the exclusions, not below them.
+   *
+   * These are the statements written for this project, and they are the ones a
+   * general contractor's estimator most needs to read. Filing them after four
+   * paragraphs of standard boilerplate is how they get skipped, and a
+   * clarification nobody read settles nothing.
+   */
+  if (a.scope.clarifications?.length) {
+    d.label('Specific to this project')
+    for (const x of a.scope.clarifications) d.bullet(x)
+    d.gap(4)
+  }
+
   if (a.scope.exclusions.length) {
     d.label('Not included')
     d.body('Any of the following can be quoted separately on request.', { size: 8.2, color: MUTED })

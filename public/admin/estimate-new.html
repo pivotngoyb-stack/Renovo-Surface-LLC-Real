@@ -123,6 +123,85 @@
         <div id="depositPreview" style="color:#4A5A72; font-size:0.86rem;"></div>
       </div>
 
+      <h3 style="margin: 28px 0 6px;">Bid Costs</h3>
+      <p style="color:#8A98AC; font-size:0.82rem; margin-top:-2px; margin-bottom:12px; max-width:660px;">
+        The costs of bidding the job rather than doing it. They come off the top of a public or bonded
+        bid and are the ones most often left out entirely &mdash; which turns each of them into a
+        straight deduction from profit. Leave them at zero on ordinary work.
+      </p>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 16px; max-width:660px;">
+        <div class="field-group">
+          <label for="bondRequired">Bonding required</label>
+          <select id="bondRequired" onchange="updateTotal()">
+            <option value="0">None</option>
+            <option value="1">Performance &amp; payment bond</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="bondRatePct">Bond rate (% of contract)</label>
+          <input type="number" id="bondRatePct" min="0" max="10" step="0.25" value="2" oninput="updateTotal()">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">Typically 1&ndash;3% without an established surety history. Ask your agent for the real number before you rely on this.</p>
+        </div>
+        <div class="field-group">
+          <label for="insuranceUplift">Insurance uplift ($)</label>
+          <input type="number" id="insuranceUplift" min="0" step="50" value="0" oninput="updateTotal()">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">Higher limits, umbrella, additional insured, waiver of subrogation, or a project-specific policy.</p>
+        </div>
+      </div>
+      <div id="payrollAdminFields" style="display:none; grid-template-columns:1fr 1fr; gap:0 16px; max-width:440px;">
+        <div class="field-group">
+          <label for="coveredWorkers">Covered workers on payroll</label>
+          <input type="number" id="coveredWorkers" min="0" step="1" value="4" oninput="updateTotal()">
+        </div>
+        <div class="field-group">
+          <label for="adminHourly">Back-office rate ($/hr)</label>
+          <input type="number" id="adminHourly" min="0" step="1" value="35" oninput="updateTotal()">
+        </div>
+      </div>
+      <div id="bidCostsPreview"></div>
+
+      <h3 style="margin: 28px 0 6px;">Cash To Carry</h3>
+      <p style="color:#8A98AC; font-size:0.82rem; margin-top:-2px; margin-bottom:12px; max-width:660px;">
+        Winning a job you cannot finance is worse than losing it. Your crew is paid every week; a
+        general contractor pays on terms, and holds part of it back until long after you have finished.
+        This is roughly what you have to float in between &mdash; the figure to check against your bank
+        before you decide to bid, not after.
+      </p>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 16px; max-width:660px;">
+        <div class="field-group">
+          <label for="retainagePct">Retainage held (%)</label>
+          <input type="number" id="retainagePct" min="0" max="20" step="0.5" value="0" oninput="updateTotal()">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">5&ndash;10% is normal on construction. Released after final completion, often months later.</p>
+        </div>
+        <div class="field-group">
+          <label for="paymentTermsDays">Payment terms</label>
+          <select id="paymentTermsDays" onchange="updateTotal()">
+            <option value="14">Net 14 (our standard)</option>
+            <option value="30">Net 30</option>
+            <option value="45">Net 45</option>
+            <option value="60">Net 60</option>
+            <option value="90">Net 90</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="jobWeeks">Job duration (weeks)</label>
+          <input type="number" id="jobWeeks" min="1" step="1" value="12" oninput="updateTotal()">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">How long from mobilizing to final completion. Drives both the carry below and the certified payroll above.</p>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 16px; max-width:660px;">
+        <div class="field-group">
+          <label for="workingCapital">Cash you can float ($)</label>
+          <input type="number" id="workingCapital" min="0" step="1000" placeholder="optional" oninput="onCapitalChange()">
+          <p style="font-size:0.76rem; color:#8A98AC; margin-top:4px;">Saved on this device only, never sent anywhere. Leave blank to skip the check.</p>
+        </div>
+      </div>
+      <div class="consent-row" style="margin-top:0;">
+        <input type="checkbox" id="payWhenPaid" onchange="updateTotal()">
+        <label for="payWhenPaid">Contract has a pay-when-paid clause &mdash; we are not paid until the owner pays the GC</label>
+      </div>
+      <div id="carryPreview"></div>
+
       <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
       <div class="calc-box">
         <button type="button" class="calc-toggle" onclick="toggleCalculator()">
@@ -1054,6 +1133,8 @@ function onWageChange() {
   renderWageImpact();
   renderBurden();
   recalculate();
+  // Certified payroll appears and disappears with the flag that requires it.
+  updateTotal();
 }
 
 function renderWageImpact() {
@@ -1107,6 +1188,14 @@ function renderWageImpact() {
  * their workers' comp rate on every quote. Saved per device; a fresh browser
  * falls back to the defaults above.
  */
+function loadCapital() {
+  try {
+    const saved = localStorage.getItem(CAPITAL_KEY);
+    const el = document.getElementById('workingCapital');
+    if (saved && el) el.value = saved;
+  } catch (e) { /* private browsing */ }
+}
+
 function loadBurdenSettings() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(BURDEN_KEY) || 'null'); } catch (e) { saved = null; }
@@ -2142,6 +2231,7 @@ function collectInputs(key) {
 renderServiceGrid();
 renderBundleRow();
 loadBurdenSettings();
+loadCapital();
 
 /* ---------- Line items (existing behavior, extended with pricing metadata) ---------- */
 
@@ -2180,6 +2270,176 @@ function addLineItem(desc = '', qty = 1, price = '', meta = null) {
   updateTotal();
 }
 
+/*
+ * Certified payroll, mirrored from _shared/prevailingWage.mts.
+ *
+ * A covered contract needs a WH-347 for every week any covered work is
+ * performed, with a signed statement of compliance. That is real back-office
+ * time, every week, for the length of the job -- and it is routinely left out
+ * of the bid entirely, which turns it into a straight deduction from profit.
+ *
+ * Split fixed and per-worker because the form scales both ways: the filing
+ * happens once a week whatever the crew size, and every covered worker adds a
+ * row that has to be right.
+ */
+const CERTIFIED_PAYROLL_BASE_MINUTES = 45;
+const CERTIFIED_PAYROLL_MINUTES_PER_WORKER = 6;
+
+function certifiedPayrollCost(weeks, workers, adminHourly) {
+  const w = Math.max(0, Math.ceil(Number(weeks) || 0));
+  const c = Math.max(0, Math.round(Number(workers) || 0));
+  if (w === 0) return 0;
+  const hours = ((CERTIFIED_PAYROLL_BASE_MINUTES + c * CERTIFIED_PAYROLL_MINUTES_PER_WORKER) / 60) * w;
+  return round2(hours * Math.max(0, Number(adminHourly) || 0));
+}
+
+/**
+ * What bidding this job costs, before anyone picks up a mop.
+ *
+ * Shown as a share of the contract because that is the number that matters:
+ * a $6,000 bond and insurance bill on a $250,000 job is noise, and the same
+ * bill on a $30,000 job is most of the margin.
+ */
+function renderBidCosts(subtotal) {
+  const box = document.getElementById('bidCostsPreview');
+  if (!box) return;
+
+  const covered = document.getElementById('prevailingWage')?.checked;
+  const payrollFields = document.getElementById('payrollAdminFields');
+  // Certified payroll only exists on a covered contract, so the inputs for it
+  // only exist there too -- three boxes that do nothing are three boxes that
+  // get filled in wrongly.
+  if (payrollFields) payrollFields.style.display = covered ? 'grid' : 'none';
+
+  const bonded = val('bondRequired') === '1';
+  const bond = bonded ? round2(subtotal * (Number(val('bondRatePct')) || 0) / 100) : 0;
+  const insurance = round2(Number(val('insuranceUplift')) || 0);
+  const payroll = covered
+    ? certifiedPayrollCost(val('jobWeeks'), val('coveredWorkers'), val('adminHourly'))
+    : 0;
+
+  const total = round2(bond + insurance + payroll);
+  if (total <= 0) { box.innerHTML = ''; return; }
+
+  const pts = subtotal > 0 ? Math.round((total / subtotal) * 1000) / 10 : 0;
+  const row = (label, value, note) => value > 0
+    ? `<div><span>${label}${note ? ` <em>${note}</em>` : ''}</span><strong>${money(value)}</strong></div>`
+    : '';
+
+  box.innerHTML =
+    '<div class="bid-costs">'
+    + row('Bond premium', bond, bonded ? `${val('bondRatePct')}% of ${money(subtotal)}` : '')
+    + row('Insurance uplift', insurance, '')
+    + row('Certified payroll admin', payroll, `${val('jobWeeks')} weeks &times; ${val('coveredWorkers')} workers`)
+    + `<div class="bid-costs-total"><span>Cost of bidding this job</span><strong>${money(total)}</strong></div>`
+    + `<div class="bid-costs-foot">That is <strong>${pts} points</strong> of margin gone before the first hour is worked.`
+    + (subtotal <= 0 ? ' Add line items to see it against the contract value.' : '')
+    + '</div></div>';
+}
+
+/*
+ * What this bid actually costs to deliver, summed off the line items.
+ *
+ * Calculator lines carry their own hours, product cost and any subcontractor
+ * invoice. Hand-typed lines carry none of that, so they are counted at price
+ * and flagged -- guessing a cost for them would make the carry figure look
+ * precise when it is not, and this number is only useful if it is trusted.
+ */
+function bidDirectCost() {
+  const rate = burdenedRate(effectiveBurden()).burdenedRate;
+  let cost = 0, unknownLines = 0;
+
+  for (const row of document.querySelectorAll('.line-item-row')) {
+    if (row.querySelector('.li-optional').checked) continue;
+    // The form starts with an empty row and keeps one after every add. An
+    // empty row is not a line somebody typed, and counting it as one made the
+    // page warn about missing costs on a bid where nothing was missing.
+    if (!row.querySelector('.li-desc').value.trim()) continue;
+    const meta = row.dataset.meta ? JSON.parse(row.dataset.meta) : null;
+    if (!meta || meta.estimatedDurationHours == null) {
+      unknownLines++;
+      continue;
+    }
+    // A subbed line costs the sub's invoice, not our crew's time.
+    cost += meta.subcontracted && meta.subcontractorCost != null
+      ? Number(meta.subcontractorCost) || 0
+      : (Number(meta.estimatedDurationHours) || 0) * rate;
+    cost += Number(meta.estimatedProductCost) || 0;
+  }
+  return { cost: round2(cost), unknownLines };
+}
+
+const CAPITAL_KEY = 'renovo.capital.v1';
+
+function onCapitalChange() {
+  try { localStorage.setItem(CAPITAL_KEY, val('workingCapital') || ''); } catch (e) { /* private browsing */ }
+  updateTotal();
+}
+
+/**
+ * Roughly what has to be floated, and for how long.
+ *
+ * Construction bills monthly, so a week of work is paid for somewhere between
+ * one and two months after the crew was. Payroll does not wait. This adds the
+ * work performed inside that gap to the retainage sitting behind it, which is
+ * the conservative peak -- the number a line of credit has to cover.
+ *
+ * It is an approximation and says so. The alternative on offer was nothing.
+ */
+const BILLING_CYCLE_DAYS = 30;      // construction bills monthly
+const PAY_WHEN_PAID_DRAG_DAYS = 15; // the GC waits on the owner, then pays us
+
+function renderCarry(subtotal) {
+  const box = document.getElementById('carryPreview');
+  if (!box) return;
+
+  const retainagePct = Math.max(0, Number(val('retainagePct')) || 0);
+  const termsDays = Number(val('paymentTermsDays')) || 14;
+  const payWhenPaid = document.getElementById('payWhenPaid')?.checked;
+  const weeks = Math.max(1, Number(val('jobWeeks')) || 1);
+
+  const { cost, unknownLines } = bidDirectCost();
+  const overheadPct = Number(val('overheadPct')) || 0;
+  const loadedCost = round2(cost * (1 + overheadPct / 100));
+
+  if (subtotal <= 0 || loadedCost <= 0) { box.innerHTML = ''; return; }
+
+  const lagDays = BILLING_CYCLE_DAYS + termsDays + (payWhenPaid ? PAY_WHEN_PAID_DRAG_DAYS : 0);
+  // Capped at the job: you cannot spend more than the whole thing costs, and
+  // an uncapped figure on a two-week job reads as nonsense.
+  const beforePaid = round2(Math.min(loadedCost, (loadedCost / weeks) * (lagDays / 7)));
+  const retainage = round2(subtotal * retainagePct / 100);
+  const peak = round2(beforePaid + retainage);
+
+  const capital = Number(val('workingCapital')) || 0;
+  const short = round2(peak - capital);
+  const heavy = subtotal > 0 && peak / subtotal > 0.4;
+
+  const row = (label, value, note) =>
+    `<div><span>${label}${note ? ` <em>${note}</em>` : ''}</span><strong>${money(value)}</strong></div>`;
+
+  box.innerHTML =
+    '<div class="bid-costs">'
+    + row('Your cost to deliver', loadedCost, 'burdened labor, materials, subs and overhead')
+    + row('Spent before the first payment lands', beforePaid, `${lagDays} days of lag, ${weeks}-week job`)
+    + (retainage > 0 ? row('Retainage held after completion', retainage, `${retainagePct}% of ${money(subtotal)}`) : '')
+    + `<div class="bid-costs-total"><span>Cash to carry, at the peak</span><strong>${money(peak)}</strong></div>`
+    + (unknownLines > 0
+      ? `<div class="bid-costs-foot">${unknownLines} hand-typed line${unknownLines === 1 ? ' is' : 's are'} not counted here `
+        + '&mdash; they carry no hours or material cost, so the real figure is higher than this.</div>'
+      : '')
+    + (capital > 0
+      ? (short > 0
+        ? `<div class="wage-warn wage-warn-hard" style="margin-top:10px;"><strong>That is ${money(short)} more than you said you can float.</strong> `
+          + 'Winning this bid means financing the gap, or agreeing better terms before you sign.</div>'
+        : `<div class="wage-warn wage-warn-ok" style="margin-top:10px;">Inside the ${money(capital)} you can float.</div>`)
+      : '')
+    + (heavy && capital <= 0
+      ? `<div class="wage-warn" style="margin-top:10px;">You would be carrying more than 40% of the contract value. Worth deciding you can before you spend two days on the bid.</div>`
+      : '')
+    + '</div>';
+}
+
 function updateTotal() {
   // Optional lines are alternates: they are quoted but not part of the price
   // the client is being asked to accept, so they must not inflate the total.
@@ -2192,6 +2452,9 @@ function updateTotal() {
   const optionalTotal = sumOf(true);
   const applyTax = document.getElementById('applyTax').checked;
   const taxAmount = applyTax ? subtotal * TAX_RATE : 0;
+
+  renderBidCosts(subtotal);
+  renderCarry(subtotal);
 
   document.getElementById('subtotalDisplay').textContent = money(subtotal);
   document.getElementById('taxDisplay').textContent = money(taxAmount);
