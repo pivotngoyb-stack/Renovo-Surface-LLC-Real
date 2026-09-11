@@ -14,6 +14,14 @@ export const estimateStatusEnum = pgEnum('estimate_status', ['draft', 'sent', 'v
  * bids everything is not qualifying its work.
  */
 export const bidOutcomeEnum = pgEnum('bid_outcome', ['won', 'lost', 'no_bid', 'withdrawn'])
+/*
+ * A pay application is a draft until it is sent, and then it is history.
+ *
+ * 'submitted' is the point of no return: the next application subtracts this
+ * one as "less previous certificates", so editing it afterwards would silently
+ * rewrite what a later invoice was based on.
+ */
+export const payAppStatusEnum = pgEnum('pay_app_status', ['draft', 'submitted'])
 // 'signed' is the client authorising a one-off job. 'completed' is a visit
 // under a standing contract, which nobody signs each time -- the contract was
 // the authorisation, and the visit is dispatch.
@@ -408,6 +416,69 @@ export const estimateSignatures = pgTable('estimate_signatures', {
   consentConfirmed: boolean('consent_confirmed').notNull().default(false),
   ipAddress: text('ip_address'),
   signedAt: timestamp('signed_at').defaultNow().notNull(),
+})
+
+/**
+ * The schedule of values: the contract sliced into things progress can be
+ * certified against.
+ *
+ * Agreed at award, before any work. A general contractor certifies percentages
+ * against these lines every month, and their accounting department reconciles
+ * the total against the subcontract before looking at anything else -- so it
+ * has to add up to the penny or the application comes back unread.
+ */
+export const sovLines = pgTable('sov_lines', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  description: text('description').notNull(),
+  scheduledValue: numeric('scheduled_value').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+})
+
+/**
+ * One month's pay application, in AIA G702 shape.
+ *
+ * A twenty-week job billed once on completion means financing the whole thing
+ * for five months while payroll runs every Friday. This is the way out.
+ *
+ * The totals are stored rather than recomputed on read, deliberately. A
+ * schedule of values gets corrected mid-job, and an application already
+ * submitted must go on saying what it said -- both because the next
+ * application subtracts it as "less previous certificates", and because a
+ * billing record that rewrites itself is not a record.
+ */
+export const payApplications = pgTable('pay_applications', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id),
+  /** 1-based, and what the GC calls it: "Application No. 3". */
+  number: integer('number').notNull(),
+  /** The last day of the period being billed. */
+  periodTo: date('period_to'),
+  retainagePct: numeric('retainage_pct').notNull().default('0'),
+  // Lines 4 through 9 of the G702, frozen at submission.
+  totalCompleted: numeric('total_completed').notNull().default('0'),
+  retainage: numeric('retainage').notNull().default('0'),
+  totalEarnedLessRetainage: numeric('total_earned_less_retainage').notNull().default('0'),
+  lessPreviousCertificates: numeric('less_previous_certificates').notNull().default('0'),
+  currentPaymentDue: numeric('current_payment_due').notNull().default('0'),
+  status: payAppStatusEnum('status').notNull().default('draft'),
+  /** The invoice raised from it, so progress billing rides the existing rails. */
+  invoiceId: integer('invoice_id').references(() => invoices.id),
+  submittedAt: timestamp('submitted_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+/** What was claimed against each schedule line in one application. */
+export const payApplicationLines = pgTable('pay_application_lines', {
+  id: serial('id').primaryKey(),
+  payApplicationId: integer('pay_application_id').notNull().references(() => payApplications.id),
+  sovLineId: integer('sov_line_id').notNull().references(() => sovLines.id),
+  /** Cumulative percent complete claimed, 0-100. */
+  thisPct: numeric('this_pct').notNull().default('0'),
+  storedMaterials: numeric('stored_materials').notNull().default('0'),
+  /** The line's description and value as they stood, so history stays true. */
+  description: text('description').notNull(),
+  scheduledValue: numeric('scheduled_value').notNull(),
 })
 
 /**

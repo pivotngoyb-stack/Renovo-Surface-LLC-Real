@@ -162,6 +162,15 @@ async function load() {
     </p>
     <div id="estPhotos"></div>
 
+    <h3 style="margin:28px 0 6px;">Progress Billing</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      On a long job, bill each month for the work done instead of once at the end &mdash; otherwise you
+      finance the whole thing while payroll runs every Friday. Agree a schedule of values at award, then
+      claim a percentage complete against each line every month. Submitting raises an ordinary invoice
+      for the amount due, in the AIA G702 layout a general contractor's accounting department expects.
+    </p>
+    <div id="billingPanel">Loading…</div>
+
     <h3 style="margin:28px 0 6px;">Lien Deadlines</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
       A lien is the only real leverage you have when a general contractor stops answering the phone,
@@ -203,6 +212,7 @@ async function load() {
   `;
 
   renderOutcome(estimate);
+  loadBilling();
   loadLien();
   loadBidDesk();
   loadScope();
@@ -250,6 +260,178 @@ async function setUpRecurring() {
 }
 
 const MAX_PROPOSAL_PHOTOS = 12;
+
+/* ---------- Progress billing ----------
+ *
+ * The schedule of values, then one application a month. The arithmetic lives
+ * on the server in _shared/payApplication.mts and follows AIA G702 line for
+ * line; this screen only collects percentages and shows the result, so the
+ * figures you see are the figures that get invoiced.
+ */
+let billingState = null;
+
+async function loadBilling() {
+  const box = document.getElementById('billingPanel');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/billing`);
+  if (!res.ok) { box.innerHTML = '<div class="empty-state" style="padding:18px;">Could not load progress billing.</div>'; return; }
+  billingState = await res.json();
+  renderBilling();
+}
+
+function renderBilling() {
+  const box = document.getElementById('billingPanel');
+  if (!box || !billingState) return;
+  const { sov, applications, draft, preview, contract, suggested } = billingState;
+  const submitted = applications.filter(a => a.status === 'submitted');
+  const locked = submitted.length > 0;
+
+  // No schedule yet: offer to start one from the estimate's own lines.
+  if (!sov.length) {
+    box.innerHTML = `
+      <div class="scope-group" style="max-width:660px;">
+        <p class="scope-blurb" style="margin:0 0 10px;">No schedule of values yet. The contract is
+          <strong>${money(contract.original)}</strong>${contract.changeOrders ? ` plus ${money(contract.changeOrders)} in approved change orders` : ''}.</p>
+        ${suggested.length ? `
+          <p class="scope-blurb" style="margin:0 0 10px;">Starting from the estimate gives ${suggested.length} line${suggested.length === 1 ? '' : 's'}
+            that already add up to the contract. A GC often prefers phases or floors instead &mdash; edit before the first application, because it locks after that.</p>
+          <button type="button" class="btn btn-primary btn-sm" onclick="billingPost({action:'seed-sov'})">Start from the estimate</button>` : ''}
+      </div>`;
+    return;
+  }
+
+  const problems = (preview.problems || []).map(p =>
+    `<div class="wage-warn${/totals|over-billing/.test(p) ? ' wage-warn-hard' : ''}" style="margin:0 0 10px;">${scopeEsc(p)}</div>`).join('');
+
+  const rows = preview.lines.map(l => `
+    <tr>
+      <td>${scopeEsc(l.description)}</td>
+      <td style="text-align:right;">${money(l.scheduledValue)}</td>
+      <td style="text-align:right; color:#8A98AC;">${l.previousPct}%</td>
+      <td style="text-align:right;">
+        <input type="number" class="bill-pct" data-line="${l.id}" min="0" max="100" step="1"
+          value="${l.thisPct}" style="width:70px; padding:5px 7px; text-align:right;">%
+      </td>
+      <td style="text-align:right;">${money(l.thisPeriod)}</td>
+      <td style="text-align:right;">${money(l.completedToDate)}</td>
+      ${locked ? '' : `<td><button type="button" class="scope-btn scope-btn-off" onclick="billingPost({action:'remove-sov', id:${l.id}})">&times;</button></td>`}
+    </tr>`).join('');
+
+  const g702 = (label, value, strong) =>
+    `<div${strong ? ' class="bid-costs-total"' : ''}><span>${label}</span><strong>${money(value)}</strong></div>`;
+
+  box.innerHTML = problems + `
+    <div class="scope-group" style="max-width:760px;">
+      <div style="overflow-x:auto;">
+        <table class="dash-table" style="margin:0;">
+          <thead><tr>
+            <th>Schedule line</th><th style="text-align:right;">Value</th>
+            <th style="text-align:right;">Last time</th><th style="text-align:right;">Now complete</th>
+            <th style="text-align:right;">This period</th><th style="text-align:right;">To date</th>
+            ${locked ? '' : '<th></th>'}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      ${locked ? `<p class="scope-blurb" style="margin:10px 0 0;">The schedule is locked because an application has been submitted against it. Extra work goes through a change order.</p>` : `
+        <div class="scope-add" style="margin-top:12px;">
+          <input type="text" id="sovDesc" placeholder="Add a schedule line, e.g. Level 3 final clean"
+            style="flex:1; padding:9px 11px; font-size:0.86rem; border:1.5px solid #DCE4EF; border-radius:8px;">
+          <input type="number" id="sovValue" placeholder="$ value" min="0" step="0.01"
+            style="width:120px; padding:9px 11px; font-size:0.86rem; border:1.5px solid #DCE4EF; border-radius:8px;">
+          <button type="button" class="btn btn-sm" onclick="addSovLine()">Add line</button>
+        </div>`}
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px; margin-top:16px; max-width:420px;">
+        <div class="field-group">
+          <label for="billRetainage">Retainage held (%)</label>
+          <input type="number" id="billRetainage" min="0" max="50" step="0.5" value="${draft ? Number(draft.retainagePct) : 10}">
+        </div>
+        <div class="field-group">
+          <label for="billPeriod">Period to</label>
+          <input type="date" id="billPeriod" value="${draft?.periodTo || new Date().toISOString().slice(0, 10)}">
+        </div>
+      </div>
+
+      <div class="bid-costs" style="max-width:none;">
+        ${g702('1. Original contract sum', preview.originalContractSum)}
+        ${g702('2. Approved change orders', preview.changeOrders)}
+        ${g702('3. Contract sum to date', preview.contractSumToDate)}
+        ${g702(`4. Completed to date (${preview.percentComplete}%)`, preview.totalCompletedAndStored)}
+        ${g702(`5. Retainage at ${preview.retainagePct}%`, -preview.retainage)}
+        ${g702('6. Earned less retainage', preview.totalEarnedLessRetainage)}
+        ${g702('7. Less previous applications', -preview.lessPreviousCertificates)}
+        ${g702('8. This application bills', preview.currentPaymentDue, true)}
+        <div class="bid-costs-foot">9. Still to come, including retainage held: <strong>${money(preview.balanceToFinish)}</strong></div>
+      </div>
+
+      <p class="error-text" id="billError"></p>
+      <button type="button" class="btn btn-sm" onclick="saveBillingDraft()">Save and recalculate</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="submitApplication()">Submit application ${submitted.length + 1} and invoice it</button>
+    </div>
+
+    ${submitted.length ? `
+      <div class="scope-group" style="max-width:760px;">
+        <h4>Submitted</h4>
+        <ul class="scope-list">${submitted.map(a => `
+          <li>
+            <span><strong>Application ${a.number}</strong>${a.periodTo ? ` &middot; to ${scopeEsc(a.periodTo)}` : ''}
+              &middot; billed ${money(a.currentPaymentDue)} &middot; retainage ${money(a.retainage)}</span>
+            ${a.invoiceId ? `<a class="scope-btn" href="/admin/invoice-detail.html?id=${a.invoiceId}">Invoice &rarr;</a>` : ''}
+          </li>`).join('')}</ul>
+      </div>` : ''}`;
+}
+
+async function billingPost(body) {
+  const res = await adminFetch(`/api/admin/estimates/${id}/billing`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = document.getElementById('billError');
+    if (err) { err.textContent = data.error || 'Could not save that.'; err.classList.add('show'); }
+    else adminToast(data.error || 'Could not save that.');
+    return null;
+  }
+  await loadBilling();
+  return data;
+}
+
+function collectClaims() {
+  return [...document.querySelectorAll('.bill-pct')].map(el => ({
+    sovLineId: Number(el.getAttribute('data-line')),
+    thisPct: Number(el.value) || 0,
+  }));
+}
+
+async function saveBillingDraft() {
+  return billingPost({
+    action: 'save-draft',
+    retainagePct: Number(document.getElementById('billRetainage').value) || 0,
+    periodTo: document.getElementById('billPeriod').value || undefined,
+    lines: collectClaims(),
+  });
+}
+
+async function addSovLine() {
+  const description = document.getElementById('sovDesc').value.trim();
+  const scheduledValue = Number(document.getElementById('sovValue').value);
+  if (!description || !(scheduledValue > 0)) { adminToast('Give the line a name and a value above zero.'); return; }
+  await billingPost({ action: 'add-sov', description, scheduledValue });
+}
+
+/*
+ * Saved first, so what is submitted is exactly what is on screen. Submitting a
+ * stale draft would invoice percentages the owner had already changed.
+ */
+async function submitApplication() {
+  if (!(await saveBillingDraft())) return;
+  const due = billingState?.preview?.currentPaymentDue || 0;
+  if (!(await adminConfirm(`Submit this application and invoice ${money(due)}? It cannot be edited afterwards.`, 'Submit'))) return;
+  const result = await billingPost({ action: 'submit' });
+  if (result) adminToast(`Application submitted. Invoice raised for ${money(result.application.currentPaymentDue)}.`, 'success');
+}
 
 /* ---------- Lien deadlines ----------
  *

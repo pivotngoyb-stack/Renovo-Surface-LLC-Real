@@ -231,18 +231,30 @@
         <div id="calcBody" class="calc-body open">
           <p style="color:#4A5A72; font-size:0.85rem; margin-bottom:14px;">Pick a service, fill in the job details, and add the priced line item straight to this estimate.</p>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px; max-width:520px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px; max-width:560px;">
             <div class="field-group">
-              <label>Your Hourly Rate ($/hr)</label>
-              <input type="number" id="hourlyRate" min="0" step="1" value="65" oninput="recalculate()">
-              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">What you charge per hour of work — this drives every price below, for every service. SLC-area pressure washing bills $50–$160/hr (avg ~$78). Change this and every job's price updates.</p>
+              <label for="hourlyRate">What you <strong>charge</strong> ($/hr)</label>
+              <input type="number" id="hourlyRate" min="0" step="1" value="65" oninput="recalculate(); checkRates();">
+              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">
+                Your selling price for an hour. This drives every price below, for every service.
+                <br><strong>Where to get it:</strong> what the market pays, not what your costs are.
+                SLC pressure washing bills $50&ndash;$160/hr, averaging about $78.
+              </p>
             </div>
             <div class="field-group">
-              <label>Technician Base Wage ($/hr)</label>
-              <input type="number" id="baseWage" min="0" step="0.5" value="20" oninput="onBurdenChange()">
-              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">What you actually pay per hour, before taxes and insurance. Utah commercial cleaning runs ~$17–24/hr. What that hour truly costs you is worked out below.</p>
+              <label for="baseWage">What you <strong>pay</strong> a tech ($/hr)</label>
+              <input type="number" id="baseWage" min="0" step="0.5" value="20" oninput="onBurdenChange(); checkRates();">
+              <p style="font-size:0.78rem; color:#8A98AC; margin-top:4px;">
+                The wage itself, before taxes and insurance. Never changes a price &mdash; only the
+                margin figures.
+                <br><strong>Where to get it:</strong> a payslip. Gross pay divided by hours worked, for
+                one tech, one week. Utah commercial cleaning runs $17&ndash;24/hr.
+                <br>Doing the work yourself? Put what you would have to pay someone to replace you.
+                Not zero &mdash; zero makes every job look profitable and you never learn which ones are not.
+              </p>
             </div>
           </div>
+          <div id="rateWarning"></div>
 
           <details class="burden-box" id="burdenBox">
             <summary>
@@ -255,27 +267,27 @@
                 <div class="field-group">
                   <label for="workersCompPct">Workers' comp (% of payroll)</label>
                   <input type="number" id="workersCompPct" min="0" max="60" step="0.25" value="6" oninput="onBurdenChange()">
-                  <p>Utah janitorial (NCCI 9014) runs ~4–8%. Pressure washing and construction cleanup sit higher.</p>
+                  <p>Utah janitorial (NCCI 9014) runs ~4–8%. Pressure washing and construction cleanup sit higher.<br><strong>Where to get it:</strong> your workers' comp policy quotes a rate per $100 of payroll for each class code. That rate <em>is</em> the percentage &mdash; $6.12 per $100 means 6.12. If the policy shows an experience mod, multiply by it.</p>
                 </div>
                 <div class="field-group">
                   <label for="generalLiabilityPct">General liability (% of payroll)</label>
                   <input type="number" id="generalLiabilityPct" min="0" max="30" step="0.25" value="2.5" oninput="onBurdenChange()">
-                  <p>Typically 2–3% once your GL premium is spread across payroll.</p>
+                  <p>Typically 2–3% once your GL premium is spread across payroll.<br><strong>Where to get it:</strong> your annual general liability premium, divided by your annual payroll, times 100.</p>
                 </div>
                 <div class="field-group">
                   <label for="unemploymentPct">Unemployment: FUTA + Utah SUTA (%)</label>
                   <input type="number" id="unemploymentPct" min="0" max="20" step="0.1" value="2" oninput="onBurdenChange()">
-                  <p>Usually 1–3%, depending on your experience rating.</p>
+                  <p>Usually 1–3%, depending on your experience rating.<br><strong>Where to get it:</strong> Utah Workforce Services mails your SUTA rate every year &mdash; use that figure. Federal FUTA adds very little on top: at most $42 a year per employee.</p>
                 </div>
                 <div class="field-group">
                   <label for="benefitsPct">PTO, holidays &amp; benefits (%)</label>
                   <input type="number" id="benefitsPct" min="0" max="60" step="0.5" value="0" oninput="onBurdenChange()">
-                  <p>Leave at 0 if you offer none. This is the line that separates the published &ldquo;1.35&times; burden&rdquo; figure from your real 1.18&times;.</p>
+                  <p>Leave at 0 if you offer none. This is the line that separates the published &ldquo;1.35&times; burden&rdquo; figure from your real 1.18&times;.<br><strong>Where to get it:</strong> what PTO, paid holidays and any health contribution cost you in a year, divided by annual payroll, times 100.</p>
                 </div>
                 <div class="field-group burden-span">
                   <label for="overheadPct">Business overhead (% of direct job cost)</label>
                   <input type="number" id="overheadPct" min="0" max="80" step="0.5" value="18" oninput="onBurdenChange()">
-                  <p>Vehicles, non-job fuel, admin time, software, insurance not already counted above. Applied on top of labor, chemicals and fuel — this is the cost most contractors forget, and the reason a &ldquo;profitable&rdquo; job loses money. Machine wear is costed separately, per service, because a sweeper hour and a window hour are nothing alike.</p>
+                  <p>Vehicles, non-job fuel, admin time, software, insurance not already counted above. Applied on top of labor, chemicals and fuel — this is the cost most contractors forget, and the reason a &ldquo;profitable&rdquo; job loses money. Machine wear is costed separately, per service, because a sweeper hour and a window hour are nothing alike.<br><strong>Where to get it:</strong> last year's business costs that were not wages, chemicals or job fuel &mdash; vehicles, insurance, phone, software, your own admin time &mdash; divided by last year's job costs, times 100. Not sure yet? 15&ndash;20% is a sane start; revisit it at tax time.</p>
                 </div>
               </div>
               <div class="burden-breakdown" id="burdenBreakdown"></div>
@@ -1235,6 +1247,115 @@ function onBurdenChange() {
   saveBurdenSettings();
   renderBurden();
   recalculate();
+  checkRates();
+}
+
+/*
+ * The two rates checked against each other, because one of them was wrong and
+ * nothing said so.
+ *
+ * A base wage of $71.50 sat in this form -- $148,000 a year for a cleaner --
+ * and the app dutifully reported every job as a loss and inflated every
+ * "charge this much to clear 35%" figure alongside it. Both boxes accepted it
+ * without comment: one is a selling price and the other a wage, they look
+ * identical, and the form quizzed the owner instead of helping him.
+ *
+ * These bounds are deliberately wide. The job is to catch a number that cannot
+ * be what was meant, not to argue about a defensible one.
+ */
+const WAGE_SANE_LOW = 10;    // under what this work pays anywhere in Utah
+const WAGE_SANE_HIGH = 45;   // a foreman on a prevailing wage job, roughly
+
+/*
+ * The same guard for the five percentages in the panel underneath.
+ *
+ * A slipped decimal there does exactly what the $71.50 wage did: 60 for
+ * workers' comp instead of 6 multiplies the cost of every hour, every job reads
+ * as a loss and every "charge this much" figure is inflated -- silently, from
+ * inside a panel that is usually shut. Plain data rather than functions, so
+ * the bands can be read and tested. Deliberately wide: they exist to catch a
+ * number that cannot have been meant, not to second-guess a real one.
+ */
+const BURDEN_BANDS = [
+  { id: 'workersCompPct', label: "workers' comp", low: 1, high: 25, usual: 'Utah janitorial runs 4–8%' },
+  { id: 'generalLiabilityPct', label: 'general liability', low: 0.5, high: 10, usual: 'it is typically 2–3%' },
+  { id: 'unemploymentPct', label: 'unemployment', low: 0.3, high: 8, usual: 'it is usually 1–3%' },
+  { id: 'benefitsPct', label: 'benefits', low: 0, high: 40, usual: 'zero is right if you offer none' },
+  { id: 'overheadPct', label: 'overhead', low: 5, high: 50, usual: 'most cleaning businesses land between 15 and 25%' },
+];
+
+function checkRates() {
+  const box = document.getElementById('rateWarning');
+  if (!box) return;
+
+  const charge = Number(val('hourlyRate')) || 0;
+  const wage = Number(val('baseWage')) || 0;
+  // A covered job legitimately carries a wage that would be absurd otherwise,
+  // and that panel does its own explaining.
+  const covered = document.getElementById('prevailingWage')?.checked;
+  const notes = [];
+
+  if (wage > 0 && charge > 0 && wage >= charge) {
+    notes.push({
+      hard: true,
+      text: `The wage is set to ${money(wage)} and the charge to ${money(charge)}. Paying a tech more per hour `
+        + 'than you bill means every job below shows a loss. These two are easy to mix up &mdash; the left box '
+        + 'is what a client pays you, the right one is what lands in a paycheck.',
+    });
+  } else if (wage > WAGE_SANE_HIGH && !covered) {
+    notes.push({
+      hard: true,
+      text: `${money(wage)} an hour is roughly $${Math.round(wage * 2080).toLocaleString('en-US')} a year for a cleaner. If that really `
+        + 'is the wage, carry on &mdash; but check it is not the rate you charge, typed into the wrong box.',
+    });
+  } else if (wage > 0 && wage < WAGE_SANE_LOW) {
+    notes.push({
+      hard: false,
+      text: `${money(wage)} an hour is below what this work pays in Utah. Every margin below will read better than it is.`,
+    });
+  } else if (wage === 0) {
+    notes.push({
+      hard: false,
+      text: 'With the wage at zero, labour costs nothing and every job looks profitable. Put what you would have to '
+        + 'pay somebody to do this work, even if that somebody is currently you.',
+    });
+  }
+
+  /*
+   * The burden percentages. They live in a panel that is usually shut, so a
+   * hard problem opens it and outlines the box -- the one that is wrong is
+   * then the one on screen, instead of a warning pointing at something hidden.
+   */
+  let openBurden = false;
+  for (const b of BURDEN_BANDS) {
+    const el = document.getElementById(b.id);
+    if (!el) continue;
+    const v = Number(el.value) || 0;
+    let hard = false;
+    if (v > b.high) {
+      notes.push({
+        hard: true,
+        text: `${v}% for ${b.label} is almost certainly a slipped decimal &mdash; ${b.usual}. Left like this, every `
+          + 'hour costs more than it really does, every job reads as a loss, and every suggested price is inflated.',
+      });
+      hard = true;
+      openBurden = true;
+    } else if (b.low > 0 && v < b.low) {
+      notes.push({
+        hard: false,
+        text: `${v}% for ${b.label} is below anything real &mdash; ${b.usual}. Every margin will read better than it is.`,
+      });
+    }
+    el.style.outline = hard ? '2px solid #C0392B' : '';
+  }
+  if (openBurden) {
+    const panel = document.getElementById('burdenBox');
+    if (panel) panel.open = true;
+  }
+
+  box.innerHTML = notes.map(nt =>
+    `<div class="wage-warn${nt.hard ? ' wage-warn-hard' : ''}" style="max-width:560px; margin:4px 0 14px;">${nt.text}</div>`,
+  ).join('');
 }
 
 function renderBurden() {
@@ -2251,6 +2372,9 @@ renderServiceGrid();
 renderBundleRow();
 loadBurdenSettings();
 loadCapital();
+// Run on load, not only on change: a bad wage saved on a previous visit is
+// exactly the case that went unnoticed, and it never fires an input event.
+checkRates();
 
 /* ---------- Line items (existing behavior, extended with pricing metadata) ---------- */
 
