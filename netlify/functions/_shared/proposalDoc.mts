@@ -7,7 +7,8 @@
  * the total contract value. Neither reads the scope section first.
  */
 
-import type { ContractValue } from './serviceSchedule.mts'
+import type { ContractValue, ScheduleLine } from './serviceSchedule.mts'
+import { frequencyOf } from './serviceSchedule.mts'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -139,6 +140,77 @@ export function executiveSummary(input: SummaryInput): string[] {
   const walked = walkthroughDate ? `a site walk completed ${fmtDate(walkthroughDate)}` : 'the conditions described to us'
   const valid = expiresOn ? ` This proposal is valid through ${fmtDate(expiresOn)}.` : ''
   out.push(`Pricing reflects ${walked} and the exclusions and assumptions stated in this document.${valid}`)
+
+  return out
+}
+
+export interface HomeSummaryInput {
+  serviceLabels: string[]
+  lines: ScheduleLine[]
+  siteAddress?: string | null
+  walkthroughDate?: string | null
+  expiresOn?: string | null
+}
+
+/** How often, as a homeowner would say it mid-sentence. */
+const CADENCE: Record<string, string> = {
+  daily: 'every weekday',
+  '3x_week': 'three times a week',
+  '2x_week': 'twice a week',
+  weekly: 'every week',
+  biweekly: 'every two weeks',
+  monthly: 'once a month',
+  quarterly: 'every three months',
+  semiannual: 'twice a year',
+  annual: 'once a year',
+}
+
+/**
+ * The executive summary's job, done for a homeowner.
+ *
+ * "Annual contract value" is the figure a facilities director budgets against.
+ * A homeowner budgets per visit and per month, and would read an annual number
+ * at the top of the page as the price of one clean. So this states the price
+ * the way they will pay it: per visit, then roughly per month.
+ */
+export function homeSummary(input: HomeSummaryInput): string[] {
+  const { serviceLabels, lines, siteAddress, walkthroughDate, expiresOn } = input
+  const out: string[] = []
+
+  const services = readableList(serviceLabels.map(readableService))
+  const where = siteAddress || 'your home'
+  out.push(services
+    ? `This quote covers ${services} at ${where}.`
+    : `This quote covers the cleaning described below at ${where}.`)
+
+  const billable = lines.filter(l => !l.isOptional)
+  const total = (ls: ScheduleLine[]) => ls.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitPrice || 0), 0)
+
+  // One sentence per cadence: a weekly kitchen and a monthly deep clean on the
+  // same quote are two different promises, and adding them together would be
+  // a per-visit figure that no visit ever costs.
+  const byCadence = new Map<string, ScheduleLine[]>()
+  for (const l of billable) {
+    const f = frequencyOf(l.frequency)
+    if (!f.recurring) continue
+    byCadence.set(f.key, [...(byCadence.get(f.key) || []), l])
+  }
+  for (const [key, ls] of byCadence) {
+    const perVisit = total(ls)
+    const monthly = (perVisit * frequencyOf(key).visitsPerYear) / 12
+    out.push(`Your cleaning ${CADENCE[key] || frequencyOf(key).label.toLowerCase()} is ${usd(perVisit)} a visit, about ${usd(round2(monthly))} a month.`)
+  }
+
+  const oneTime = billable.filter(l => !frequencyOf(l.frequency).recurring)
+  if (oneTime.length) {
+    out.push(byCadence.size
+      ? `One-time cleaning on this quote comes to ${usd(total(oneTime))}.`
+      : `The price for the cleaning described is ${usd(total(oneTime))}.`)
+  }
+
+  const basis = walkthroughDate ? `what we saw on ${fmtDate(walkthroughDate)}` : 'the home as you described it to us'
+  const valid = expiresOn ? ` It is good through ${fmtDate(expiresOn)}.` : ''
+  out.push(`The price is based on ${basis}.${valid}`)
 
   return out
 }

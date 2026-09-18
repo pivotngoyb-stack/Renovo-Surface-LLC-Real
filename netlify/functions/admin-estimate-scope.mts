@@ -5,6 +5,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized, notFound, badRequest, pathId } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { buildProposalScope, isProtectedExclusion } from './_shared/scopeLibrary.mts'
+import { isResidential } from './_shared/bidMode.mts'
 
 const KINDS = ['scope', 'exclusion', 'assumption', 'clarification'] as const
 type Kind = (typeof KINDS)[number]
@@ -54,10 +55,10 @@ export default withErrorHandling('admin-estimate-scope', async (request: Request
       custom,
       // What the client will actually read, library and custom composed the
       // same way the proposal composes it.
-      composed: buildProposalScope(serviceTypes, custom),
+      composed: buildProposalScope(serviceTypes, custom, { residential: isResidential(estimate) }),
       // The untouched library, so the editor can offer a line to suppress
       // without the owner having to remember what it said.
-      library: buildProposalScope(serviceTypes),
+      library: buildProposalScope(serviceTypes, [], { residential: isResidential(estimate) }),
     })
   }
 

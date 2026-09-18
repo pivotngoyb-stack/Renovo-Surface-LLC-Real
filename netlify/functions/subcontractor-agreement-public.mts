@@ -3,6 +3,7 @@ import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest, getClientIp } from './_shared/http.mts'
 import { notifyAdminSubcontractorAgreementSigned } from './_shared/email.mts'
+import { publicAgreement } from './_shared/clientView.mts'
 
 interface SignBody {
   signerName: string
@@ -17,7 +18,7 @@ export default async (request: Request, context: Context) => {
   if (!agreement) return notFound()
 
   if (request.method === 'GET') {
-    return json({ agreement })
+    return json({ agreement: publicAgreement(agreement) })
   }
 
   if (request.method === 'POST') {

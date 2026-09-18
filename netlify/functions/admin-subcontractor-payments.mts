@@ -28,7 +28,7 @@ export default withErrorHandling('admin-subcontractor-payments', async (request:
   }
 
   if (request.method === 'POST') {
-    let body: { amount?: number; method?: string; paidDate?: string; note?: string }
+    let body: { amount?: number; method?: string; paidDate?: string; note?: string; workOrderId?: unknown }
     try {
       body = await request.json()
     } catch {
@@ -40,9 +40,27 @@ export default withErrorHandling('admin-subcontractor-payments', async (request:
     const method = body.method && VALID_METHODS.has(body.method) ? body.method : 'other'
     const paidDate = body.paidDate || new Date().toISOString().slice(0, 10)
 
+    /*
+     * A payment may name the job it settles. Only a job this sub was given:
+     * a payment filed against somebody else's job would show that job as paid
+     * while the sub who did it is still owed.
+     */
+    let workOrderId: number | null = null
+    if (body.workOrderId != null && body.workOrderId !== '') {
+      const woId = Number(body.workOrderId)
+      if (!Number.isInteger(woId) || woId <= 0) return badRequest('Invalid job')
+      const [wo] = await db
+        .select({ subId: schema.workOrders.subcontractorAgreementId })
+        .from(schema.workOrders)
+        .where(eq(schema.workOrders.id, woId))
+        .limit(1)
+      if (!wo || wo.subId !== subId) return badRequest('That job is not assigned to this subcontractor')
+      workOrderId = woId
+    }
+
     const [payment] = await db
       .insert(schema.subcontractorPayments)
-      .values({ subcontractorAgreementId: subId, amount: String(amount), method: method as any, paidDate, note: body.note })
+      .values({ subcontractorAgreementId: subId, workOrderId, amount: String(amount), method: method as any, paidDate, note: body.note })
       .returning()
 
     return json({ payment }, { status: 201 })

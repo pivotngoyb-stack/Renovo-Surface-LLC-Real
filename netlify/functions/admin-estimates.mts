@@ -4,6 +4,7 @@ import { isAuthenticated } from './_shared/auth.mts'
 import { generateToken } from './_shared/tokens.mts'
 import { defaultValidUntil } from './_shared/expiry.mts'
 import { json, unauthorized, badRequest } from './_shared/http.mts'
+import { normalizeBidMode } from './_shared/bidMode.mts'
 
 interface LineItemInput {
   description: string
@@ -111,6 +112,11 @@ export default async (request: Request) => {
       return badRequest('At least one line item is required')
     }
 
+    // A house is never a covered public works site. A stale checkbox from a
+    // government bid must not cost a house clean at a federal wage.
+    const bidMode = normalizeBidMode(body.bidMode)
+    if (bidMode === 'residential') body.prevailingWage = false
+
     // Reuse an existing client by email if one exists, otherwise create one.
     const existing = await db
       .select()
@@ -144,7 +150,7 @@ export default async (request: Request) => {
         projectName: body.projectName,
         siteAddress: body.siteAddress,
         poNumber: body.poNumber?.trim() ? body.poNumber.trim().slice(0, 60) : null,
-        bidMode: body.bidMode === 'government' ? 'government' : 'standard',
+        bidMode,
         solicitationNumber: body.solicitationNumber,
         optionYears: Math.max(0, Math.min(Number(body.optionYears) || 0, 9)),
         prevailingWage: Boolean(body.prevailingWage),

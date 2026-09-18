@@ -8,6 +8,20 @@
 <link rel="icon" href="../images/logo.png">
 <link rel="stylesheet" href="../css/style.css">
 <link rel="stylesheet" href="../css/admin.css">
+<style>
+  /* Home cleaning: short numbers in a grid, then the extras as a checklist. */
+  /* Both span the calculator's own two columns: ten short inputs stacked in
+     half the width made the form twice as long as it needed to be. */
+  .home-grid, .home-extras { grid-column: 1 / -1; }
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 16px; }
+  .home-hint { font-size: 0.76rem; color: #8A98AC; margin: 4px 0 0; }
+  .home-extras { margin: 6px 0 14px; padding: 12px 14px; background: var(--off-white); border-radius: 8px; }
+  .home-extras-title { font-weight: 700; color: var(--navy); font-size: 0.85rem; margin-bottom: 8px; }
+  .home-extra { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; margin: 6px 0; color: #374151; font-weight: 400; }
+  .home-extra input[type="checkbox"] { width: auto; margin: 0; }
+  .home-extra .home-extra-count { width: 72px; padding: 6px 8px; margin: 0; }
+  .home-extra-price { color: #8A98AC; font-size: 0.8rem; }
+</style>
 </head>
 <body class="admin-body">
   <nav class="admin-nav">
@@ -48,7 +62,7 @@
       <p style="color:#8A98AC; font-size:0.82rem; margin-top:-6px; margin-bottom:12px;">On construction and multi-site work the client and the jobsite are not the same thing. This is what prints on the proposal.</p>
       <div class="field-group"><label>Project / Job Name</label><input type="text" id="projectName" placeholder="e.g. Research Park Tower — 3-Story Office Shell &amp; TI"></div>
       <div class="field-group"><label>Jobsite Address</label><input type="text" id="siteAddress" placeholder="Leave blank to use the client address"></div>
-      <div class="field-group">
+      <div class="field-group commercial-only">
         <label>Purchase Order Number</label>
         <input type="text" id="poNumber" placeholder="Leave blank &mdash; the client can enter theirs when they accept">
         <p style="color:#8A98AC; font-size:0.78rem; margin:6px 0 0;">
@@ -63,6 +77,10 @@
       </div>
 
       <h3 style="margin: 28px 0 12px;">Bid Type</h3>
+      <div class="consent-row" style="margin-top:0;">
+        <input type="checkbox" id="bidModeHome" onchange="toggleHomeMode()">
+        <label for="bidModeHome"><strong>Home cleaning for a homeowner</strong> &mdash; a plain-English quote with home policies (rescheduling, lockouts, re-cleans) instead of commercial terms. Hides the bonding and cash-flow panels, which a house never needs.</label>
+      </div>
       <div class="consent-row" style="margin-top:0;">
         <input type="checkbox" id="bidModeGov" onchange="toggleGovFields()">
         <label for="bidModeGov"><strong>Government / institutional bid</strong> &mdash; adds unit pricing, base and option years, and the vendor registration block (NAICS 561720)</label>
@@ -142,6 +160,7 @@
         <div id="depositPreview" style="color:#4A5A72; font-size:0.86rem;"></div>
       </div>
 
+      <div class="commercial-only">
       <h3 style="margin: 28px 0 6px;">Bid Costs</h3>
       <p style="color:#8A98AC; font-size:0.82rem; margin-top:-2px; margin-bottom:12px; max-width:660px;">
         The costs of bidding the job rather than doing it. They come off the top of a public or bonded
@@ -220,6 +239,7 @@
         <label for="payWhenPaid">Contract has a pay-when-paid clause &mdash; we are not paid until the owner pays the GC</label>
       </div>
       <div id="carryPreview"></div>
+      </div><!-- /commercial-only: bid costs and cash to carry -->
 
       <h3 style="margin: 28px 0 12px;">Smart Pricing Calculator</h3>
       <div class="calc-box">
@@ -352,7 +372,7 @@
         <input type="checkbox" id="applyTax" onchange="updateTotal()">
         <label for="applyTax">Apply Utah Sales Tax (7.25%)</label>
       </div>
-      <p style="font-size:0.78rem; color:#8A98AC; margin-top:-8px; margin-bottom:10px;">Utah Code 59-12-103 — janitorial and cleaning services are subject to Utah state and local sales tax. Current Salt Lake City rate: 7.25%.</p>
+      <p id="taxNote" style="font-size:0.78rem; color:#8A98AC; margin-top:-8px; margin-bottom:10px;">Utah Code 59-12-103 — janitorial and cleaning services are subject to Utah state and local sales tax. Current Salt Lake City rate: 7.25%.</p>
       <div class="totals-row" id="taxRowDisplay" style="display:none;">Utah Sales Tax (7.25%): <span id="taxDisplay">$0.00</span></div>
       <div class="totals-row">Total: <span id="totalDisplay">$0.00</span></div>
       <div id="acvRow" style="display:none; margin-top:10px; padding:12px 14px; background:#F2F7FD; border-radius:8px; text-align:right;">
@@ -409,6 +429,9 @@ const SERVICES = [
   { key: 'carpetExtraction', label: 'Carpet Extraction', icon: '🧽' },
   { key: 'tileGrout', label: 'Tile & Grout', icon: '◻️' },
   { key: 'ventCleaning', label: 'Vent & Diffuser Cleaning', icon: '🌀' },
+  { key: 'houseCleaning', label: 'House Cleaning', icon: '🏠' },
+  { key: 'deepCleaning', label: 'Deep Cleaning', icon: '🧼' },
+  { key: 'moveOutCleaning', label: 'Move-In / Move-Out', icon: '📦' },
 ];
 
 const PW_DESCRIPTIONS = {
@@ -519,8 +542,40 @@ let activeService = null;
 
 /** Government fields only appear when the bid is actually a government bid. */
 function toggleGovFields() {
-  document.getElementById('govFields').style.display =
-    document.getElementById('bidModeGov').checked ? 'block' : 'none';
+  const gov = document.getElementById('bidModeGov').checked;
+  // One mode at a time: a government bid for somebody's house is neither.
+  if (gov && document.getElementById('bidModeHome').checked) {
+    document.getElementById('bidModeHome').checked = false;
+    toggleHomeMode();
+  }
+  document.getElementById('govFields').style.display = gov ? 'block' : 'none';
+}
+
+/*
+ * A homeowner's quote. Hides what only a bid needs -- bonding, retainage, the
+ * cash to carry, purchase orders -- and marks the estimate residential, which
+ * changes the proposal, the PDF and the work order the client signs.
+ */
+const HOME_TAX_NOTE = 'Cleaning a home is cleaning real property, which Utah does not tax (Tax Commission Publication 42), so this is off by default. '
+  + 'Laundry is taxable, and cleaning inside appliances may be &mdash; ask your accountant before adding either.';
+let commercialTaxNote = null;
+
+function toggleHomeMode() {
+  const home = document.getElementById('bidModeHome').checked;
+  if (home) {
+    const gov = document.getElementById('bidModeGov');
+    if (gov.checked) { gov.checked = false; toggleGovFields(); }
+    // A house is never a covered site, and a stale wage box would cost the
+    // clean at a federal rate without saying so.
+    const pw = document.getElementById('prevailingWage');
+    if (pw && pw.checked) { pw.checked = false; onWageChange(); }
+  }
+  document.querySelectorAll('.commercial-only').forEach(el => { el.style.display = home ? 'none' : ''; });
+  const note = document.getElementById('taxNote');
+  if (note) {
+    if (commercialTaxNote === null) commercialTaxNote = note.innerHTML;
+    note.innerHTML = home ? HOME_TAX_NOTE : commercialTaxNote;
+  }
 }
 
 function toggleCalculator() {
@@ -557,6 +612,10 @@ const BUNDLES = [
     services: ['janitorial', 'floorCare', 'carpetExtraction', 'tileGrout'] },
   { key: 'exterior', icon: '\u2600\uFE0F', label: 'Exterior refresh',
     services: ['pressureWashing', 'windowCleaning', 'lotSweeping', 'concreteSealing'] },
+  // How a recurring home is sold almost everywhere: the first visit is a deep
+  // clean, priced once, and the recurring price applies from the second.
+  { key: 'homeRecurring', icon: '\uD83C\uDFE0', label: 'Home: deep clean first, then recurring',
+    services: ['deepCleaning', 'houseCleaning'] },
 ];
 
 let bundleQueue = null; // { key, label, services: [], index }
@@ -695,6 +754,9 @@ function selectHtml(id, options) {
 }
 
 const FIELD_BUILDERS = {
+  houseCleaning: () => homeFields('houseCleaning'),
+  deepCleaning: () => homeFields('deepCleaning'),
+  moveOutCleaning: () => homeFields('moveOutCleaning'),
   pressureWashing: () => `
     ${fieldGroup('Job Type', selectHtml('pw_jobType', [
       { v: 'Residential House Wash', l: 'Residential House Wash' },
@@ -1416,6 +1478,12 @@ const MIN_BILLABLE_HOURS = {
   // Tile and grout is the slowest floor service there is.
   tileGrout: 3,
   ventCleaning: 2,
+  // Salt Lake minimums: American Housekeeping $105, Maid in SLC from $110,
+  // MaidThis's smallest recurring clean $132. 2.5 hours at $50 is $125.
+  houseCleaning: 2.5,
+  // A deep or move-out clean of even a studio is half a day for one person.
+  deepCleaning: 4,
+  moveOutCleaning: 4,
 };
 
 
@@ -1472,6 +1540,10 @@ const SERVICE_EQUIPMENT = {
   constructionProgress: ['hepaVac', 'wetVac'],
   constructionFinal: ['hepaVac', 'wetVac', 'autoScrubber'],
   constructionTouchup: ['hepaVac'],
+  // A backpack vacuum is the only machine a house clean wears out.
+  houseCleaning: ['hepaVac'],
+  deepCleaning: ['hepaVac'],
+  moveOutCleaning: ['hepaVac'],
 }
 
 const MACHINES_BY_KEY = new Map(MACHINES.map(x => [x.key, x]));
@@ -1723,12 +1795,18 @@ function renderConditionFields() {
  * The sentence that stops "cost plus thirty" being mistaken for a 30% margin.
  * On a $4,000 sub those are $566 apart, on every line, on every property.
  */
-function renderSubEffect(sub, result) {
+function renderSubEffect(sub, result, homePrice) {
   const el = document.getElementById('subEffect');
   if (!el) return;
   if (!sub.enabled) { el.innerHTML = ''; return; }
   if (!result || result.subCost <= 0) {
-    el.innerHTML = '<span class="sub-quiet">Enter what the sub charges to see what you actually keep.</span>';
+    // On a house clean there is a going rate to start from, so give it: a
+    // blank box is where an owner guesses, and guesses low.
+    el.innerHTML = '<span class="sub-quiet">Enter what the sub charges to see what you actually keep.'
+      + (homePrice > 0
+        ? ` Salt Lake cleaners working as subs usually take 45&ndash;60% of the price: ${money(homePrice * 0.45)}&ndash;${money(homePrice * 0.6)} on this clean.`
+        : '')
+      + '</span>';
     return;
   }
   const costPlus = priceForMarkup(DEFAULT_MARKUP_PCT, sub);
@@ -1763,7 +1841,303 @@ function billableHours(service, duration) {
   return Math.max(adjusted, MIN_BILLABLE_HOURS[service] || 0);
 }
 
+/* ---------- Home cleaning ----------
+ *
+ * Priced by the room, the way Salt Lake maid services quote it, with square
+ * footage as a floor so a 3-bedroom home with enormous rooms is not priced
+ * like a 3-bedroom bungalow.
+ *
+ * Person-hours per room for a recurring clean, from the market (Sept 2026):
+ * MaidThis SLC's rate card divided by its own $50/hr recurring rate gives
+ * 2.6 / 3.3 / 4.0 / 4.6 person-hours for a 1/1 through a 4/3, and American
+ * Housekeeping of Utah weights a full bath at 1.2-1.7x a bedroom and a half
+ * bath at half of one. The figures below reproduce both: a 3 bed / 2 bath
+ * with two living areas comes to 3.95 hours, $198 at $50 -- MaidThis charges
+ * $198 for it and American Housekeeping about $200.
+ *
+ * Square footage is a floor, not the driver. Maintenance cleaning runs 400-600
+ * sq ft per person-hour, so only a home whose rooms are unusually large ends
+ * up priced on its area instead of its rooms.
+ */
+const HOME_HOURS = { fixed: 0.25, kitchen: 0.75, bedroom: 0.35, fullBath: 0.6, halfBath: 0.25, livingArea: 0.35 };
+const HOME_SQFT_PER_HOUR = 550;
+
+/*
+ * A deep clean is the standard list plus baseboards, blinds, buildup and
+ * detail work: 1.5-2x the time (Queen of Maids 1.5x, MaidProfit 1.8x). A
+ * move-out is a deep clean of an empty home plus the inside of every
+ * appliance and cabinet, about twice a standard clean (HomeGuide and
+ * HomeAdvisor both put it at 2x per square foot).
+ */
+const HOME_KIND = {
+  houseCleaning: { label: 'House cleaning', factor: 1, prefix: 'hc' },
+  deepCleaning: { label: 'Deep cleaning', factor: 1.75, prefix: 'dc' },
+  moveOutCleaning: { label: 'Move-in / move-out cleaning', factor: 2, prefix: 'mo' },
+};
+
+/*
+ * How often, as time rather than as a discount. A home cleaned every week has
+ * less to clean on each visit -- that is the whole reason it costs less -- so
+ * it is modelled as fewer hours, and the crew plan gets the real figure too.
+ *
+ * Every two weeks is the base the room hours were calibrated on. Salt Lake
+ * services price weekly about 5% under it (American Housekeeping: $10 off a
+ * $200 clean), monthly 5-15% over it, and a one-time standard clean about 14%
+ * over it (Thumbtack's medians put every-two-weeks 12% under one-time).
+ */
+const HOME_FREQUENCIES = [
+  { v: 'biweekly', l: 'Every 2 weeks', time: 1 },
+  { v: 'weekly', l: 'Weekly', time: 0.95 },
+  { v: 'monthly', l: 'Monthly', time: 1.1 },
+  { v: 'one_time', l: 'One-time', time: 1.15 },
+];
+
+// Queen of Maids adds 30-50% for a home in poor condition and 20-30% for pets.
+const HOME_CONDITIONS = [
+  { v: '1', l: 'Well kept' },
+  { v: '1.25', l: 'Needs extra attention (+25% time)' },
+  { v: '1.5', l: 'Heavy buildup, months since a clean (+50% time)' },
+];
+const HOME_PETS = [
+  { v: '1', l: 'No pets' },
+  { v: '1.1', l: 'One pet (+10% time)' },
+  { v: '1.2', l: 'Two or more, or a heavy shedder (+20% time)' },
+];
+
+/*
+ * Extras, priced flat the way Salt Lake services list them (American
+ * Housekeeping: oven $35, fridge $45; Wasatch: oven $25-45, fridge $20-40;
+ * cabinets, baseboards, garage and patio run $25-75 on national lists).
+ *
+ * The minutes are what the crew actually spends, and they go into the hours
+ * the cost and the crew plan are built from. A flat price with no time behind
+ * it would make every extra look like free money.
+ *
+ * `in` lists the cleans that already include it: a move-out that also charged
+ * for the inside of the oven would be charging for it twice.
+ *
+ * No laundry. Utah taxes laundry outright (59-12-103(1)(j)) and does not tax
+ * cleaning a house, and tax on an estimate here is all or nothing -- one load
+ * of towels would put sales tax on the whole clean.
+ */
+const HOME_EXTRAS = [
+  { key: 'oven', label: 'Inside the oven', price: 40, minutes: 40, in: ['moveOutCleaning'] },
+  { key: 'fridge', label: 'Inside the refrigerator', price: 40, minutes: 30, in: ['moveOutCleaning'] },
+  { key: 'cabinets', label: 'Inside kitchen cabinets (emptied)', price: 50, minutes: 45, in: ['moveOutCleaning'] },
+  { key: 'baseboards', label: 'Baseboards hand-wiped', price: 50, minutes: 45, in: ['deepCleaning', 'moveOutCleaning'] },
+  { key: 'garage', label: 'Garage swept', price: 40, minutes: 30, in: [] },
+  { key: 'patio', label: 'Patio or balcony swept', price: 40, minutes: 30, in: [] },
+];
+const HOME_COUNTED_EXTRAS = [
+  { key: 'windows', label: 'Interior windows', each: 7, minutes: 6, in: ['moveOutCleaning'] },
+  { key: 'blinds', label: 'Blinds', each: 8, minutes: 6, in: ['deepCleaning', 'moveOutCleaning'] },
+];
+
+/*
+ * What Salt Lake charges for a 3 bed / 2 bath of about 1,800 sq ft, before
+ * extras, in 2026: recurring $155-235, a one-time standard clean $185-270,
+ * deep $250-400, move-out $300-450 (MaidThis, American Housekeeping, Queen of
+ * Maids, Wasatch, HomeAdvisor SLC). Scaled to other sizes by area^0.6, the
+ * curve MaidThis's own tiers follow -- a small home costs more per foot.
+ */
+const HOME_BAND = {
+  houseCleaning: { recurring: [155, 235], one_time: [185, 270] },
+  deepCleaning: [250, 400],
+  moveOutCleaning: [300, 450],
+};
+const HOME_BAND_SQFT = 1800;
+const HOME_BAND_EXPONENT = 0.6;
+
+function homeBand(service, sqft, frequency) {
+  const b = HOME_BAND[service];
+  if (!b || !(sqft > 0)) return null;
+  const pair = Array.isArray(b) ? b : (frequency === 'one_time' ? b.one_time : b.recurring);
+  const scale = Math.pow(sqft / HOME_BAND_SQFT, HOME_BAND_EXPONENT);
+  return { low: round2(pair[0] * scale), high: round2(pair[1] * scale) };
+}
+
+/*
+ * The numbers an owner types, checked for the ones that cannot be what was
+ * meant. The defaults must never trip any of these: a warning on an untouched
+ * form teaches the owner to stop reading warnings.
+ */
+const HOME_RATE_LOW = 35;
+const HOME_RATE_HIGH = 85;
+
+function homeWarnings(service, i) {
+  const out = [];
+  const sqft = Number(i.sqft) || 0;
+  const beds = Number(i.beds) || 0;
+  const baths = Number(i.baths) || 0;
+  const rate = Number(i.rate) || 0;
+  const condition = Number(i.condition) || 1;
+  if (sqft <= 0) {
+    out.push('No square footage, so this is priced on the room count alone. The listing on Zillow or Redfin, or the county assessor, has the finished area.');
+  } else if (beds > 0 && sqft / beds < 250) {
+    out.push(`${sqft.toLocaleString('en-US')} sq ft is very little for ${beds} bedrooms. Check the square footage is the whole home, not one floor.`);
+  } else if (sqft > 6000) {
+    out.push('Over 6,000 sq ft. Walk it before committing to a number: homes this size vary more than any per-room model does.');
+  }
+  if (beds === 0 && baths === 0) out.push('No bedrooms or bathrooms entered, so this prices a kitchen and living areas only.');
+  if (baths > beds + 2) out.push(`${baths} full bathrooms against ${beds} bedrooms. Worth checking the count.`);
+  if (rate > 0 && rate < HOME_RATE_LOW) {
+    out.push(`$${rate} per cleaner-hour is below what Salt Lake maid services charge ($45-55). Independent cleaners charge $21-26, but they carry none of your insurance or overhead.`);
+  } else if (rate > HOME_RATE_HIGH) {
+    out.push(`$${rate} per cleaner-hour is well above Salt Lake maid services ($45-55). Check it is the charge rate, not a job price, and expect to lose quotes on price.`);
+  }
+  if ((Number(i.miles) || 0) > 40) out.push(`${i.miles} miles each way. Most Salt Lake services stop around 30; consider a trip charge or a minimum.`);
+  if (service === 'houseCleaning' && condition >= 1.25) {
+    out.push(i.frequency === 'one_time'
+      ? 'A one-time clean of a home that needs extra attention is really a deep clean. Quote Deep Cleaning so the client gets the list that matches the work.'
+      : 'Most services start a recurring home in this condition with a deep clean. Quote Deep Cleaning for the first visit and this price after it.');
+  }
+  if ((i.oven || i.fridge) && service !== 'moveOutCleaning') {
+    out.push('Utah counts ovens and refrigerators as tangible personal property, so cleaning inside them may be taxable even though cleaning the house is not. Ask the Tax Commission or your accountant before you invoice it.');
+  }
+  return out;
+}
+
+/**
+ * One home clean, priced. Pure: plain inputs in, numbers out, so it can be
+ * tested without the page.
+ *
+ * `billable` applies the minimum-hours floor. The page passes billableHours(),
+ * which also applies the job-conditions time multiplier; that is always 1 for
+ * homes today (they are not in INTERIOR_SERVICES, whose floor-plan options are
+ * written for offices), so the default below gives the same answer.
+ */
+function homeQuote(service, i, billable) {
+  const kind = HOME_KIND[service];
+  const floor = billable || (h => Math.max(h, MIN_BILLABLE_HOURS[service] || 0));
+  const count = v => Math.max(0, Math.round(Number(v) || 0));
+  const beds = count(i.beds);
+  const baths = count(i.baths);
+  const halfBaths = count(i.halfBaths);
+  const living = count(i.living);
+  const sqft = Math.max(0, Number(i.sqft) || 0);
+  const rate = Math.max(0, Number(i.rate) || 0);
+  const miles = Math.max(0, Number(i.miles) || 0);
+  const condition = Number(i.condition) || 1;
+  const pets = Number(i.pets) || 1;
+  const freq = service === 'houseCleaning'
+    ? (HOME_FREQUENCIES.find(f => f.v === i.frequency) || HOME_FREQUENCIES[0])
+    : { v: 'one_time', l: 'One-time', time: 1 };
+
+  const roomHours = HOME_HOURS.fixed + HOME_HOURS.kitchen + beds * HOME_HOURS.bedroom
+    + baths * HOME_HOURS.fullBath + halfBaths * HOME_HOURS.halfBath + living * HOME_HOURS.livingArea;
+  const areaHours = sqft / HOME_SQFT_PER_HOUR;
+  const coreHours = Math.max(roomHours, areaHours) * kind.factor * condition * pets * freq.time;
+
+  const extras = [];
+  HOME_EXTRAS.forEach(x => {
+    if (i[x.key] && !x.in.includes(service)) extras.push({ label: x.label, price: x.price, minutes: x.minutes });
+  });
+  HOME_COUNTED_EXTRAS.forEach(x => {
+    const n = count(i[x.key]);
+    if (n > 0 && !x.in.includes(service)) extras.push({ label: `${x.label} (${n})`, price: n * x.each, minutes: n * x.minutes });
+  });
+  const extrasPrice = extras.reduce((s, x) => s + x.price, 0);
+  const extrasHours = extras.reduce((s, x) => s + x.minutes, 0) / 60;
+
+  const labor = floor(coreHours) * rate;
+  // Sprays, cloths, pads and liners: about 0.4 cents a square foot, more on a
+  // deep clean. A floor of $5 so a studio still pays for its bottle.
+  const productCost = round2(Math.max(5, (sqft || roomHours * HOME_SQFT_PER_HOUR) * 0.004) * kind.factor);
+  const fuelCost = round2(miles * 2 * 0.65);
+  const finalPrice = labor + extrasPrice + productCost + fuelCost;
+
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const rooms = [plural(beds, 'bedroom', 'bedrooms'), plural(baths, 'bathroom', 'bathrooms')];
+  if (halfBaths) rooms.push(plural(halfBaths, 'half bath', 'half baths'));
+  const size = rooms.join(', ') + (sqft ? `, about ${Math.round(sqft).toLocaleString('en-US')} sq ft` : '');
+  const cadence = service === 'houseCleaning' ? ', ' + freq.l.toLowerCase() : '';
+  const extrasText = extras.length ? ` Includes ${extras.map(x => x.label.toLowerCase()).join(', ')}.` : '';
+  const description = `${kind.label}${cadence}: ${size}.${extrasText}`;
+
+  return {
+    basePrice: labor,
+    finalPrice,
+    duration: coreHours + extrasHours,
+    productCost,
+    fuelCost,
+    description,
+    unit: 'visit',
+    qty: 1,
+    // Carried onto the line, so a recurring clean is a recurring line and
+    // counts toward the contract without anyone re-picking it by hand.
+    frequency: freq.v,
+    extrasPrice,
+    roomHours: round2(roomHours),
+    areaHours: round2(areaHours),
+    band: homeBand(service, sqft, freq.v),
+    warnings: homeWarnings(service, i),
+  };
+}
+
+/* The owner's home rate, remembered per device like the burden settings. */
+const HOME_RATE_KEY = 'renovo.homeRate.v1';
+const HOME_RATE_DEFAULT = 50;
+
+function homeRate() {
+  try {
+    const v = Number(localStorage.getItem(HOME_RATE_KEY));
+    return v > 0 ? v : HOME_RATE_DEFAULT;
+  } catch (e) { return HOME_RATE_DEFAULT; }
+}
+
+function saveHomeRate(v) {
+  try { if (Number(v) > 0) localStorage.setItem(HOME_RATE_KEY, String(v)); } catch (e) { /* private browsing */ }
+}
+
+function homeFields(service) {
+  const p = HOME_KIND[service].prefix;
+  const hint = t => `<p class="home-hint">${t}</p>`;
+  const num = (id, value, attrs) => `<input type="number" id="${p}_${id}" value="${value}" ${attrs}>`;
+  const extras = HOME_EXTRAS.filter(x => !x.in.includes(service));
+  const counted = HOME_COUNTED_EXTRAS.filter(x => !x.in.includes(service));
+  return `
+    <div class="home-grid">
+      ${fieldGroup('Square footage', num('sqft', 1800, 'min="0" step="50"') + hint('Finished space. The listing on Zillow or Redfin has it, or the county assessor, or ask.'))}
+      ${fieldGroup('Bedrooms', num('beds', 3, 'min="0" max="12" step="1"'))}
+      ${fieldGroup('Full bathrooms', num('baths', 2, 'min="0" max="12" step="1"'))}
+      ${fieldGroup('Half bathrooms', num('halfBaths', 0, 'min="0" max="6" step="1"') + hint('A toilet and a sink, no shower.'))}
+      ${fieldGroup('Living areas', num('living', 2, 'min="0" max="10" step="1"') + hint('Living, family, dining, office, bonus room: count each one.'))}
+      ${service === 'houseCleaning' ? fieldGroup('How often', selectHtml(`${p}_frequency`, HOME_FREQUENCIES.map(f => ({
+        v: f.v, l: f.l + (f.time === 1 ? '' : ` (${f.time > 1 ? '+' : '−'}${Math.round(Math.abs(f.time - 1) * 100)}% time)`),
+      }))) + hint('Every 2 weeks is what most homes book.')) : ''}
+      ${fieldGroup('Condition', selectHtml(`${p}_condition`, HOME_CONDITIONS) + hint('Ask when it was last cleaned professionally. Photos settle it.'))}
+      ${fieldGroup('Pets', selectHtml(`${p}_pets`, HOME_PETS))}
+      ${fieldGroup('Your rate per cleaner-hour ($)', num('rate', homeRate(), 'min="0" step="1"') + hint('What one person-hour of house cleaning sells for. Salt Lake maid services charge $45-55: MaidThis $50 recurring, $55 first-time. Remembered on this device.'))}
+      ${fieldGroup('Drive distance (miles)', num('miles', 8, 'min="0" step="1"') + hint('One way, from Google Maps.'))}
+    </div>
+    <div class="home-extras">
+      <div class="home-extras-title">Extras</div>
+      ${extras.map(x => `<label class="home-extra"><input type="checkbox" id="${p}_${x.key}"> <span>${x.label} <span class="home-extra-price">+$${x.price}</span></span></label>`).join('')}
+      ${counted.map(x => `<label class="home-extra"><span>${x.label}</span> ${num(x.key, 0, 'min="0" max="80" step="1" class="home-extra-count"')} <span class="home-extra-price">$${x.each} each</span></label>`).join('')}
+    </div>`;
+}
+
+/** The home calculator as the page runs it: read the form, price it. */
+function homeCalculator(service) {
+  const p = HOME_KIND[service].prefix;
+  const box = k => { const el = document.getElementById(`${p}_${k}`); return !!(el && el.checked); };
+  const inputs = {
+    sqft: num(`${p}_sqft`), beds: num(`${p}_beds`), baths: num(`${p}_baths`),
+    halfBaths: num(`${p}_halfBaths`), living: num(`${p}_living`),
+    frequency: val(`${p}_frequency`) || 'biweekly',
+    condition: num(`${p}_condition`) || 1, pets: num(`${p}_pets`) || 1,
+    rate: num(`${p}_rate`), miles: num(`${p}_miles`),
+  };
+  HOME_EXTRAS.forEach(x => { inputs[x.key] = box(x.key); });
+  HOME_COUNTED_EXTRAS.forEach(x => { inputs[x.key] = num(`${p}_${x.key}`); });
+  saveHomeRate(inputs.rate);
+  return homeQuote(service, inputs, h => billableHours(service, h));
+}
+
 const CALCULATORS = {
+  houseCleaning: () => homeCalculator('houseCleaning'),
+  deepCleaning: () => homeCalculator('deepCleaning'),
+  moveOutCleaning: () => homeCalculator('moveOutCleaning'),
   pressureWashing: () => {
     const jobType = val('pw_jobType');
     const sqft = num('pw_sqft');
@@ -2228,7 +2602,7 @@ function recalculate() {
     <div><span>Fully loaded cost</span><strong>${money(cost.loadedCost)}</strong></div>
     <div style="grid-column:1 / -1; border-top:1px solid #EEF2F8; margin-top:6px; padding-top:6px;"><span>Profit after every cost</span><strong style="color:${profitColor};">${money(cost.profit)} <span style="font-weight:600;">(${cost.marginPct.toFixed(1)}% margin)</span></strong></div>`;
 
-  renderSubEffect(sub, subResult);
+  renderSubEffect(sub, subResult, HOME_KIND[activeService] ? finalPrice : 0);
 
   document.getElementById('calcBreakdown').innerHTML = `
     <div style="grid-column:1 / -1; font-weight:700; color:#0D1F38; margin-bottom:2px;">What makes up this price</div>
@@ -2270,7 +2644,7 @@ function recalculate() {
         ? { color: '#E8A317', text: 'ABOVE market — defensible on a hard spec or tight schedule, but expect to justify it.' }
         : { color: '#1B7A3C', text: 'Within the published band for this phase.' };
     document.getElementById('calcBreakdown').innerHTML += `
-      <div style="grid-column:1 / -1; margin-top:12px; padding-top:10px; border-top:1px solid #EEF2F8;">
+      <div style="grid-column:1 / -1; display:block; margin-top:12px; padding-top:10px; border-top:1px solid #EEF2F8;">
         <div style="display:flex; justify-content:space-between; gap:10px;">
           <span>This quote, per square foot</span>
           <strong style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;">${perSqft.toFixed(3)}/sqft</strong>
@@ -2283,9 +2657,40 @@ function recalculate() {
       </div>`;
   }
 
+  /*
+   * Homes: the Salt Lake range for a home this size, before extras -- the
+   * number a homeowner has open in three other tabs while reading this one.
+   * Extras are left out of the comparison because the range is for the clean
+   * itself; a quote with an oven and twelve windows on it should sit above it.
+   */
+  if (result.band) {
+    const basis = round2(finalPrice - (result.extrasPrice || 0));
+    const verdict = basis < result.band.low
+      ? { color: '#C0392B', text: 'Below the Salt Lake range. Homeowners rarely reward the cheapest cleaner; check the rate and the hours before going out this low.' }
+      : basis > result.band.high
+        ? { color: '#E8A317', text: 'Above the Salt Lake range. Right for a home in rough shape or with pets; otherwise expect to lose some of these on price.' }
+        : { color: '#1B7A3C', text: 'Within the Salt Lake range for a home this size.' };
+    document.getElementById('calcBreakdown').innerHTML += `
+      <div style="grid-column:1 / -1; display:block; margin-top:12px; padding-top:10px; border-top:1px solid #EEF2F8;">
+        <div style="display:flex; justify-content:space-between; gap:10px;">
+          <span>This clean, before extras</span><strong>${money(basis)}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:10px; color:#8A98AC;">
+          <span>Salt Lake 2026, a home this size</span><span>${money(result.band.low)} – ${money(result.band.high)}</span>
+        </div>
+        <div style="color:${verdict.color}; font-size:0.82rem; margin-top:5px;">${verdict.text}</div>
+      </div>`;
+  }
+  if (result.warnings && result.warnings.length) {
+    document.getElementById('calcBreakdown').innerHTML += result.warnings
+      .map(w => `<div class="wage-warn" style="grid-column:1 / -1; margin-top:8px;">${w}</div>`).join('');
+  }
+
   const lowRange = finalPrice * 0.85;
   const highRange = finalPrice * 1.15;
-  document.getElementById('calcMarketRange').innerHTML = `Salt Lake City market range (est.): ${money(lowRange)} – ${money(highRange)}`;
+  document.getElementById('calcMarketRange').innerHTML = result.band
+    ? `Salt Lake range for this home, before extras: ${money(result.band.low)} – ${money(result.band.high)}`
+    : `Salt Lake City market range (est.): ${money(lowRange)} – ${money(highRange)}`;
 }
 
 function addCalculatorLineItem() {
@@ -2335,7 +2740,19 @@ function addCalculatorLineItem() {
     subcontractorCost: subMeta.enabled ? subMeta.subCost : null,
     subcontractCoordinationPct: subMeta.enabled ? subMeta.coordinationPct : null,
   };
+  // A calculator that knows the cadence sets it; the row's own select still
+  // wins if it is changed afterwards.
+  if (r.frequency) meta.frequency = r.frequency;
   addLineItem(description, r.qty, finalPrice.toFixed(2), meta);
+
+  // A house clean on a commercial proposal would go out with W-9 and storm
+  // drain language. Switch to the homeowner's quote unless a mode was chosen.
+  if (HOME_KIND[activeService] && !document.getElementById('bidModeGov').checked
+      && !document.getElementById('bidModeHome').checked) {
+    document.getElementById('bidModeHome').checked = true;
+    toggleHomeMode();
+    adminToast('Switched to a home cleaning quote: plain language and home policies instead of commercial terms.', 'success');
+  }
 
   if (!taxDefaultSet) {
     document.getElementById('applyTax').checked = !!TAX_DEFAULT_ON[activeService];
@@ -2364,7 +2781,12 @@ function collectInputs(key) {
   // Burden settings ride along so a reopened estimate shows the margin that
   // was actually quoted, not whatever the rates happen to be today.
   const inputs = Object.assign({ hourlyRate: val('hourlyRate') }, burdenInputs(), { conditions: conditionSelection() });
-  document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => { inputs[el.id] = el.value; });
+  // A checkbox's value is "on" whether it is ticked or not, so an extra the
+  // client declined would be stored exactly like one they bought -- and the
+  // crew checklist is built from these.
+  document.querySelectorAll('#calcFields input, #calcFields select').forEach(el => {
+    inputs[el.id] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value;
+  });
   return inputs;
 }
 
@@ -2652,8 +3074,9 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
 
   const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => {
     const meta = row.dataset.meta ? JSON.parse(row.dataset.meta) : {};
-    // The row's own select wins: the user may have changed it after adding.
+    // The row's own selects win: the user may have changed them after adding.
     delete meta.unit;
+    delete meta.frequency;
     return {
       description: row.querySelector('.li-desc').value,
       quantity: row.querySelector('.li-qty').value || 1,
@@ -2691,7 +3114,8 @@ document.getElementById('estimateForm').addEventListener('submit', async (e) => 
           company: document.getElementById('clientCompany').value,
           propertyAddress: document.getElementById('clientAddress').value
         },
-        bidMode: document.getElementById('bidModeGov').checked ? 'government' : 'standard',
+        bidMode: document.getElementById('bidModeGov').checked ? 'government'
+          : document.getElementById('bidModeHome').checked ? 'residential' : 'standard',
         solicitationNumber: document.getElementById('solicitationNumber').value || undefined,
         optionYears: Number(document.getElementById('optionYears').value) || 0,
         bidDueAt: val('bidDueAt') || null,

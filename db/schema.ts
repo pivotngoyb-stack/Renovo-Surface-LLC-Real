@@ -246,6 +246,15 @@ export const workOrders = pgTable('work_orders', {
   // the bigger lever, but a job that burns three times the degreaser is a job
   // whose chemical model is wrong, and nothing else would ever say so.
   actualMaterialsCost: numeric('actual_materials_cost'),
+  /*
+   * Who did it, when it was not Renovo's own crew.
+   *
+   * A sub is paid per job -- a flat rate or a share of what the job billed --
+   * so the job is the unit that has to know its sub. Without this a month of
+   * subbed house cleans is reconstructed from texts when it is time to pay.
+   * Null means Renovo's own crew.
+   */
+  subcontractorAgreementId: integer('subcontractor_agreement_id').references(() => subcontractorAgreements.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -356,6 +365,12 @@ export const subcontractorAgreements = pgTable('subcontractor_agreements', {
 export const subcontractorPayments = pgTable('subcontractor_payments', {
   id: serial('id').primaryKey(),
   subcontractorAgreementId: integer('subcontractor_agreement_id').notNull().references(() => subcontractorAgreements.id),
+  /**
+   * The job this payment settles, when it settles one. A sub is paid per job,
+   * and a payment that cannot be matched to a job is how a clean gets paid
+   * for twice -- or not at all. Null for older payments and for lump sums.
+   */
+  workOrderId: integer('work_order_id').references(() => workOrders.id),
   amount: numeric('amount').notNull(),
   method: paymentMethodEnum('method').notNull(),
   paidDate: date('paid_date').notNull(),
@@ -605,6 +620,39 @@ export const estimatePhotos = pgTable('estimate_photos', {
   sizeBytes: integer('size_bytes').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
   uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+})
+
+/**
+ * How the crew gets in, and what they need to know once inside.
+ *
+ * A house clean is done with nobody home more often than not, so the job
+ * cannot happen without a door code, a lockbox, or where the key is -- and a
+ * janitorial round at night is the same with an alarm panel added. This is the
+ * most sensitive thing the system holds that is not a payment detail.
+ *
+ * Its own table rather than more columns on the estimate, deliberately. Every
+ * public route loads the estimate row, and the proposal link is forwarded to
+ * whoever the client likes. A column here is not reachable from those routes
+ * at all, because none of them ever selects from this table. The only place it
+ * leaves the office is the crew link, and only while the job is still open.
+ *
+ * One row per estimate: the home a quote is for. A property manager with ten
+ * units has ten estimates, and ten different lockboxes.
+ */
+export const siteAccess = pgTable('site_access', {
+  id: serial('id').primaryKey(),
+  estimateId: integer('estimate_id').notNull().references(() => estimates.id).unique(),
+  /** someone_home | lockbox | keypad | garage_code | hidden_key | key_on_file | other */
+  entryMethod: text('entry_method'),
+  /** The code, or where the key is. Crew link only, and only until the job is logged. */
+  entryDetails: text('entry_details'),
+  /** Panel location, code, and what to do if it goes off. Same handling as above. */
+  alarmDetails: text('alarm_details'),
+  pets: text('pets'),
+  parking: text('parking'),
+  /** Priorities, rooms to skip, fragile things, where the client's own supplies are. */
+  instructions: text('instructions'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
 /**

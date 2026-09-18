@@ -1,4 +1,5 @@
 import type { JobPlan } from './jobModel.mts'
+import { frequencyOf } from './serviceSchedule.mts'
 
 /**
  * What the crew is allowed to receive.
@@ -41,6 +42,7 @@ export interface CrewPlan {
   water: { gallons: number; note: string }
   compliance: JobPlan['compliance']
   weather: string[]
+  checklist: JobPlan['checklist']
   warnings: string[]
 }
 
@@ -66,8 +68,36 @@ export function crewPlan(plan: JobPlan): CrewPlan {
     water: plan.water,
     compliance: plan.compliance,
     weather: plan.weather,
+    checklist: plan.checklist,
     warnings: plan.warnings,
   }
+}
+
+/**
+ * The lines one work order actually covers.
+ *
+ * A quote can sell one-time work and recurring work together: a deep clean
+ * first and every two weeks after it, or a strip-and-wax and then nightly
+ * janitorial. The visit generator already scopes each visit to the recurring
+ * lines (admin-contract-visits.mts). Without the same rule here, every
+ * recurring visit's plan carried the one-time job as well -- its hours, its
+ * equipment, and on a house its whole deep-clean checklist, every fortnight.
+ *
+ *   visit          the recurring lines, when there are any
+ *   authorization  the one-time lines, when the quote has both kinds;
+ *                  otherwise everything that was sold
+ *
+ * Optional lines are dropped: they are work the client did not buy.
+ */
+export function linesForJob<T extends { frequency?: string | null; isOptional?: boolean | null }>(
+  lines: T[],
+  kind: string,
+): T[] {
+  const sold = lines.filter(l => !l.isOptional)
+  const recurring = sold.filter(l => frequencyOf(l.frequency).recurring)
+  const oneTime = sold.filter(l => !frequencyOf(l.frequency).recurring)
+  if (kind === 'visit') return recurring.length ? recurring : sold
+  return recurring.length && oneTime.length ? oneTime : sold
 }
 
 /** Everything deliberately withheld. Exported so a test can assert on it. */

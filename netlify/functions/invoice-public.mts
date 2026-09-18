@@ -6,6 +6,7 @@ import { getInvoiceTotals } from './_shared/invoices.mts'
 import { isStripeConfigured } from './_shared/stripe.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
+import { publicClient, publicInvoice } from './_shared/clientView.mts'
 
 export default async (request: Request, context: Context) => {
   const token = context.params.token
@@ -33,8 +34,8 @@ export default async (request: Request, context: Context) => {
       : []
 
     return json({
-      invoice,
-      client,
+      invoice: publicInvoice(invoice),
+      client: publicClient(client),
       lineItems: totals.lineItems,
       subtotal: totals.subtotal,
       total: totals.total,

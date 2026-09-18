@@ -4,7 +4,8 @@ import { effectiveExpiry, isExpired } from './expiry.mts'
 import { buildProposalScope } from './scopeLibrary.mts'
 import { contractValue, groupBySite, frequencyOf } from './serviceSchedule.mts'
 import { COMPANY } from './companyProfile.mts'
-import { executiveSummary } from './proposalDoc.mts'
+import { executiveSummary, homeSummary } from './proposalDoc.mts'
+import { isResidential } from './bidMode.mts'
 import { depositSplit } from './deposit.mts'
 import { generateProposalPdf } from './proposalPdf.mts'
 
@@ -54,7 +55,8 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     .where(eq(schema.estimateScopeLines.estimateId, estimate.id))
     .orderBy(schema.estimateScopeLines.sortOrder, schema.estimateScopeLines.id)
 
-  const scope = buildProposalScope(lineItems.map(li => li.serviceType), customScope)
+  const residential = isResidential(estimate)
+  const scope = buildProposalScope(lineItems.map(li => li.serviceType), customScope, { residential })
   const contract = contractValue(lineItems)
 
   const base = lineItems.filter(li => !li.isOptional)
@@ -67,7 +69,15 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
   const expiresOn = effectiveExpiry(estimate.validUntil, estimate.createdAt)
   const sites = groupBySite(lineItems)
 
-  const summary = executiveSummary({
+  const summary = residential
+    ? homeSummary({
+        serviceLabels: scope.sections.filter(sec => sec.label !== 'Additional Scope For This Project').map(sec => sec.label),
+        lines: lineItems,
+        siteAddress: estimate.siteAddress || client?.propertyAddress || null,
+        walkthroughDate: estimate.walkthroughDate,
+        expiresOn,
+      })
+    : executiveSummary({
     serviceLabels: scope.sections.map(sec => sec.label),
     contract,
     subtotal,
@@ -112,7 +122,7 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     poNumber: estimate.poNumber,
     company: COMPANY,
     client: client || null,
-    projectName: estimate.projectName || client?.company || 'Service Proposal',
+    projectName: estimate.projectName || (residential ? 'Home Cleaning' : client?.company || 'Service Proposal'),
     siteAddress: estimate.siteAddress || client?.propertyAddress || '',
     summary,
     scope,
@@ -126,7 +136,10 @@ export async function buildProposalPdf(estimate: Estimate, client: Client | null
     contract,
     notes: estimate.notes,
     statusLine,
-    paymentTerms: PAYMENT_TERMS,
+    // A home quote states its billing in the policies block. Printing the
+    // commercial net-14 terms beside it would give the client two answers.
+    paymentTerms: residential ? [] : PAYMENT_TERMS,
+    residential,
     deposit: depositSplit(subtotal + taxAmount, estimate.depositPct),
   })
 }

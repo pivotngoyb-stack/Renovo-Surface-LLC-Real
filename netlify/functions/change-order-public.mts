@@ -6,6 +6,7 @@ import { json, notFound, badRequest, getClientIp } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { notifyAdminChangeOrderSigned, notifyAdminChangeOrderDeclined } from './_shared/email.mts'
 import { frequencyOf } from './_shared/serviceSchedule.mts'
+import { publicClient, publicChangeOrder } from './_shared/clientView.mts'
 import {
   changeOrderTotal, canRespond, changeOrderTerms, reasonLabel,
   changeOrderRef, contractChangeEffect, contractChangeTerms,
@@ -108,9 +109,9 @@ export default withErrorHandling('change-order-public', async (request: Request,
     }
 
     return json({
-      changeOrder: { ...changeOrder, number, total },
+      changeOrder: publicChangeOrder(changeOrder, { number, total }),
       lineItems,
-      client,
+      client: publicClient(client),
       projectName: estimate?.projectName || null,
       siteAddress: estimate?.siteAddress || null,
       /*

@@ -68,6 +68,20 @@ export default withErrorHandling('admin-estimate-contract', async (request: Requ
     // Capped at 28 so a monthly charge never skips February.
     : 1
 
+  /*
+   * How often the crew goes, taken from what was sold.
+   *
+   * Left to the column default, every contract was 'monthly'. A fortnightly
+   * house clean then got one visit a month on the schedule, and a change order
+   * to it was priced at twelve visits a year instead of twenty-six -- billing
+   * less than half of every increase. Where a package mixes cadences, the
+   * busiest one sets the rhythm; the rest ride along on those visits, which is
+   * what the visit scope already assumes.
+   */
+  const visitFrequency = recurring
+    .map(li => frequencyOf(li.frequency))
+    .sort((a, b) => b.visitsPerYear - a.visitsPerYear)[0].key
+
   const services = [...new Set(recurring.map(li => frequencyOf(li.frequency).label))].join(', ')
   const description = typeof body.description === 'string' && body.description.trim()
     ? body.description.trim().slice(0, 200)
@@ -81,6 +95,7 @@ export default withErrorHandling('admin-estimate-contract', async (request: Requ
       description,
       amount: String(contract.monthlyAverage),
       billingDay,
+      visitFrequency,
       status: 'active',
     })
     .returning()

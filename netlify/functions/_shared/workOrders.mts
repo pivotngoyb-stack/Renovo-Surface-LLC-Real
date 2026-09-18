@@ -2,6 +2,8 @@ import { eq, and } from 'drizzle-orm'
 import { db, schema } from './db.mts'
 import { generateToken } from './tokens.mts'
 import { sendWorkOrderToClient, notifyAdminEmailDeliveryFailed } from './email.mts'
+import { residentialPolicies } from './scopeLibrary.mts'
+import { isResidential } from './bidMode.mts'
 
 const SITE_URL = process.env.SITE_URL || 'https://renovosurface.com'
 
@@ -43,6 +45,18 @@ export async function createWorkOrderForEstimate(estimateId: number) {
   const scopeLines = lineItems.map((li) => `  - ${li.description} (Qty: ${li.quantity} @ $${Number(li.unitPrice).toFixed(2)})`).join('\n')
   const taxLine = estimate.taxApplied ? `\nUtah Sales Tax (7.25%): $${Number(estimate.taxAmount).toFixed(2)}` : ''
 
+  /*
+   * A homeowner signs the same authorization, plus the house rules.
+   *
+   * Cancellation notice, the lockout fee and the re-clean window are the terms
+   * a residential dispute is actually about, and a fee the client never signed
+   * is a fee nobody can charge. They come from the same policy the quote
+   * printed, so the two documents cannot disagree.
+   */
+  const homeTerms = isResidential(estimate)
+    ? `\n\nHome Service Terms:\n${residentialPolicies().map(p => `  - ${p}`).join('\n')}`
+    : ''
+
   const termsText = `WORK AUTHORIZATION
 
 Client: ${client.name}${client.company ? ` (${client.company})` : ''}
@@ -52,7 +66,7 @@ Scope of Work:
 ${scopeLines}
 
 Subtotal: $${subtotal.toFixed(2)}${taxLine}
-Total Amount: $${total.toFixed(2)}
+Total Amount: $${total.toFixed(2)}${homeTerms}
 
 By signing below, the client authorizes Renovo Surface Solutions LLC to perform
 the work described above. Payment is due per the terms of the invoice issued

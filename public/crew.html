@@ -62,6 +62,21 @@
   .shot-label { font-size: 0.78rem; font-weight: 700; color: #4A5A72; margin: 10px 0 6px; }
   .shot-nudge { background: #EAF2FF; border-color: #B9D3F5; }
   .shot-nudge h2 { color: #1B4F8F; }
+  /* Getting in: the one card read at the door, so it is first and loud. */
+  .crew-access { border-color: var(--navy); }
+  .crew-access h2 { color: var(--navy); }
+  /* Two classes deep so it outranks `.crew-card li`: the code on its own line
+     and the code after "Alarm:" must read at the same size. */
+  .crew-card .crew-code { font-size: 1.1rem; font-weight: 700; color: var(--navy); white-space: pre-line; }
+  .crew-instructions { margin: 10px 0 0; font-size: 0.95rem; line-height: 1.5; white-space: pre-line; }
+  .crew-hidden { color: #8A98AC; }
+  /* Checklist: whole-row targets, big enough to hit with a glove on. */
+  .check-area { margin-top: 12px; }
+  .check-area:first-of-type { margin-top: 0; }
+  .check-area-name { font-weight: 700; color: var(--navy); font-size: 0.95rem; margin-bottom: 4px; }
+  .check-item { display: flex; gap: 12px; align-items: flex-start; padding: 9px 2px; border-bottom: 1px solid #EEF2F8; font-size: 0.95rem; line-height: 1.4; cursor: pointer; }
+  .check-item input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; }
+  .check-item input:checked + span { color: #8A98AC; text-decoration: line-through; }
 </style>
 </head>
 <body class="admin-body">
@@ -137,6 +152,43 @@ function render(d) {
 
   const logged = actuals.actualHours != null;
 
+  /*
+   * How to get in. The codes only come down the wire while the job is open;
+   * once the hours are logged the server stops sending them, and this card
+   * says so instead of going quiet about why they are missing.
+   */
+  const a = d.access;
+  const access = a ? `
+    <div class="crew-card crew-access">
+      <h2>Getting in</h2>
+      <ul>
+        ${a.entryMethod ? `<li><strong>${esc(a.entryMethod)}</strong></li>` : ''}
+        ${a.entryDetails ? `<li class="crew-code">${esc(a.entryDetails)}</li>` : ''}
+        ${a.alarmDetails ? `<li><strong>Alarm:</strong> <span class="crew-code">${esc(a.alarmDetails)}</span></li>` : ''}
+        ${a.codesHidden ? `<li class="crew-hidden">The entry and alarm codes are hidden now this job is logged. Ring the office if you need to go back in.</li>` : ''}
+        ${a.parking ? `<li><strong>Parking:</strong> ${esc(a.parking)}</li>` : ''}
+        ${a.pets ? `<li><strong>Pets:</strong> ${esc(a.pets)}</li>` : ''}
+      </ul>
+      ${a.instructions ? `<p class="crew-instructions">${esc(a.instructions)}</p>` : ''}
+    </div>` : '';
+
+  /* The checklist, ticked off on this phone. Kept on the device: it is a
+     working aid for the person holding it, and the photos are the record. */
+  const checklist = plan.checklist && plan.checklist.length ? `
+    <div class="crew-card" id="checklistCard">
+      <h2>Checklist</h2>
+      ${plan.checklist.map(area => `
+        <div class="check-area">
+          <div class="check-area-name">${esc(area.area)}</div>
+          ${area.items.map(item => `
+            <label class="check-item">
+              <input type="checkbox" data-key="${esc(area.area + ' | ' + item)}" onchange="saveChecks()">
+              <span>${esc(item)}</span>
+            </label>`).join('')}
+        </div>`).join('')}
+      <p class="crew-hint" id="checkCount" style="margin:12px 0 0;"></p>
+    </div>` : '';
+
   document.getElementById('content').innerHTML = `
     <div class="crew-head">
       <h1>${esc(title)}</h1>
@@ -146,6 +198,7 @@ function render(d) {
       ${job.scheduledDate ? `<p>${esc(job.scheduledDate)}${job.scheduledStart ? ' at ' + esc(job.scheduledStart) : ''}</p>` : ''}
     </div>
 
+    ${access}
     ${warnings}
 
     <div class="crew-card">
@@ -153,6 +206,8 @@ function render(d) {
       <ul>${list(scope)}</ul>
       ${contractDescription ? `<p style="font-size:0.85rem; color:#8A98AC; margin:10px 0 0;">Under ${esc(contractDescription)}</p>` : ''}
     </div>
+
+    ${checklist}
 
     <div class="crew-card">
       <h2>Crew and time</h2>
@@ -207,6 +262,40 @@ function render(d) {
     </div>`;
 
   loadPhotos();
+  restoreChecks();
+}
+
+/* ---------- Checklist ticks ----------
+ *
+ * Stored on this phone under this job's link, so a page reload or a locked
+ * screen does not lose where the cleaner had got to. Keyed by the item's own
+ * words rather than its position, so a list the office edits between visits
+ * does not tick the wrong boxes.
+ */
+const CHECKS_KEY = `renovo.crewChecks.${token}`;
+
+function readChecks() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHECKS_KEY) || '[]')); } catch (e) { return new Set(); }
+}
+
+function countChecks() {
+  const boxes = [...document.querySelectorAll('#checklistCard input[type="checkbox"]')];
+  const el = document.getElementById('checkCount');
+  if (!el || !boxes.length) return;
+  const done = boxes.filter(b => b.checked).length;
+  el.textContent = done === boxes.length ? `All ${boxes.length} done.` : `${done} of ${boxes.length} done.`;
+}
+
+function restoreChecks() {
+  const saved = readChecks();
+  document.querySelectorAll('#checklistCard input[type="checkbox"]').forEach(b => { b.checked = saved.has(b.dataset.key); });
+  countChecks();
+}
+
+function saveChecks() {
+  const keys = [...document.querySelectorAll('#checklistCard input[type="checkbox"]')].filter(b => b.checked).map(b => b.dataset.key);
+  try { localStorage.setItem(CHECKS_KEY, JSON.stringify(keys)); } catch (e) { /* private browsing: ticks just do not persist */ }
+  countChecks();
 }
 
 /* ---------- Photos ----------

@@ -61,7 +61,14 @@ export default withErrorHandling('admin-bid-board', async (request: Request) => 
 
   const valueOf = new Map(values.map(v => [v.estimateId, Number(v.value || 0)]))
 
-  const bids: BidRecord[] = rows.map(r => ({
+  /*
+   * The pricing record is for bids. A house quote is won or lost against a
+   * different market, at a twentieth of the value, ten times as often -- left
+   * in, it would drown the win rate and loss gap that tell you whether the
+   * next commercial number is right. Home quotes still appear in the lists
+   * below: one sent and never answered still needs chasing.
+   */
+  const bids: BidRecord[] = rows.filter(r => r.bidMode !== 'residential').map(r => ({
     id: r.id,
     outcome: r.outcome,
     amount: valueOf.get(r.id) || 0,

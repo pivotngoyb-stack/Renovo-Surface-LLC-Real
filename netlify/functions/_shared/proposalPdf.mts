@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { ascii } from './pdfText.mts'
+import { frequencyOf } from './serviceSchedule.mts'
 
 /**
  * The proposal as a PDF, in Renovo's document house style.
@@ -209,7 +210,7 @@ export interface ProposalPdfArgs {
     compliance: string[]
   }
   siteConditions?: string | null
-  lineItems: Array<{ description: string; quantity: string | number; unit?: string | null; unitPrice: string | number; isOptional?: boolean | null }>
+  lineItems: Array<{ description: string; quantity: string | number; unit?: string | null; unitPrice: string | number; isOptional?: boolean | null; frequency?: string | null }>
   subtotal: number
   taxApplied: boolean
   taxAmount: number
@@ -219,6 +220,8 @@ export interface ProposalPdfArgs {
   notes?: string | null
   paymentTerms: string[]
   deposit?: { required: boolean; pct: number; depositDue: number; balanceDue: number } | null
+  /** A homeowner's quote: plain headings, policies in place of compliance. */
+  residential?: boolean
 }
 
 export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Array> {
@@ -228,7 +231,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
 
   pdf.setTitle(ascii(`${a.proposalNumber} - ${a.projectName}`))
   pdf.setAuthor(ascii(a.company.legalName))
-  pdf.setSubject('Commercial cleaning services proposal')
+  pdf.setSubject(a.residential ? 'Home cleaning quote' : 'Commercial cleaning services proposal')
 
   const d = new Doc(
     pdf, font, bold,
@@ -251,7 +254,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   d.page.drawText(ascii(a.company.legalName.toUpperCase()), {
     x: headLeft, y: d.y - 12, size: 13.5, font: bold, color: NAVY,
   })
-  d.right('PROPOSAL', d.y - 15, 25, bold, NAVY)
+  d.right(a.residential ? 'QUOTE' : 'PROPOSAL', d.y - 15, 25, bold, NAVY)
 
   let ly = d.y - 25
   for (const line of [a.company.tagline, `${a.company.addressLine}, ${a.company.city}, ${a.company.state} ${a.company.zip}`, `${a.company.email} | ${a.company.phone}`]) {
@@ -262,7 +265,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   /* right-hand meta stack, label then bold value, as on the invoices */
   let my = d.y - 38
   const meta: Array<[string, string, boolean]> = [
-    ['Proposal No.', a.proposalNumber, true],
+    [a.residential ? 'Quote No.' : 'Proposal No.', a.proposalNumber, true],
     ['Date Issued', a.issuedDate, false],
     ['Valid Through', a.expiresDate, true],
   ]
@@ -288,7 +291,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   const half = W / 2
   const colTop = d.y
   d.page.drawText('PREPARED FOR', { x: M, y: colTop, size: 7.5, font: bold, color: LABEL })
-  d.page.drawText('PROJECT / JOB SITE', { x: M + half, y: colTop, size: 7.5, font: bold, color: LABEL })
+  d.page.drawText(a.residential ? 'SERVICE ADDRESS' : 'PROJECT / JOB SITE', { x: M + half, y: colTop, size: 7.5, font: bold, color: LABEL })
 
   const leftLines = [
     a.client?.company || a.client?.name || '',
@@ -320,7 +323,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
 
   /* ---------- what we propose ---------- */
   if (a.summary.length) {
-    d.label('What we propose')
+    d.label(a.residential ? 'Your quote at a glance' : 'What we propose')
     for (const p of a.summary) { d.body(p); d.gap(3) }
     d.gap(6)
   }
@@ -332,10 +335,18 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   const tableHead = () => {
     d.need(46)
     d.page.drawRectangle({ x: M, y: d.y - 20, width: W, height: 20, color: HEAD_BAR })
-    d.page.drawText('Description', { x: M + 10, y: d.y - 13.5, size: 8, font: bold, color: rgb(1, 1, 1) })
-    d.right('Qty', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_QTY + 46)
-    d.right('Rate', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_RATE + 62)
-    d.right('Amount', d.y - 13.5, 8, bold, rgb(1, 1, 1), PAGE_W - M - 10)
+    // A homeowner reads what gets cleaned, how often, and what it costs; a
+    // quantity and a unit rate are the paperwork of a bid. Same as the web page.
+    if (a.residential) {
+      d.page.drawText('Cleaning', { x: M + 10, y: d.y - 13.5, size: 8, font: bold, color: rgb(1, 1, 1) })
+      d.right('How often', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_RATE + 62)
+      d.right('Price', d.y - 13.5, 8, bold, rgb(1, 1, 1), PAGE_W - M - 10)
+    } else {
+      d.page.drawText('Description', { x: M + 10, y: d.y - 13.5, size: 8, font: bold, color: rgb(1, 1, 1) })
+      d.right('Qty', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_QTY + 46)
+      d.right('Rate', d.y - 13.5, 8, bold, rgb(1, 1, 1), COL_RATE + 62)
+      d.right('Amount', d.y - 13.5, 8, bold, rgb(1, 1, 1), PAGE_W - M - 10)
+    }
     d.y -= 20
   }
 
@@ -355,8 +366,12 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
         ty -= 11.5
       })
       const mid = d.y - 14
-      d.right(`${li.quantity} ${ascii(li.unit || 'job')}`, mid, 8.4, font, INK, COL_QTY + 46)
-      d.right(money(Number(li.unitPrice)), mid, 8.4, font, INK, COL_RATE + 62)
+      if (a.residential) {
+        d.right(frequencyOf(li.frequency).label, mid, 8.4, font, INK, COL_RATE + 62)
+      } else {
+        d.right(`${li.quantity} ${ascii(li.unit || 'job')}`, mid, 8.4, font, INK, COL_QTY + 46)
+        d.right(money(Number(li.unitPrice)), mid, 8.4, font, INK, COL_RATE + 62)
+      }
       d.right(money(amount), mid, 8.4, bold, NAVY, PAGE_W - M - 10)
       d.y -= h
       striped = !striped
@@ -380,15 +395,40 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
     d.y -= size * 1.85
   }
 
-  totalRow('Subtotal', a.subtotal)
-  if (a.taxApplied) totalRow('Sales Tax (7.25%)', a.taxAmount)
-  d.need(14)
-  d.page.drawLine({
-    start: { x: PAGE_W - M - 230, y: d.y + 3 }, end: { x: PAGE_W - M, y: d.y + 3 },
-    thickness: 1.2, color: NAVY,
-  })
-  d.gap(4)
-  totalRow(a.contract?.hasRecurring ? 'Total, Per Visit' : 'Total', a.total, true)
+  /*
+   * A home quote with a recurring clean has no single total anybody pays: the
+   * deep clean is paid once, the fortnightly price every visit. Adding them
+   * together printed a figure no invoice would ever carry, under a heading
+   * ("per visit") that was true of neither. So a home quote states each price
+   * the way it will be charged.
+   */
+  const homeRecurring = !!a.residential && !!a.contract?.hasRecurring
+  const rule = () => {
+    d.need(14)
+    d.page.drawLine({
+      start: { x: PAGE_W - M - 230, y: d.y + 3 }, end: { x: PAGE_W - M, y: d.y + 3 },
+      thickness: 1.2, color: NAVY,
+    })
+    d.gap(4)
+  }
+  if (homeRecurring) {
+    const lt = (li: (typeof base)[number]) => Number(li.quantity) * Number(li.unitPrice)
+    const oneTime = base.filter(li => !frequencyOf(li.frequency).recurring)
+    if (oneTime.length) totalRow('One-time cleaning', oneTime.reduce((s, li) => s + lt(li), 0))
+    if (a.taxApplied) totalRow('Sales Tax (7.25%), one of each', a.taxAmount)
+    rule()
+    const cadences = new Map<string, number>()
+    for (const li of base.filter(li => frequencyOf(li.frequency).recurring)) {
+      const key = frequencyOf(li.frequency).key
+      cadences.set(key, (cadences.get(key) || 0) + lt(li))
+    }
+    for (const [key, value] of cadences) totalRow(`Each visit, ${frequencyOf(key).label.toLowerCase()}`, value, true)
+  } else {
+    totalRow('Subtotal', a.subtotal)
+    if (a.taxApplied) totalRow('Sales Tax (7.25%)', a.taxAmount)
+    rule()
+    totalRow(a.contract?.hasRecurring ? 'Total, Per Visit' : 'Total', a.total, true)
+  }
 
   // Deposit and balance, as the sample estimates present them. Drawn after
   // the total so the reader sees the whole number before it is split.
@@ -403,8 +443,12 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
 
   if (a.contract?.hasRecurring) {
     d.gap(2)
-    d.body(`Recurring services average ${money(a.contract.monthlyAverage)} per month. Annual contract value ${money(a.contract.annualRecurring)}.`
-      + (a.contract.oneTimeTotal > 0 ? ` Total for the first year, including one-time work: ${money(a.contract.firstYearTotal)}.` : ''),
+    d.body(a.residential
+      // Per month, the figure a household budgets. An annual contract value at
+      // the foot of a house quote reads as the price of the cleaning.
+      ? `Recurring cleaning comes to about ${money(a.contract.monthlyAverage)} a month.`
+      : `Recurring services average ${money(a.contract.monthlyAverage)} per month. Annual contract value ${money(a.contract.annualRecurring)}.`
+        + (a.contract.oneTimeTotal > 0 ? ` Total for the first year, including one-time work: ${money(a.contract.firstYearTotal)}.` : ''),
       { size: 8.4, color: MUTED })
   }
 
@@ -422,7 +466,7 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   /* ---------- scope and the rest ---------- */
   if (a.scope.sections.length) {
     d.gap(8)
-    d.label('Scope of work')
+    d.label(a.residential ? "What's included" : 'Scope of work')
     for (const sec of a.scope.sections) {
       d.need(30)
       d.body(sec.label, { font: bold, size: 8.8, color: NAVY })
@@ -460,23 +504,31 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
       d.body(`Observed at walk-through: ${a.siteConditions}`, { size: 8.4 })
       d.gap(5)
     }
-    d.body('If any of the following is not true on the service date, we will document it and re-quote before proceeding.', { size: 8.2, color: MUTED })
+    d.body(a.residential
+      ? 'This price depends on the following. If anything is different on the day, we will talk to you before we start.'
+      : 'If any of the following is not true on the service date, we will document it and re-quote before proceeding.', { size: 8.2, color: MUTED })
     d.gap(4)
     for (const x of a.scope.assumptions) d.bullet(x)
     d.gap(4)
   }
 
   if (a.scope.compliance.length) {
-    d.label('Insurance, compliance & our guarantee')
+    d.label(a.residential ? 'Our policies' : 'Insurance, compliance & our guarantee')
     for (const x of a.scope.compliance) d.bullet(x)
     d.gap(3)
-    d.body('If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.',
-      { size: 8.2, color: MUTED })
+    // The home policies carry their own re-clean promise, with the owner's own
+    // window in it. Printing this one as well would state it twice.
+    if (!a.residential) {
+      d.body('If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.',
+        { size: 8.2, color: MUTED })
+    }
     d.gap(4)
   }
 
-  d.label('Payment terms')
-  for (const t of a.paymentTerms) d.body(t, { size: 8.4 })
+  if (a.paymentTerms.length) {
+    d.label('Payment terms')
+    for (const t of a.paymentTerms) d.body(t, { size: 8.4 })
+  }
 
   if (a.notes) {
     d.gap(4)
@@ -489,9 +541,13 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
   d.gap(8)
   d.label('Acceptance')
   d.body(
-    `This proposal is valid through ${a.expiresDate} and is based on the scope, exclusions and assumptions stated above. `
-    + 'Accepting it authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described. '
-    + 'A signed work order is required before any work begins - acceptance here is not itself a work order.',
+    a.residential
+      ? `This quote is good through ${a.expiresDate} and is based on what is included, not included and assumed above. `
+        + 'Accepting it lets us book your cleaning. Before the first visit you will receive a short service agreement to sign, '
+        + 'and no work begins until it is signed.'
+      : `This proposal is valid through ${a.expiresDate} and is based on the scope, exclusions and assumptions stated above. `
+        + 'Accepting it authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described. '
+        + 'A signed work order is required before any work begins - acceptance here is not itself a work order.',
     { size: 8.4 },
   )
   d.gap(24)
@@ -507,7 +563,10 @@ export async function generateProposalPdf(a: ProposalPdfArgs): Promise<Uint8Arra
     d.y -= 28
   }
   signRow('Accepted by (signature)', 'Date')
-  signRow('Print name & title', a.poNumber ? 'Date' : 'PO / Reference')
+  // A homeowner has no title and no purchase order; what the office needs from
+  // a signed paper quote is when they want the first clean.
+  if (a.residential) signRow('Print name', 'Preferred first cleaning date')
+  else signRow('Print name & title', a.poNumber ? 'Date' : 'PO / Reference')
 
   return pdf.save()
 }

@@ -86,6 +86,10 @@ export const SERVICE_EQUIPMENT: Record<string, string[]> = {
   constructionProgress: ['hepaVac', 'wetVac'],
   constructionFinal: ['hepaVac', 'wetVac', 'autoScrubber'],
   constructionTouchup: ['hepaVac'],
+  // A backpack vacuum is the only machine a house clean wears out.
+  houseCleaning: ['hepaVac'],
+  deepCleaning: ['hepaVac'],
+  moveOutCleaning: ['hepaVac'],
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100

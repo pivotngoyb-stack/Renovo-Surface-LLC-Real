@@ -61,6 +61,11 @@ const MAX_PARALLEL: Record<string, number> = {
   carpetExtraction: 2,
   tileGrout: 2,
   ventCleaning: 3,
+  // A house fits two or three cleaners before they are working in each
+  // other's way; an empty move-out takes a fourth.
+  houseCleaning: 3,
+  deepCleaning: 3,
+  moveOutCleaning: 4,
 }
 
 /** Target on-site window before we add a second tech. */
@@ -127,6 +132,12 @@ export interface ComplianceItem {
   detail: string
 }
 
+/** One room's worth of the crew checklist. */
+export interface ChecklistArea {
+  area: string
+  items: string[]
+}
+
 export interface JobPlan {
   services: string[]
   laborHours: number
@@ -145,6 +156,12 @@ export interface JobPlan {
     delta: number
     status: 'ok' | 'over'
   }
+  /**
+   * Room by room, what a finished clean has to include. Homes only for now:
+   * a house is judged by whether the list was done, and a cleaner working
+   * alone, or a sub on their first visit, has nobody else to ask.
+   */
+  checklist: ChecklistArea[]
   /** Things the crew standing on site needs to know. Safe to hand out. */
   warnings: string[]
   /**
@@ -204,7 +221,13 @@ const SERVICE_LABELS: Record<string, string> = {
   carpetExtraction: 'Carpet Cleaning',
   tileGrout: 'Tile & Grout Cleaning',
   ventCleaning: 'Vent & Diffuser Cleaning',
+  houseCleaning: 'House Cleaning',
+  deepCleaning: 'Deep Cleaning',
+  moveOutCleaning: 'Move-In / Move-Out Cleaning',
 }
+
+/** Cleaning somebody's home, as opposed to a building. */
+export const HOME_SERVICES = new Set(['houseCleaning', 'deepCleaning', 'moveOutCleaning'])
 
 /* ---------- chemical models ---------- */
 
@@ -684,6 +707,42 @@ const EQUIPMENT: Record<string, string[]> = {
     'Containment tarps and wet vacuum for recovery',
     'Test-patch kit',
   ],
+  // The same strings across the three, so a deep clean and a recurring clean
+  // on one quote list one vacuum, not two.
+  houseCleaning: [
+    'Backpack or upright vacuum with a hard-floor setting',
+    'Microfiber cloths, color-coded: kitchen, bathroom, dusting, glass',
+    'Flat mop with clean pads',
+    'Caddy: all-purpose cleaner, bathroom disinfectant, glass cleaner, scrub brushes',
+    'Trash liners',
+    'Two-step stool',
+  ],
+  deepCleaning: [
+    'Backpack or upright vacuum with a hard-floor setting',
+    'Microfiber cloths, color-coded: kitchen, bathroom, dusting, glass',
+    'Flat mop with clean pads',
+    'Caddy: all-purpose cleaner, bathroom disinfectant, glass cleaner, scrub brushes',
+    'Trash liners',
+    'Two-step stool',
+    'Grout brush and detail brushes',
+    'Hard-water and soap-scum remover',
+    'Degreaser for the range hood and filter',
+    'Extension duster for fans and vents',
+  ],
+  moveOutCleaning: [
+    'Backpack or upright vacuum with a hard-floor setting',
+    'Microfiber cloths, color-coded: kitchen, bathroom, dusting, glass',
+    'Flat mop with clean pads',
+    'Caddy: all-purpose cleaner, bathroom disinfectant, glass cleaner, scrub brushes',
+    'Trash liners',
+    'Two-step stool',
+    'Grout brush and detail brushes',
+    'Hard-water and soap-scum remover',
+    'Degreaser for the range hood and filter',
+    'Extension duster for fans and vents',
+    'Oven cleaner and a plastic scraper',
+    'Squeegee and scrubber for interior windows',
+  ],
 }
 
 const PPE: Record<string, string[]> = {
@@ -706,9 +765,46 @@ const PPE: Record<string, string[]> = {
   constructionFinal: ['N95 respirator (residual dust)', 'Safety glasses', 'Nitrile gloves', 'Non-slip footwear', 'Knee pads'],
   constructionTouchup: ['Safety glasses', 'Nitrile gloves', 'Non-slip footwear'],
   graffitiRemoval: ['Organic-vapor respirator with N95 pre-filter', 'Tyvek coverall', 'Viton or PVC chemical gloves', 'Face shield over goggles'],
+  houseCleaning: ['Nitrile gloves', 'Shoe covers, or shoes worn indoors only'],
+  deepCleaning: ['Nitrile gloves', 'Shoe covers, or shoes worn indoors only', 'Safety glasses for overhead dusting and spraying'],
+  moveOutCleaning: ['Nitrile gloves', 'Shoe covers, or shoes worn indoors only', 'Safety glasses for overhead dusting and spraying', 'Mask rated for the oven cleaner in use (see its label)'],
 }
 
+/*
+ * Rules for working in somebody's home. The storm-drain and SDS defaults below
+ * are written for a forecourt; inside a house, what goes wrong is a door left
+ * open, a mixed chemical, and a broken vase nobody mentioned.
+ */
+const HOME_RULES: ComplianceItem[] = [
+  {
+    level: 'critical',
+    requirement: 'Never leave the home unlocked or the alarm off',
+    detail: 'Lock every door you came in through and set the alarm if there is one. If a code does not work, call the office before you leave -- never walk away from an open house.',
+  },
+  {
+    level: 'critical',
+    requirement: 'Never mix bleach with ammonia or acid cleaners',
+    detail: 'Bleach with an ammonia glass cleaner, or with a toilet-bowl acid, makes a toxic gas. One product per surface, and rinse before switching.',
+  },
+  {
+    level: 'standard',
+    requirement: 'Photograph damage before you start',
+    detail: 'Anything already broken, stained or scratched: photograph it on arrival, so the record shows it was there before us.',
+  },
+  {
+    level: 'standard',
+    requirement: 'Report breakage the same day',
+    detail: 'If something breaks, stop, photograph it, and call the office before you leave. The client hears it from us, not finds it.',
+  },
+  {
+    level: 'standard',
+    requirement: 'Rooms marked off-limits stay off-limits',
+    detail: 'If the home notes say a room is not to be entered, do not enter it, even to vacuum the doorway.',
+  },
+]
+
 function complianceFor(service: string, inputs: Record<string, string>): ComplianceItem[] {
+  if (HOME_SERVICES.has(service)) return HOME_RULES
   const contamination = n(inputs.pw_contamination, 1)
   const jobType = inputs.pw_jobType || ''
   const petroleum = service === 'pressureWashing' && (contamination >= 1.5 || /gas station|parking/i.test(jobType))
@@ -890,6 +986,104 @@ function mergeChemicals(items: ChemicalNeed[]): ChemicalNeed[] {
   return [...byProduct.values()]
 }
 
+/* ---------- homes: the checklist and the order of work ---------- */
+
+/*
+ * The crew's version of the scope library's home entries. Same content, a
+ * different reader: the client's list says what they get, this one says what
+ * to do, in the words a cleaner uses standing in the room.
+ *
+ * Each clean is the one before it plus its own layer, as the proposal says:
+ * a deep clean is a standard clean plus detail work, a move-out a deep clean
+ * plus the insides of everything.
+ */
+const HOME_CHECKLIST: Record<string, ChecklistArea[]> = {
+  houseCleaning: [
+    { area: 'Kitchen', items: ['Counters and backsplash', 'Sink and faucet, polished', 'Stovetop', 'Outside of hood, oven, dishwasher and fridge', 'Inside the microwave', 'Cabinet fronts, spots', 'Table and chairs'] },
+    { area: 'Bathrooms', items: ['Toilet: inside, outside and around the base', 'Tub, shower and tile', 'Glass shower door', 'Sink, vanity and fixtures', 'Mirror, streak-free'] },
+    { area: 'Bedrooms and living areas', items: ['Dust high to low: furniture tops, shelves, sills, frames, lamps, electronics', 'Beds made (fresh linens if left out)', 'Light switches and door handles'] },
+    { area: 'Whole home', items: ['Cobwebs', 'Trash emptied, new liners', 'Carpets and rugs vacuumed', 'Hard floors vacuumed, then mopped'] },
+  ],
+  deepCleaning: [
+    { area: 'Kitchen', items: ['Cabinet fronts degreased', 'Range hood and filter', 'Small appliances wiped'] },
+    { area: 'Bathrooms', items: ['Soap scum and hard water off glass, tile and fixtures', 'Shower grout scrubbed'] },
+    { area: 'Whole home', items: ['Baseboards hand-wiped', 'Door frames, doors and trim', 'Blinds, slat by slat', 'Window sills and tracks', 'Vent covers and return grilles', 'Ceiling fans and light fixtures in reach', 'Behind and under furniture one person can move'] },
+  ],
+  moveOutCleaning: [
+    { area: 'Kitchen', items: ['Inside every cabinet and drawer', 'Inside the oven', 'Inside the fridge and freezer', 'Inside the dishwasher'] },
+    { area: 'Bathrooms', items: ['Inside cabinets and drawers'] },
+    { area: 'Whole home', items: ['Inside closets: shelves, rods, floor', 'Interior windows and sliding door glass, tracks too', 'Walls spot-cleaned (stop if the paint rubs)', 'Switch plates and outlet covers'] },
+  ],
+}
+
+const HOME_LAYERS: Record<string, string[]> = {
+  houseCleaning: ['houseCleaning'],
+  deepCleaning: ['houseCleaning', 'deepCleaning'],
+  moveOutCleaning: ['houseCleaning', 'deepCleaning', 'moveOutCleaning'],
+}
+
+/** The calculator's field prefix per service -- MIRRORS HOME_KIND in estimate-new.html. */
+const HOME_PREFIX: Record<string, string> = { houseCleaning: 'hc', deepCleaning: 'dc', moveOutCleaning: 'mo' }
+
+/*
+ * Extras the client bought, read back off the calculator inputs. The wording
+ * matches the base lists where the task is the same, so an extra that a
+ * deeper clean already includes lands on the list once.
+ */
+const HOME_EXTRA_ITEMS: Array<{ key: string; area: string; item: (v: string) => string | null }> = [
+  { key: 'oven', area: 'Kitchen', item: v => (v ? 'Inside the oven' : null) },
+  { key: 'fridge', area: 'Kitchen', item: v => (v ? 'Inside the fridge and freezer' : null) },
+  { key: 'cabinets', area: 'Kitchen', item: v => (v ? 'Inside every cabinet (emptied)' : null) },
+  { key: 'baseboards', area: 'Whole home', item: v => (v ? 'Baseboards hand-wiped' : null) },
+  { key: 'windows', area: 'Whole home', item: v => (n(v) > 0 ? `Interior windows (${n(v)})` : null) },
+  { key: 'blinds', area: 'Whole home', item: v => (n(v) > 0 ? `Blinds (${n(v)})` : null) },
+  { key: 'garage', area: 'Extras', item: v => (v ? 'Garage swept' : null) },
+  { key: 'patio', area: 'Extras', item: v => (v ? 'Patio or balcony swept' : null) },
+]
+
+/** Rooms in the order they are worked, whatever order the lines came in. */
+const HOME_AREA_ORDER = ['Bathrooms', 'Kitchen', 'Bedrooms and living areas', 'Whole home', 'Extras']
+
+function homeChecklist(lines: LineItemLike[]): ChecklistArea[] {
+  const byArea = new Map<string, string[]>()
+  const add = (area: string, item: string) => {
+    const list = byArea.get(area) || []
+    if (!list.includes(item)) list.push(item)
+    byArea.set(area, list)
+  }
+  for (const li of lines) {
+    const service = li.serviceType || ''
+    if (!HOME_SERVICES.has(service)) continue
+    for (const layer of HOME_LAYERS[service]) {
+      for (const a of HOME_CHECKLIST[layer]) for (const item of a.items) add(a.area, item)
+    }
+    const inputs = parseInputs(li.calculatorInputs)
+    for (const x of HOME_EXTRA_ITEMS) {
+      const item = x.item(inputs[`${HOME_PREFIX[service]}_${x.key}`] || '')
+      if (item) add(x.area, item)
+    }
+  }
+  return HOME_AREA_ORDER.filter(a => byArea.has(a)).map(area => ({ area, items: byArea.get(area) as string[] }))
+}
+
+/*
+ * The order a house is cleaned in. Bathrooms first, so the disinfectant sits
+ * for its dwell time while the rest of the room is done; top to bottom in
+ * every room, so dust falls on what is still to be cleaned; floors last,
+ * backing out toward the door, so nobody walks on a finished floor.
+ */
+function homePhases(hoursEach: number): Phase[] {
+  const work = Math.max(30, Math.round(hoursEach * 60))
+  return [
+    { label: 'Arrive: read the home notes, unload, walk through and photograph anything already damaged', minutes: 10 },
+    { label: 'Bathrooms: spray the disinfectant first so it can sit, then work top to bottom', minutes: Math.round(work * 0.3) },
+    { label: 'Kitchen: top to bottom, sink last', minutes: Math.round(work * 0.25) },
+    { label: 'Bedrooms and living areas: dust top to bottom, then make the beds', minutes: Math.round(work * 0.25) },
+    { label: 'Floors last, backing out toward the door: vacuum, then mop', minutes: Math.round(work * 0.2) },
+    { label: 'Final walk: check the list, empty the vacuum, lock up and set the alarm', minutes: 10 },
+  ]
+}
+
 /* ---------- plan assembly ---------- */
 
 export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
@@ -973,7 +1167,9 @@ export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
       return li.serviceType === 'pressureWashing' && n(i.pw_contamination, 1) >= 1.5
     })
 
-  const phases: Phase[] = [
+  // A house is not staged like a forecourt: no berms, no dwell on a slab.
+  const homeOnly = services.length > 0 && services.every(s => HOME_SERVICES.has(s))
+  const phases: Phase[] = homeOnly ? homePhases(hoursEach) : [
     { label: 'Mobilize and stage equipment', minutes: needsRecovery ? 30 : 20 },
     ...(needsRecovery ? [{ label: 'Berm area and cover storm drains', minutes: 15 }] : []),
     ...(chemicals.length ? [{ label: 'Apply chemical', minutes: Math.max(10, Math.round(hoursEach * 60 * 0.15)) }] : []),
@@ -1053,6 +1249,7 @@ export function buildJobPlan(lineItems: LineItemLike[]): JobPlan {
     compliance,
     weather: weatherFor(services),
     costCheck: { plannedChemicalCost, quotedProductCost, delta, status: delta > MATERIAL_VARIANCE_TOLERANCE ? 'over' : 'ok' },
+    checklist: homeChecklist(planned),
     warnings,
     internalWarnings,
   }

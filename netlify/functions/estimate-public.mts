@@ -1,7 +1,7 @@
 import { eq, asc } from 'drizzle-orm'
 import type { Context } from '@netlify/functions'
 import { db, schema } from './_shared/db.mts'
-import { clientLineItems } from './_shared/clientView.mts'
+import { clientLineItems, publicClient, publicEstimate } from './_shared/clientView.mts'
 import { json, notFound, badRequest } from './_shared/http.mts'
 import { notifyAdminEstimateViewed, notifyAdminEstimateApproved, notifyAdminEstimateDeclined, notifyAdminWorkOrderCreationFailed } from './_shared/email.mts'
 import { createWorkOrderForEstimate } from './_shared/workOrders.mts'
@@ -10,9 +10,10 @@ import { depositSplit } from './_shared/deposit.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { getClientIp } from './_shared/http.mts'
 import { buildProposalScope } from './_shared/scopeLibrary.mts'
-import { contractValue, buildScheduleMatrix, groupBySite, portfolioDiscountPct, frequencyOf } from './_shared/serviceSchedule.mts'
+import { contractValue, buildScheduleMatrix, groupBySite, portfolioDiscountPct, frequencyOf, FREQUENCIES } from './_shared/serviceSchedule.mts'
 import { COMPANY, registrationRows, prevailingWageStatements } from './_shared/companyProfile.mts'
-import { multiYearSchedule, executiveSummary } from './_shared/proposalDoc.mts'
+import { multiYearSchedule, executiveSummary, homeSummary } from './_shared/proposalDoc.mts'
+import { isResidential } from './_shared/bidMode.mts'
 
 export default async (request: Request, context: Context) => {
   const token = context.params.token
@@ -82,7 +83,8 @@ export default async (request: Request, context: Context) => {
       .where(eq(schema.estimateScopeLines.estimateId, estimate.id))
       .orderBy(schema.estimateScopeLines.sortOrder, schema.estimateScopeLines.id)
 
-    const proposal = buildProposalScope(lineItems.map(li => li.serviceType), customScope)
+    const residential = isResidential(estimate)
+    const proposal = buildProposalScope(lineItems.map(li => li.serviceType), customScope, { residential })
     const contract = contractValue(lineItems)
     const sites = groupBySite(lineItems)
     const isGovernment = estimate.bidMode === 'government'
@@ -91,7 +93,15 @@ export default async (request: Request, context: Context) => {
     // proposal is noise, and a base-year label implies a solicitation exists.
     const multiYear = isGovernment ? multiYearSchedule(contract, estimate.optionYears) : null
 
-    const summary = executiveSummary({
+    const summary = residential
+      ? homeSummary({
+          serviceLabels: proposal.sections.filter(sec => sec.label !== 'Additional Scope For This Project').map(sec => sec.label),
+          lines: lineItems,
+          siteAddress: estimate.siteAddress || client?.propertyAddress || null,
+          walkthroughDate: estimate.walkthroughDate,
+          expiresOn: effectiveExpiry(estimate.validUntil, estimate.createdAt),
+        })
+      : executiveSummary({
       serviceLabels: proposal.sections.map(sec => sec.label),
       contract,
       subtotal: lineItems.filter(li => !li.isOptional).reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0),
@@ -104,8 +114,10 @@ export default async (request: Request, context: Context) => {
     })
 
     return json({
-      estimate,
-      client,
+      // Allowlisted, like the line items: the full rows carried internal notes,
+      // bid outcomes and the client's payment identifier to anyone with the link.
+      estimate: publicEstimate(estimate),
+      client: publicClient(client, { email: true }),
       // Stripped of the cost basis. The whole row used to go out, carrying
       // the sub cost and the labour estimate to anyone who opened devtools.
       lineItems: clientLineItems(lineItems),
@@ -115,6 +127,9 @@ export default async (request: Request, context: Context) => {
       // each line belongs to.
       contract,
       schedule: buildScheduleMatrix(lineItems),
+      // Each line's cadence by name, so a page can print "Every 2 weeks"
+      // without keeping its own copy of the list to drift.
+      frequencyLabels: Object.fromEntries(FREQUENCIES.map(f => [f.key, f.label])),
       sites,
       portfolioDiscountPct: portfolioDiscountPct(new Set(lineItems.map(li => li.siteName).filter(Boolean)).size),
       summary,

@@ -38,6 +38,10 @@
 <script>
 const id = new URLSearchParams(window.location.search).get('id');
 
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function paymentLabel(a) {
   return a.paymentType === 'flat' ? `${money(a.paymentAmount)}/job` : `${Number(a.paymentPercentage)}% of job revenue`;
 }
@@ -45,7 +49,7 @@ function paymentLabel(a) {
 async function load() {
   const res = await adminFetch(`/api/admin/subcontractors/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Agreement not found.</div>'; return; }
-  const { agreement } = await res.json();
+  const { agreement, jobs = [], dueTotal = 0 } = await res.json();
 
   const payRes = await adminFetch(`/api/admin/subcontractors/${id}/payments`);
   const { payments, totalPaid } = payRes.ok ? await payRes.json() : { payments: [], totalPaid: 0 };
@@ -93,15 +97,37 @@ async function load() {
 
     ${auditHtml}
 
+    <h3 style="margin:28px 0 6px;">Jobs</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+      Every job given to ${esc(agreement.subcontractorName)} from a work order's &ldquo;Done by&rdquo;, what it billed
+      before tax, and what they are owed for it under the terms above. Only finished jobs count toward what is due.
+    </p>
+    ${jobs.length ? `
+      <p style="color:#4A5A72; margin-bottom:10px;">Due for finished jobs: <strong>${money(dueTotal)}</strong></p>
+      <table class="dash-table">
+        <thead><tr><th>Date</th><th>Job</th><th>Client</th><th>Billed</th><th>Owed</th><th>Paid</th><th></th></tr></thead>
+        <tbody>${jobs.map(j => `
+          <tr>
+            <td>${esc(j.scheduledDate || '—')}</td>
+            <td><a href="/admin/work-order-detail.html?id=${j.id}">${j.kind === 'visit' ? 'Visit ' + esc(j.visitSequence || '') : 'Job #' + j.id}</a>${j.done ? '' : ' <span style="color:#8A98AC; font-size:0.8rem;">(not done yet)</span>'}</td>
+            <td>${esc(j.clientName || '')}</td>
+            <td>${money(j.value)}</td>
+            <td>${money(j.owed)}</td>
+            <td>${money(j.paid)}</td>
+            <td>${j.done && j.due > 0 ? `<button class="btn btn-sm" type="button" onclick="payJob(${j.id}, ${j.due})">Pay ${money(j.due)}</button>` : ''}</td>
+          </tr>`).join('')}</tbody>
+      </table>` : '<div class="empty-state" style="padding:16px;">No jobs assigned yet. Give them one from a work order&rsquo;s &ldquo;Done by&rdquo; section.</div>'}
+
     <h3 style="margin:28px 0 12px;">Payments</h3>
     <p style="color:#4A5A72; margin-bottom:10px;">Total paid: <strong>${money(totalPaid)}</strong></p>
     ${payments.length ? `
       <table class="dash-table">
-        <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Amount</th><th>Job</th><th>Method</th><th>Note</th><th></th></tr></thead>
         <tbody>${payments.map(p => `
           <tr>
             <td>${p.paidDate}</td>
             <td>${money(p.amount)}</td>
+            <td>${p.workOrderId ? `<a href="/admin/work-order-detail.html?id=${p.workOrderId}">#${p.workOrderId}</a>` : '—'}</td>
             <td style="text-transform:capitalize;">${p.method}</td>
             <td>${p.note || '—'}</td>
             <td><button class="btn btn-sm" style="color:#C0392B;" onclick="deletePayment(${p.id})">Delete</button></td>
@@ -110,7 +136,9 @@ async function load() {
       </table>
     ` : '<div class="empty-state" style="padding:16px;">No payments recorded yet.</div>'}
 
-    <div style="background:var(--off-white); border-radius:12px; padding:20px; margin-top:16px;">
+    <div id="payForm" style="background:var(--off-white); border-radius:12px; padding:20px; margin-top:16px;">
+      <input type="hidden" id="payWorkOrder" value="">
+      <p id="payForJob" style="display:none; font-size:0.88rem; color:var(--navy); margin-bottom:10px;"></p>
       <div class="field-group"><label>Amount ($)</label><input type="number" id="payAmount" min="0.01" step="0.01"></div>
       <div class="field-group">
         <label>Method</label>
@@ -140,13 +168,31 @@ async function addPayment() {
   const btn = document.getElementById('addPaymentBtn');
   btn.disabled = true;
   btn.textContent = 'Recording…';
+  const workOrderId = Number(document.getElementById('payWorkOrder').value) || undefined;
   const res = await adminFetch(`/api/admin/subcontractors/${id}/payments`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, method, paidDate, note })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, method, paidDate, note, workOrderId })
   });
   if (res.ok) { load(); return; }
-  adminToast('Failed to record payment.');
+  const data = await res.json().catch(() => ({}));
+  adminToast(data.error || 'Failed to record payment.');
   btn.disabled = false;
   btn.textContent = 'Record Payment';
+}
+
+/** Fill the payment form for one job, so the payment is filed against it. */
+function payJob(workOrderId, due) {
+  document.getElementById('payWorkOrder').value = workOrderId;
+  document.getElementById('payAmount').value = due.toFixed(2);
+  document.getElementById('payNote').value = 'Job #' + workOrderId;
+  const label = document.getElementById('payForJob');
+  label.style.display = 'block';
+  label.innerHTML = 'Paying for job #' + workOrderId + '. <a href="#" onclick="clearPayJob(); return false;">Not for a job</a>';
+  document.getElementById('payForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearPayJob() {
+  document.getElementById('payWorkOrder').value = '';
+  document.getElementById('payForJob').style.display = 'none';
 }
 
 async function deletePayment(paymentId) {

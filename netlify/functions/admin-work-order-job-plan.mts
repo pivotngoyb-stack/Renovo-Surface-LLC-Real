@@ -4,6 +4,7 @@ import { db, schema } from './_shared/db.mts'
 import { isAuthenticated } from './_shared/auth.mts'
 import { json, unauthorized, notFound, pathId } from './_shared/http.mts'
 import { buildJobPlan } from './_shared/jobModel.mts'
+import { linesForJob } from './_shared/crewView.mts'
 
 /**
  * Internal crew plan for a work order: crew size, chemicals, tools, timeline,
@@ -29,7 +30,9 @@ export default async (request: Request, context: Context) => {
     .where(eq(schema.estimateLineItems.estimateId, workOrder.estimateId))
     .orderBy(schema.estimateLineItems.sortOrder)
 
-  return json({ plan: buildJobPlan(lineItems) })
+  // The same lines the crew link plans from, so the office and the crew are
+  // looking at the same job.
+  return json({ plan: buildJobPlan(linesForJob(lineItems, workOrder.kind)) })
 }
 
 export const config = {

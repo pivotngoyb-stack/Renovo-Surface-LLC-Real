@@ -128,6 +128,14 @@ async function load() {
     </p>
     <div id="actuals"></div>
 
+    <h3 style="margin:28px 0 6px;">Done By</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
+      Your own crew, or a subcontractor with a signed agreement. A sub is paid per job, so the job is
+      where it is recorded &mdash; their page then lists every job they did and what is still owed.
+      Send them the crew link below: it carries the address, the checklist and the way in, and no prices.
+    </p>
+    <div id="assignee">Loading…</div>
+
     <h3 style="margin:28px 0 6px;">Crew Link</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:620px;">
       What the crew opens on their phone: the address, the scope, the mix and dwell times, the PPE,
@@ -170,6 +178,7 @@ async function load() {
     .filter(li => !li.isOptional && !li.subcontracted)
     .reduce((t, li) => t + (Number(li.estimatedDurationHours) || 0), 0);
   renderCrewLink(workOrder.crewToken);
+  loadAssignee();
   renderActuals({
     actualHours: workOrder.actualHours,
     actualCrewSize: workOrder.actualCrewSize,
@@ -499,6 +508,52 @@ async function clearActuals() {
   });
   if (!res.ok) { adminToast('Could not clear the hours.'); return; }
   renderActuals({ actualHours: null, actualCrewSize: null, actualMaterialsCost: null, actualHoursNote: null });
+}
+
+/* ---------- Done by ----------
+ *
+ * Our crew or a sub. The route does the money -- what the job bills and what
+ * the agreement says the sub is owed for it -- so this page and the sub's own
+ * page can never disagree about a figure.
+ */
+async function loadAssignee() {
+  const box = document.getElementById('assignee');
+  if (!box) return;
+  const res = await adminFetch('/api/admin/work-orders/' + id + '/assignee');
+  if (!res.ok) { box.innerHTML = '<p style="color:#C0392B;">Could not load who is doing this job.</p>'; return; }
+  const d = await res.json();
+  const a = d.assignee;
+  const opts = d.subs.map(s =>
+    '<option value="' + s.id + '"' + (a && a.id === s.id ? ' selected' : '') + '>'
+    + escAttr(s.name) + ' (' + escAttr(s.terms) + ')' + (s.signed ? '' : ' (not signed)') + '</option>').join('');
+  const owed = a
+    ? '<p style="margin-top:10px; font-size:0.9rem;">This job bills <strong>' + money(d.jobValue) + '</strong> before tax. '
+      + escAttr(a.name) + ' is owed <strong>' + money(a.owed) + '</strong> for it'
+      + (d.paid > 0 ? ', and <strong>' + money(d.paid) + '</strong> has been paid.' : '. Nothing paid yet.')
+      + ' <a href="/admin/subcontractor-detail.html?id=' + a.id + '">Their page</a></p>'
+    : '';
+  box.innerHTML =
+    '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">'
+    + '<select id="assigneeSelect" style="max-width:420px;"><option value="">Our own crew</option>' + opts + '</select>'
+    + '<button type="button" class="btn btn-sm" id="assigneeBtn" onclick="saveAssignee()">Save</button></div>'
+    + (d.subs.length ? '' : '<p style="font-size:0.82rem; color:#8A98AC; margin-top:8px;">No subcontractor has a signed agreement yet. '
+      + '<a href="/admin/subcontractor-new.html">Send one an agreement</a> first.</p>')
+    + owed;
+}
+
+async function saveAssignee() {
+  const btn = document.getElementById('assigneeBtn');
+  const value = document.getElementById('assigneeSelect').value;
+  btn.disabled = true;
+  const res = await adminFetch('/api/admin/work-orders/' + id + '/assignee', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subcontractorAgreementId: value ? Number(value) : null }),
+  });
+  const data = await res.json().catch(() => ({}));
+  btn.disabled = false;
+  if (!res.ok) { adminToast(data.error || 'Could not save who is doing this job.'); return; }
+  adminToast(value ? 'Job assigned. Send them the crew link below.' : 'Back with your own crew.', 'success');
+  loadAssignee();
 }
 
 /* ---------- Crew link ----------

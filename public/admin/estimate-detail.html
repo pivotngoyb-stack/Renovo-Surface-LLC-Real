@@ -43,6 +43,8 @@ async function load() {
   const res = await adminFetch(`/api/admin/estimates/${id}`);
   if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty-state">Estimate not found.</div>'; return; }
   const { estimate, client, lineItems, workOrder, invoice } = await res.json();
+  // A homeowner's quote: no progress billing, lien rights or bid envelope.
+  const home = estimate.bidMode === 'residential';
 
   const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
   const itemsHtml = lineItems.map(li => `
@@ -108,7 +110,7 @@ async function load() {
     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
       <div>
         <h1 style="font-size:1.6rem;">Estimate #${estimate.id}</h1>
-        <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}</p>
+        <p style="color:#8A98AC;">${client?.name || ''} &middot; ${client?.email || ''}${home ? ' &middot; Home cleaning quote' : ''}</p>
       </div>
       <div style="text-align:right;">
         ${statusPill(estimate.status)}
@@ -153,6 +155,14 @@ async function load() {
       The same file the client receives attached to their proposal email. Use it for a procurement portal that wants an upload.
     </p>
 
+    <h3 style="margin:28px 0 6px;">${home ? 'Home &amp; Access' : 'Site Access'}</h3>
+    <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
+      How the crew gets in, and what they need to know once inside. It goes on the crew link only while the
+      job is open &mdash; the codes drop off the moment the hours are logged &mdash; and never on anything the
+      client can open or forward.
+    </p>
+    <div id="accessPanel">Loading…</div>
+
     ${recurringSection}
 
     <h3 style="margin:28px 0 6px;">Walk-Through Photos</h3>
@@ -162,6 +172,7 @@ async function load() {
     </p>
     <div id="estPhotos"></div>
 
+    ${home ? '' : `
     <h3 style="margin:28px 0 6px;">Progress Billing</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
       On a long job, bill each month for the work done instead of once at the end &mdash; otherwise you
@@ -188,6 +199,7 @@ async function load() {
       reads the price &mdash; and you usually find out weeks later, if at all.
     </p>
     <div id="bidDesk">Loading…</div>
+    `}
 
     <h3 style="margin:28px 0 6px;">How This Bid Finished</h3>
     <p style="color:#8A98AC; font-size:0.82rem; margin-bottom:12px; max-width:660px;">
@@ -212,11 +224,10 @@ async function load() {
   `;
 
   renderOutcome(estimate);
-  loadBilling();
-  loadLien();
-  loadBidDesk();
+  if (!home) { loadBilling(); loadLien(); loadBidDesk(); }
   loadScope();
   loadPhotos();
+  loadAccess();
   if (recurringLines.length) loadRecurring();
 }
 
@@ -976,6 +987,66 @@ async function loadPhotos() {
 
 function escapeAttr(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* ---------- Home & access ----------
+ *
+ * The door code, the alarm, the dog. Saved against the estimate and read by
+ * the crew link, which drops the codes once the job's hours are in. Nothing a
+ * client can open ever reads it.
+ */
+async function loadAccess() {
+  const box = document.getElementById('accessPanel');
+  if (!box) return;
+  const res = await adminFetch(`/api/admin/estimates/${id}/access`);
+  if (!res.ok) { box.innerHTML = '<p style="color:#C0392B;">Could not load the access details.</p>'; return; }
+  const { access, entryMethods } = await res.json();
+  const a = access || {};
+  const opts = (entryMethods || []).map(m =>
+    `<option value="${escapeAttr(m.key)}"${a.entryMethod === m.key ? ' selected' : ''}>${escapeAttr(m.label)}</option>`).join('');
+  box.innerHTML = `
+    <div class="field-group"><label for="acMethod">How the crew gets in</label>
+      <select id="acMethod"><option value="">Not set yet</option>${opts}</select></div>
+    <div class="field-group"><label for="acEntry">The code, or where the key is</label>
+      <textarea id="acEntry" rows="2" maxlength="500" placeholder="e.g. Lockbox on the side gate, code 4411. The key opens the back door.">${escapeAttr(a.entryDetails)}</textarea></div>
+    <div class="field-group"><label for="acAlarm">Alarm</label>
+      <textarea id="acAlarm" rows="2" maxlength="500" placeholder="e.g. Panel inside the garage door: 1234 then OFF. If it goes off, call the client before the monitoring company calls them.">${escapeAttr(a.alarmDetails)}</textarea></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <div class="field-group"><label for="acPets">Pets</label>
+        <input type="text" id="acPets" maxlength="300" value="${escapeAttr(a.pets)}" placeholder="e.g. Friendly lab. The cat must not get out."></div>
+      <div class="field-group"><label for="acParking">Parking</label>
+        <input type="text" id="acParking" maxlength="300" value="${escapeAttr(a.parking)}" placeholder="e.g. Driveway, left side"></div>
+    </div>
+    <div class="field-group"><label for="acNotes">Instructions for the crew</label>
+      <textarea id="acNotes" rows="3" maxlength="2000" placeholder="Priorities, rooms to skip, fragile things, where the client keeps their own supplies">${escapeAttr(a.instructions)}</textarea></div>
+    <button type="button" class="btn btn-primary btn-sm" id="acSave" onclick="saveAccess()">Save access details</button>
+    <span id="acStatus" style="margin-left:10px; font-size:0.85rem; color:#8A98AC;">${access ? 'Last saved ' + new Date(access.updatedAt).toLocaleString() : 'Nothing saved yet.'}</span>`;
+}
+
+async function saveAccess() {
+  const btn = document.getElementById('acSave');
+  const v = k => document.getElementById(k).value;
+  btn.disabled = true;
+  try {
+    const res = await adminFetch(`/api/admin/estimates/${id}/access`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entryMethod: v('acMethod') || null,
+        entryDetails: v('acEntry'),
+        alarmDetails: v('acAlarm'),
+        pets: v('acPets'),
+        parking: v('acParking'),
+        instructions: v('acNotes'),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { adminToast(data.error || 'Could not save the access details.'); return; }
+    document.getElementById('acStatus').textContent = 'Saved ' + new Date(data.access.updatedAt).toLocaleString();
+    adminToast('Access details saved.', 'success');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function uploadPhoto() {

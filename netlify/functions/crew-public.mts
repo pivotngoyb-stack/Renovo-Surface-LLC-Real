@@ -4,9 +4,10 @@ import { db, schema } from './_shared/db.mts'
 import { json, notFound, badRequest, getClientIp } from './_shared/http.mts'
 import { withErrorHandling } from './_shared/errorHandler.mts'
 import { buildJobPlan } from './_shared/jobModel.mts'
-import { crewPlan, crewScope, crewChangeScope } from './_shared/crewView.mts'
+import { crewPlan, crewScope, crewChangeScope, linesForJob } from './_shared/crewView.mts'
 import { changeOrderRef } from './_shared/changeOrders.mts'
 import { parseActuals, visitStatusFor } from './_shared/actuals.mts'
+import { crewAccess } from './_shared/siteAccess.mts'
 
 /**
  * The crew's own link to a job, and where they log what it took.
@@ -71,7 +72,16 @@ export default withErrorHandling('crew-public', async (request: Request, context
      * own work order, and a visit through the contract above it, so both are
      * gathered.
      */
-    const scope = crewScope(lineItems)
+    const [accessRow] = await db
+      .select()
+      .from(schema.siteAccess)
+      .where(eq(schema.siteAccess.estimateId, workOrder.estimateId))
+      .limit(1)
+
+    // Only what this work order covers: a recurring visit is not the deep
+    // clean that came before it.
+    const jobLines = linesForJob(lineItems, workOrder.kind)
+    const scope = crewScope(jobLines)
     const amendments = await db
       .select({ id: schema.changeOrders.id, sequence: schema.changeOrders.sequence, workOrderId: schema.changeOrders.workOrderId })
       .from(schema.changeOrders)
@@ -116,9 +126,12 @@ export default withErrorHandling('crew-public', async (request: Request, context
         projectName: estimate?.projectName || null,
         siteConditions: estimate?.siteConditions || null,
       },
+      // How to get in. The codes are dropped once the job is logged -- see
+      // siteAccess.mts for why a finished job's link must not open the door.
+      access: crewAccess(accessRow, workOrder),
       contractDescription: contract?.description || null,
       scope,
-      plan: crewPlan(buildJobPlan(lineItems)),
+      plan: crewPlan(buildJobPlan(jobLines)),
       actuals: {
         actualHours: workOrder.actualHours,
         actualCrewSize: workOrder.actualCrewSize,

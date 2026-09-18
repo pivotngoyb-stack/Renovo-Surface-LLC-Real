@@ -43,6 +43,14 @@ async function load() {
 function render(agreement) {
   const effectiveDate = new Date(agreement.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
+  /*
+   * The keys-and-codes clause arrived with home cleaning. An agreement is
+   * rendered from this page rather than stored, so a clause added here would
+   * otherwise appear in agreements signed before it existed -- showing a sub
+   * a term they never agreed to. Gated on when the agreement was issued.
+   */
+  const HOME_ACCESS_CLAUSE_FROM = new Date('2026-09-18T00:00:00-06:00');
+
   const agreementBodyHtml = `
     <div class="doc-terms" style="margin-top:0;">
       <p style="text-align:center; font-family:var(--font-head); font-size:1.1rem; color:var(--navy); font-weight:800; letter-spacing:0.02em; margin-bottom:4px;">SUBCONTRACTOR AGREEMENT</p>
@@ -60,6 +68,11 @@ function render(agreement) {
 
       <h4 style="margin:20px 0 6px;">Equipment, Insurance &amp; Taxes</h4>
       <p>Subcontractor is responsible for providing their own equipment and supplies unless otherwise agreed in writing, and is solely responsible for their own insurance coverage and all applicable federal, state, and local taxes arising from payments made under this agreement. Renovo Surface Solutions LLC will not withhold taxes on Subcontractor's behalf.</p>
+
+      ${new Date(agreement.createdAt) >= HOME_ACCESS_CLAUSE_FROM ? `
+      <h4 style="margin:20px 0 6px;">Client Homes, Keys &amp; Codes</h4>
+      <p>Keys, lockbox and door codes, alarm codes and any other way into a client's home or building are confidential. Subcontractor will use them only to perform the job they were given for, will not copy a key or share a code with anyone not working that job, and will return any key when the job is done or when asked. Subcontractor will leave every door locked and every alarm set as instructed, and will report any damage, breakage or lost key to the Company the same day.</p>
+      ` : ''}
 
       <h4 style="margin:20px 0 6px;">Non-Solicitation</h4>
       <p>For a period of <strong>12 months</strong> following the last job performed under this agreement, Subcontractor agrees not to directly or indirectly contact, solicit, or perform work for any client of Renovo Surface Solutions LLC that Subcontractor was introduced to or serviced through the Company, outside of an engagement with the Company.</p>

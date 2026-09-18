@@ -488,6 +488,148 @@ export const SERVICE_SCOPE: Record<string, ServiceScope> = {
       'Building systems are operating and the space is secured.',
     ],
   },
+
+  /*
+   * Homes. Written for a homeowner rather than a facilities manager: "we" and
+   * "you", rooms rather than zones, and the same discipline as everything
+   * above -- each line something a client can walk round and check.
+   *
+   * The three build on each other. A deep clean is everything in a standard
+   * clean plus the list below it, and a move-out is a deep clean of an empty
+   * home plus the insides of everything. Saying so explicitly is what stops a
+   * client expecting the inside of the oven on a $140 recurring visit.
+   */
+  houseCleaning: {
+    label: 'House Cleaning',
+    scope: [
+      'Kitchen: counters, backsplash and sink cleaned and sanitized; faucet polished; stovetop and the outside of the range hood, oven, dishwasher and refrigerator wiped; inside of the microwave cleaned.',
+      'Kitchen: cabinet fronts spot-cleaned; table and chairs wiped down.',
+      'Bathrooms: toilets cleaned and sanitized inside, outside and around the base; tubs, showers and tile scrubbed; glass shower doors cleaned.',
+      'Bathrooms: sinks, vanities and fixtures cleaned and polished; mirrors cleaned streak-free.',
+      'Bedrooms and living areas: reachable surfaces dusted, including furniture tops, shelves, window sills, picture frames, lamps and electronics.',
+      'Beds made; linens changed when fresh ones are left out for us.',
+      'Light switches, door handles and other high-touch spots wiped.',
+      'Throughout: carpets and rugs vacuumed; hard floors vacuumed and damp-mopped; cobwebs removed; trash emptied and liners replaced.',
+    ],
+    exclusions: [
+      'Inside the oven, refrigerator or cabinets, interior windows, blinds and baseboards, unless added as an extra on this quote. All of these are part of a deep clean.',
+      'Laundry and dishes, unless added as an extra.',
+      'Tidying and putting away belongings. We clean around what is left out, and a surface covered in items is dusted where it is clear.',
+    ],
+    assumptions: [
+      'The price per visit holds when the home is kept on the schedule shown. A home that goes much longer between cleans takes longer to clean, and we will talk to you before charging more.',
+      'Your first visit may need to be a deep clean if the home has not been professionally cleaned recently. That is quoted separately where it applies.',
+    ],
+  },
+
+  deepCleaning: {
+    label: 'Deep Cleaning',
+    scope: [
+      'Everything in a standard house cleaning, plus the items below.',
+      'Baseboards, door frames, doors and trim hand-wiped throughout.',
+      'Window sills and tracks cleaned; blinds dusted slat by slat.',
+      'Soap scum and hard-water buildup removed from showers, tubs, glass and fixtures; shower grout scrubbed.',
+      'Kitchen cabinet fronts degreased; range hood and its filter cleaned; small appliances wiped.',
+      'Vent covers and return grilles dusted; ceiling fans and light fixtures within reach detailed.',
+      'Behind and under furniture that can be moved safely by one person; edges and corners of every floor detailed.',
+    ],
+    exclusions: [
+      'Inside the oven, refrigerator or cabinets, unless added as an extra on this quote. These are included in a move-in or move-out clean.',
+      'Hard-water etching and permanent staining. Etched glass and stained grout are damage to the surface, and cleaning cannot reverse them.',
+      'Carpet shampooing or extraction, and upholstery cleaning, which are quoted separately.',
+    ],
+    assumptions: [
+      'A deep clean takes one visit for a home in average condition. A home with heavy buildup may need a second visit, and we will tell you before we start rather than after.',
+    ],
+  },
+
+  moveOutCleaning: {
+    label: 'Move-In / Move-Out Cleaning',
+    scope: [
+      'Everything in a deep clean, done in an empty home, plus the items below.',
+      'Inside every kitchen and bathroom cabinet and drawer, wiped and wiped dry.',
+      'Inside the oven, the refrigerator and freezer, the dishwasher and the microwave.',
+      'Inside closets: shelves, rods and floors.',
+      'Interior windows and sliding door glass cleaned, with tracks vacuumed and wiped.',
+      'Walls spot-cleaned for marks and fingerprints, where the paint will allow it.',
+      'Light fixtures, switch plates and outlet covers wiped throughout.',
+    ],
+    exclusions: [
+      'Removal of belongings, furniture, trash or anything left behind. We clean an empty home; hauling is quoted separately.',
+      'Painting, patching or repair of walls, floors or fixtures, including damage a landlord may charge for.',
+      'Paint that comes off with light cleaning. Flat and matte paint marks easily, and we stop rather than rub through it.',
+    ],
+    assumptions: [
+      'The home is empty of belongings, and the power and water are on, on the day of the clean.',
+      'The clean is scheduled after the movers leave. Moving furniture and boxes in or out afterward leaves new dirt we have not priced.',
+    ],
+  },
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Homeowner terms.
+ *
+ * The universal statements above are written for a commercial buyer: trade
+ * licences, storm drains, certificates naming the client as additional insured,
+ * W-9s for vendor onboarding. Printed on a quote for a three-bedroom house they
+ * read as a form letter, and a homeowner comparing two cleaners is reading for
+ * something else entirely -- can I trust these people in my house, and what
+ * happens if I need to cancel.
+ *
+ * So a residential quote swaps the universal lists and the compliance block
+ * for these. The per-service lists stay; a deep clean is a deep clean.
+ *
+ * The protected exclusions still have to be here. A homeowner can hand over
+ * trade work and hazardous material as easily as a general contractor can, and
+ * isProtectedExclusion() matches on meaning, so these carry the same words.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * The owner's own policy numbers, in one place.
+ *
+ * These are business decisions, not industry facts: change them here and the
+ * quote, the policies block and the work-order terms the client signs all move
+ * together.
+ */
+export const RESIDENTIAL_POLICY = {
+  /** Notice needed to reschedule or cancel without a charge. */
+  rescheduleNoticeHours: 48,
+  /** Cancelled inside this window, or the crew cannot get in: the fee applies. */
+  lateCancelHours: 24,
+  /** The fee, as a share of the visit price. */
+  lockoutFeePct: 50,
+  /** How long the client has to report something missed. */
+  recleanWindowHours: 24,
+} as const
+
+export const RESIDENTIAL_EXCLUSIONS: string[] = [
+  'Repairs of any kind. Renovo is a cleaning contractor and performs no trade work.',
+  'Biohazards and hazardous materials: bodily fluids, mold, pest droppings, needles, or unidentified chemicals. These need a remediation specialist, and we will tell you if we find them.',
+  'Exterior windows, and anything that cannot be reached safely from the floor or a two-step stool.',
+  'Moving furniture or appliances that one person cannot lift safely.',
+  'Areas not listed on this quote, such as the garage, patio or unfinished basement, unless added.',
+]
+
+export const RESIDENTIAL_ASSUMPTIONS: string[] = [
+  'The price is based on the size and condition of the home as you described it or as we saw it. If it is very different on the day, we will show you and agree a new price before we start.',
+  'Someone is home to let us in, or entry instructions (a code, a lockbox, or where the key is) are given to us before the visit.',
+  'Hot water and electricity are on at the home.',
+  'Pets that might get out, or are uneasy with strangers, are secured or supervised while we work.',
+]
+
+/** Where a commercial bid prints insurance and compliance, a home quote prints these. */
+export function residentialPolicies(p = RESIDENTIAL_POLICY): string[] {
+  return [
+    'Renovo Surface Solutions LLC carries general liability insurance. Proof of insurance is available on request.',
+    `If anything on the list above was missed, tell us within ${p.recleanWindowHours} hours and we will come back and put it right at no charge.`,
+    `To reschedule or cancel a visit, please give us at least ${p.rescheduleNoticeHours} hours' notice and there is no charge. `
+      + `A visit cancelled with less than ${p.lateCancelHours} hours' notice, or one where we arrive and cannot get in, is charged at ${p.lockoutFeePct}% of the visit price.`,
+    'We bring our own supplies and equipment. If you would like us to use particular products in your home, leave them out and let us know.',
+    'Please put away cash, jewelry and anything irreplaceable before we arrive. If anything is damaged while we are working, we will tell you the same day.',
+    'Recurring cleaning is billed once a month. With a card on file it is charged automatically; otherwise the invoice is due within 15 days. One-time cleans are invoiced when the work is done.',
+  ]
 }
 
 export interface ProposalScope {
@@ -565,12 +707,28 @@ export function isProtectedExclusion(line: string): boolean {
  * direction is an exclusion you meant to keep quietly vanishing from a
  * document you already signed, which costs the job.
  */
+export interface ProposalScopeOptions {
+  /**
+   * A homeowner's quote. Swaps the commercial universal terms and compliance
+   * block for the residential ones; see RESIDENTIAL_EXCLUSIONS.
+   */
+  residential?: boolean
+}
+
 export function buildProposalScope(
   serviceTypes: (string | null | undefined)[],
   custom: CustomScopeLine[] = [],
+  opts: ProposalScopeOptions = {},
 ): ProposalScope {
+  const residential = !!opts.residential
   const keys = [...new Set(serviceTypes.filter((k): k is string => !!k && !!SERVICE_SCOPE[k]))]
-  const baseSections = keys.map(k => SERVICE_SCOPE[k])
+  // "Commercial Pressure Washing" heading a quote for somebody's driveway reads
+  // as though it was written for someone else.
+  const baseSections = keys.map(k => residential
+    ? { ...SERVICE_SCOPE[k], label: SERVICE_SCOPE[k].label.replace(/^Commercial\s+/, '') }
+    : SERVICE_SCOPE[k])
+  const universalExclusions = residential ? RESIDENTIAL_EXCLUSIONS : UNIVERSAL_EXCLUSIONS
+  const universalAssumptions = residential ? RESIDENTIAL_ASSUMPTIONS : UNIVERSAL_ASSUMPTIONS
 
   const added = (kind: CustomScopeLine['kind']) =>
     custom.filter(c => c.kind === kind && !c.suppress && c.text.trim()).map(c => c.text.trim())
@@ -590,7 +748,7 @@ export function buildProposalScope(
 
   const seenEx = new Set<string>()
   const exclusions: string[] = []
-  for (const line of [...sections.flatMap(s => s.exclusions), ...UNIVERSAL_EXCLUSIONS]) {
+  for (const line of [...sections.flatMap(s => s.exclusions), ...universalExclusions]) {
     if (seenEx.has(line)) continue
     // A suppression cannot reach a load-bearing exclusion. The route refuses
     // to store one, and this is the second lock: a row that got in some other
@@ -601,10 +759,17 @@ export function buildProposalScope(
   }
   exclusions.push(...added('exclusion'))
 
+  /*
+   * "Your first visit may need to be a deep clean" is right on a quote for a
+   * standard clean alone, and wrong on one that already sells the deep clean
+   * -- it tells the client to expect a second quote they are holding.
+   */
+  const deepOnQuote = keys.includes('deepCleaning') || keys.includes('moveOutCleaning')
   const seenAs = new Set<string>()
   const assumptions: string[] = []
-  for (const line of [...UNIVERSAL_ASSUMPTIONS, ...sections.flatMap(s => s.assumptions)]) {
+  for (const line of [...universalAssumptions, ...sections.flatMap(s => s.assumptions)]) {
     if (seenAs.has(line) || hiddenAs.has(key(line))) continue
+    if (deepOnQuote && line.startsWith('Your first visit may need to be a deep clean')) continue
     seenAs.add(line)
     assumptions.push(line)
   }
@@ -628,11 +793,14 @@ export function buildProposalScope(
     })
   }
 
-  // Healthcare language is additive and only when it applies.
-  const healthcare = keys.some(k => k === 'disinfection' || k === 'ventCleaning')
-  const compliance = healthcare
-    ? [...COMPLIANCE_STATEMENTS, ...HEALTHCARE_STATEMENTS]
-    : COMPLIANCE_STATEMENTS
+  // Healthcare language is additive and only when it applies -- which is never
+  // in somebody's home, where HIPAA and BAAs would read as a mistake.
+  const healthcare = !residential && keys.some(k => k === 'disinfection' || k === 'ventCleaning')
+  const compliance = residential
+    ? residentialPolicies()
+    : healthcare
+      ? [...COMPLIANCE_STATEMENTS, ...HEALTHCARE_STATEMENTS]
+      : COMPLIANCE_STATEMENTS
 
   return { sections, exclusions, assumptions, compliance, clarifications: added('clarification') }
 }

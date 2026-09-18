@@ -97,6 +97,8 @@ function photoSectionHtml(photos) {
  */
 function coverPageHtml(ctx) {
   const { company, client, estimate, issuedDate, expiresDate, government, siteLine } = ctx;
+  // A homeowner's quote rather than a bid: no NAICS, and a heading they would use.
+  const home = estimate.bidMode === 'residential';
 
   const row = (label, value) => value
     ? `<div class="cover-row"><span class="cover-row-label">${label}</span><span class="cover-row-value">${value}</span></div>`
@@ -118,8 +120,8 @@ function coverPageHtml(ctx) {
       </div>
 
       <div class="cover-middle">
-        <div class="cover-kicker">Proposal for Commercial Cleaning Services</div>
-        <h1 class="cover-title">${esc(estimate.projectName || (client && client.company) || 'Service Proposal')}</h1>
+        <div class="cover-kicker">${home ? 'Home Cleaning Quote' : 'Proposal for Commercial Cleaning Services'}</div>
+        <h1 class="cover-title">${esc(estimate.projectName || (home ? 'Home Cleaning' : ((client && client.company) || 'Service Proposal')))}</h1>
         ${siteLine ? `<div class="cover-site">${esc(siteLine)}</div>` : ''}
       </div>
 
@@ -144,12 +146,12 @@ function coverPageHtml(ctx) {
       </div>
 
       <div class="cover-facts">
-        ${row('Proposal number', proposalNumber(estimate.id))}
+        ${row(home ? 'Quote number' : 'Proposal number', proposalNumber(estimate.id))}
         ${row('Date issued', fmtDate(issuedDate))}
         ${row('Valid through', fmtDate(expiresDate))}
         ${estimate.walkthroughDate ? row('Site walk-through', fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00'))) : ''}
         ${government && government.solicitationNumber ? row('Solicitation', esc(government.solicitationNumber)) : ''}
-        ${row('NAICS', esc(company.naics) + ' &mdash; ' + esc(company.naicsLabel))}
+        ${home ? '' : row('NAICS', esc(company.naics) + ' &mdash; ' + esc(company.naicsLabel))}
         ${government && government.company && government.company.uei ? row('UEI', esc(government.company.uei)) : ''}
         ${government && government.company && government.company.cage ? row('CAGE', esc(government.company.cage)) : ''}
       </div>
@@ -181,6 +183,34 @@ function itemRows(items) {
       <td>${money(li.unitPrice)}</td>
       <td style="text-align:right;">${money(Number(li.quantity) * Number(li.unitPrice))}</td>
     </tr>`).join('');
+}
+
+/**
+ * A home quote's price table: the cleaning, how often, and what one visit costs.
+ *
+ * A quantity and a unit rate read as the paperwork of a bid. A homeowner wants
+ * to know what gets cleaned, how often, and the price of a visit.
+ */
+function homeItemRows(items, freqLabels) {
+  return items.map(li => {
+    const f = li.frequency || 'one_time';
+    const each = f !== 'one_time' ? ' <span style="color:#8A98AC; font-size:0.8rem;">a visit</span>' : '';
+    return `
+    <tr>
+      <td>${esc(li.description)}</td>
+      <td>${esc((freqLabels && freqLabels[f]) || 'One-time')}</td>
+      <td style="text-align:right;">${money(Number(li.quantity) * Number(li.unitPrice))}${each}</td>
+    </tr>`;
+  }).join('');
+}
+
+/** Per month, not per year: the figure a household budgets. */
+function homeValueHtml(contract) {
+  if (!contract || !contract.hasRecurring) return '';
+  return `
+    <div class="prop-acv">
+      <div class="prop-acv-row is-total"><span>Recurring cleaning, about per month</span><strong>${money(contract.monthlyAverage)}</strong></div>
+    </div>`;
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -287,7 +317,11 @@ function registrationHtml(gov) {
 }
 
 function render(data) {
-  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, deposit, preview, signature, expiresOn, expired } = data;
+  const { estimate, client, lineItems, proposal, contract, schedule, sites, portfolioDiscountPct, summary, government, company, photos, deposit, preview, signature, expiresOn, expired, frequencyLabels } = data;
+  const home = estimate.bidMode === 'residential';
+  const tableHead = home
+    ? '<thead><tr><th>Cleaning</th><th>How often</th><th style="text-align:right;">Price</th></tr></thead>'
+    : '<thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>';
 
   // Optional lines are alternates the client may accept or decline. They are
   // deliberately kept out of the headline total so the base price stays
@@ -329,22 +363,43 @@ function render(data) {
     <div class="prop-optional-head">Optional — Not Included in the Total Above</div>
     <p class="prop-optional-note">Priced for your consideration. Tell us which, if any, you want and we will add them to the work order. Declining them does not change the price above.</p>
     <div class="prop-scroll"><table class="doc-items-table est-items-table prop-items-optional">
-      <thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>
-      <tbody>${itemRows(optionalItems)}</tbody>
+      ${tableHead}
+      <tbody>${home ? homeItemRows(optionalItems, frequencyLabels) : itemRows(optionalItems)}</tbody>
     </table></div>
     <div class="prop-totals"><div class="prop-totals-line">If all options accepted, add: <strong>${money(optionalTotal)}</strong></div></div>
   ` : '';
 
-  const pricingBody = `
-    <div class="prop-scroll"><table class="doc-items-table est-items-table">
-      <thead><tr><th>Service Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th style="text-align:right;">Amount</th></tr></thead>
-      <tbody>${itemRows(baseItems)}</tbody>
-    </table></div>
+  /*
+   * A home quote with a recurring clean has no single total anybody pays: the
+   * deep clean once, the fortnightly price every visit. Adding them printed a
+   * "TOTAL" no invoice would ever carry, so each price is stated the way it
+   * will be charged. Same rule as the PDF.
+   */
+  const lineAmount = li => Number(li.quantity) * Number(li.unitPrice);
+  const homeRecurring = home && contract && contract.hasRecurring;
+  const cadenceTotals = {};
+  baseItems.filter(li => (li.frequency || 'one_time') !== 'one_time')
+    .forEach(li => { cadenceTotals[li.frequency] = (cadenceTotals[li.frequency] || 0) + lineAmount(li); });
+  const oneTimeTotal = baseItems.filter(li => (li.frequency || 'one_time') === 'one_time').reduce((s, li) => s + lineAmount(li), 0);
+  const totalsHtml = homeRecurring ? `
+    <div class="prop-totals">
+      ${oneTimeTotal > 0 ? `<div class="prop-totals-line">One-time cleaning: ${money(oneTimeTotal)}</div>` : ''}
+      ${estimate.taxApplied ? `<div class="prop-totals-line">Utah Sales Tax (7.25%), one of each: ${money(taxAmount)}</div>` : ''}
+      ${Object.entries(cadenceTotals).map(([f, v]) =>
+        `<div class="prop-grand">Each visit, ${esc(((frequencyLabels && frequencyLabels[f]) || f).toLowerCase())}: ${money(v)}</div>`).join('')}
+    </div>` : `
     <div class="prop-totals">
       <div class="prop-totals-line">Subtotal: ${money(subtotal)}</div>
       ${estimate.taxApplied ? `<div class="prop-totals-line">Utah Sales Tax (7.25%): ${money(taxAmount)}</div>` : ''}
       <div class="prop-grand">TOTAL: ${money(total)}</div>
-    </div>
+    </div>`;
+
+  const pricingBody = `
+    <div class="prop-scroll"><table class="doc-items-table est-items-table">
+      ${tableHead}
+      <tbody>${home ? homeItemRows(baseItems, frequencyLabels) : itemRows(baseItems)}</tbody>
+    </table></div>
+    ${totalsHtml}
     ${deposit && deposit.required ? `
       <div class="prop-deposit">
         <div class="prop-deposit-row"><span>Deposit due now (${deposit.pct}%)</span><strong>${money(deposit.depositDue)}</strong></div>
@@ -367,7 +422,7 @@ function render(data) {
     document.body.classList.add('is-preview');
   }
   if (estimate.status === 'approved') {
-    actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p><strong>This proposal has been accepted.</strong> We will contact you within 2 hours to confirm your service date. Thank you for choosing Renovo Surface Solutions.</p></div>`;
+    actionsHtml = `<div class="state-banner"><div class="icon">✅</div><p><strong>${home ? 'This quote' : 'This proposal'} has been accepted.</strong> We will contact you within 2 hours to confirm your service date. Thank you for choosing Renovo Surface Solutions.</p></div>`;
   } else if (expired) {
     actionsHtml = `<div class="state-banner"><p><strong>This proposal expired on ${fmtDate(expiresDate)}.</strong> Pricing moves with material and fuel costs, so we would rather re-quote than hold you to an old number. Call <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a> and we will send you an updated proposal.</p></div>`;
   } else if (estimate.status === 'declined') {
@@ -375,7 +430,7 @@ function render(data) {
   } else {
     actionsHtml = `
       <div class="sign-box no-print">
-        <h4>Accept this proposal</h4>
+        <h4>${home ? 'Accept this quote' : 'Accept this proposal'}</h4>
         <p class="sign-intro">Sign below to accept. This is a legally binding electronic signature, and a copy is kept with the proposal.</p>
 
         <div class="sign-fields">
@@ -383,16 +438,16 @@ function render(data) {
             <label for="signName">Your full name</label>
             <input type="text" id="signName" placeholder="As it should appear on the acceptance" autocomplete="name">
           </div>
-          <div class="field-group">
+          ${home ? '' : `<div class="field-group">
             <label for="signTitle">Title <span class="sign-optional">(optional)</span></label>
             <input type="text" id="signTitle" placeholder="e.g. Facilities Manager">
-          </div>
+          </div>`}
         </div>
 
-        <div class="field-group">
+        ${home ? '' : `<div class="field-group">
           <label for="signPo">Purchase order number <span class="sign-optional">(if your organization requires one)</span></label>
           <input type="text" id="signPo" placeholder="We will quote this on every invoice" value="${esc(estimate.poNumber || '')}">
-        </div>
+        </div>`}
 
         <div class="sign-tabs">
           <button type="button" class="sign-tab is-active" id="tabDraw" onclick="signTab('draw')">Draw it</button>
@@ -415,7 +470,7 @@ function render(data) {
 
       ${preview ? '<p class="preview-hint no-print">The client signs and accepts here. Disabled in preview so it cannot be accepted on their behalf.</p>' : ''}
       <div class="doc-actions no-print">
-        <button class="btn btn-primary"${preview ? ' disabled' : ''} onclick="respond('approve')">Accept This Proposal</button>
+        <button class="btn btn-primary"${preview ? ' disabled' : ''} onclick="respond('approve')">${home ? 'Accept This Quote' : 'Accept This Proposal'}</button>
         <button class="btn btn-outline" style="color:#6b7280; border-color:#DCE4EF;"${preview ? ' disabled' : ''} onclick="respond('decline')">Request Changes</button>
       </div>
       <p class="no-print" style="text-align:center; color:#4A5A72; font-size:0.85rem; margin-top:14px;">Questions? Call <a href="tel:8013692330" style="color:var(--blue);">801-369-2330</a> or email <a href="mailto:info@renovosurface.com" style="color:var(--blue);">info@renovosurface.com</a></p>
@@ -443,7 +498,7 @@ function render(data) {
         <div>
           <div class="est-company-name">Renovo Surface Solutions LLC</div>
           <div style="margin-top:10px;">
-            <span class="est-label">PROPOSAL</span>
+            <span class="est-label">${home ? 'QUOTE' : 'PROPOSAL'}</span>
             <span style="color:#8A98AC; font-size:0.9rem; margin-left:8px;">${proposalNumber(estimate.id)}</span>
           </div>
           <p style="color:#4A5A72; font-size:0.85rem; margin-top:8px;">
@@ -470,46 +525,48 @@ function render(data) {
           </p>
         </div>
         <div class="prop-meta-block">
-          <h4>Project</h4>
+          <h4>${home ? 'Home' : 'Project'}</h4>
           <p>
-            <strong>${esc(estimate.projectName || 'Service Proposal')}</strong><br>
+            <strong>${esc(estimate.projectName || (home ? 'Home Cleaning' : 'Service Proposal'))}</strong><br>
             ${estimate.siteAddress ? `${esc(estimate.siteAddress)}<br>` : (client?.propertyAddress ? `${esc(client.propertyAddress)}<br>` : '')}
-            Proposal ${proposalNumber(estimate.id)}
+            ${home ? 'Quote' : 'Proposal'} ${proposalNumber(estimate.id)}
             ${estimate.walkthroughDate ? `<br>Site walk completed ${fmtDate(new Date(estimate.walkthroughDate + 'T12:00:00'))}` : ''}
             ${government && government.solicitationNumber ? `<br>Solicitation ${esc(government.solicitationNumber)}` : ''}
           </p>
         </div>
       </div>
 
-      ${summary && summary.length ? section('1.', 'Executive Summary', executiveSummaryHtml(summary)) : ''}
-      ${section(nextNum(), 'Scope of Work', scopeBody)}
-      ${schedule && schedule.hasAny ? section(nextNum(), 'Service Schedule', scheduleMatrixHtml(schedule)) : ''}
+      ${summary && summary.length ? section('1.', home ? 'Your Quote at a Glance' : 'Executive Summary', executiveSummaryHtml(summary)) : ''}
+      ${section(nextNum(), home ? "What's Included" : 'Scope of Work', scopeBody)}
+      ${!home && schedule && schedule.hasAny ? section(nextNum(), 'Service Schedule', scheduleMatrixHtml(schedule)) : ''}
       ${sites && sites.length > 1 ? section(nextNum(), 'Property Breakdown', siteBreakdownHtml(sites, portfolioDiscountPct)) : ''}
-      ${section(nextNum(), 'Pricing', pricingBody + contractValueHtml(contract))}
+      ${section(nextNum(), home ? 'Price' : 'Pricing', pricingBody + (home ? homeValueHtml(contract) : contractValueHtml(contract)))}
       ${government && government.multiYear && government.multiYear.hasOptionYears ? section(nextNum(), 'Contract Period Pricing', multiYearHtml(government.multiYear)) : ''}
       ${government ? section(nextNum(), 'Vendor Information &amp; Certifications', registrationHtml(government)) : ''}
       ${(scope.clarifications || []).length ? section(nextNum(), 'Specific To This Project', `
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">Written for this project rather than taken from our standard terms. Where these differ from anything else in this proposal, these govern.</p>
         ${bulletList(scope.clarifications)}`) : ''}
-      ${scope.exclusions.length ? section(nextNum(), 'Exclusions', `
+      ${scope.exclusions.length ? section(nextNum(), home ? 'Not Included' : 'Exclusions', `
         <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">The following are not included in the pricing above. Any of them can be quoted separately on request.</p>
         ${bulletList(scope.exclusions, 'is-exclusion')}`) : ''}
-      ${(scope.assumptions.length || estimate.siteConditions) ? section(nextNum(), 'Assumptions &amp; Site Conditions', `
+      ${(scope.assumptions.length || estimate.siteConditions) ? section(nextNum(), home ? 'What This Price Assumes' : 'Assumptions &amp; Site Conditions', `
         ${estimate.siteConditions ? `<p style="color:#374151; font-size:0.88rem; margin-bottom:10px; padding:10px 12px; background:var(--off-white); border-radius:6px;"><strong>Observed at walk-through:</strong> ${esc(estimate.siteConditions)}</p>` : ''}
-        <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.</p>
+        <p style="color:#4A5A72; font-size:0.86rem; margin-bottom:10px;">${home ? 'This price depends on the following. If anything is different on the day, we will talk to you before we start.' : 'This price depends on the following being true on the service date. If any is not, we will document it and re-quote before proceeding.'}</p>
         ${bulletList(scope.assumptions)}`) : ''}
       ${photos && photos.length ? section(nextNum(), 'Site Photographs', photoSectionHtml(photos)) : ''}
-      ${scope.compliance.length ? section(nextNum(), 'Insurance, Compliance &amp; Quality Assurance', `
+      ${scope.compliance.length ? section(nextNum(), home ? 'Our Policies' : 'Insurance, Compliance &amp; Quality Assurance', `
         ${bulletList(scope.compliance, 'is-compliance')}
-        <p style="color:#4A5A72; font-size:0.86rem; margin-top:10px;">If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.</p>`) : ''}
+        ${home ? '' : '<p style="color:#4A5A72; font-size:0.86rem; margin-top:10px;">If any work does not meet the scope above, contact us within 24 hours and we will return and re-do it at no charge.</p>'}`) : ''}
 
       ${section(nextNum(), 'Terms &amp; Acceptance', `
         <div class="prop-accept">
           <p style="color:#374151; font-size:0.88rem; line-height:1.7;">
-            This proposal is valid through <strong>${fmtDate(expiresDate)}</strong>. Pricing is based on the scope, exclusions and assumptions stated above.
+            ${home ? `This quote is good through <strong>${fmtDate(expiresDate)}</strong> and is based on what is included, not included and assumed above.
+            Accepting it lets us book your cleaning. Before the first visit you will get a short service agreement to sign, with the policies above in it,
+            and <strong>no work begins until it is signed</strong>.` : `This proposal is valid through <strong>${fmtDate(expiresDate)}</strong>. Pricing is based on the scope, exclusions and assumptions stated above.
             Accepting this proposal authorizes Renovo Surface Solutions LLC to prepare a work order for the scope described.
             <strong>A signed work order is required before any work begins</strong> — acceptance here is not itself a work order.
-            Payment terms, cancellation terms and the full service agreement are presented with the work order for signature.
+            Payment terms, cancellation terms and the full service agreement are presented with the work order for signature.`}
           </p>
           ${estimate.notes ? `<p style="color:#4A5A72; font-size:0.88rem; margin-top:12px;"><strong>Notes:</strong> ${esc(estimate.notes)}</p>` : ''}
           ${signature ? `
@@ -529,8 +586,8 @@ function render(data) {
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">Date</div></div>
           </div>`}
           <div class="prop-accept-grid" style="margin-top:20px;">
-            <div><div class="prop-sign-line"></div><div class="prop-sign-label">Print Name &amp; Title</div></div>
-            <div><div class="prop-sign-line"></div><div class="prop-sign-label">PO / Reference</div></div>
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">${home ? 'Print Name' : 'Print Name &amp; Title'}</div></div>
+            <div><div class="prop-sign-line"></div><div class="prop-sign-label">${home ? 'Preferred First Cleaning Date' : 'PO / Reference'}</div></div>
           </div>
           <div class="prop-accept-grid" style="margin-top:26px; padding-top:18px; border-top:1px solid #EEF2F8;">
             <div><div class="prop-sign-line"></div><div class="prop-sign-label">For Renovo Surface Solutions LLC</div></div>
